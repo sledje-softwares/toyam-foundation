@@ -1,6 +1,6 @@
 # 05 — Architecture (Phase 1, proposed)
 
-Status: **proposed** — confirm in `07-decisions-and-open-questions.md` before build.
+Status: **confirmed** (D10–D12 in `07-decisions-and-open-questions.md`): Supabase Mumbai; web app on Cloudflare Workers (OpenNext); email intake option B (Gmail auto-forward → Cloudflare Email Routing → Email Worker). Evidence storage (P3) still open.
 
 ## Components
 

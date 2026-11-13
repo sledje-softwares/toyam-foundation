@@ -43,7 +43,7 @@ Piece IDs (e.g. `3.6`) are stable references for issues, branches and commits.
 | 1.1 | Database | Schema deployed; migrations workflow *(schema drafted)* |
 | 1.2 | Authentication | Email login for staff; OTP login for field operators |
 | 1.3 | Roles & access | RLS verified for all four roles |
-| 1.4 | File storage | Buckets, signed upload/download, per-case folder structure |
+| 1.4 | File storage | R2 bucket for evidence (presigned upload/download via server function); Supabase buckets for raw emails and reports; per-case folder structure |
 | 1.5 | Web app shell | Layout, navigation, role-based menus |
 | 1.6 | Deployment | Automatic deploys to dev/prod; error monitoring |
 
@@ -64,7 +64,7 @@ Piece IDs (e.g. `3.6`) are stable references for issues, branches and commits.
 
 | # | Piece | Output |
 |---|---|---|
-| 3.1 | Gmail connection | Push notifications or forwarding route; idempotent ingestion |
+| 3.1 | Gmail connection | Cloudflare Worker polls Gmail (IMAP, 1-min cron) and relays raw messages to Supabase; Email Routing handler added once a domain exists; idempotent ingestion |
 | 3.2 | Email storage | Raw email and attachments stored; hashes recorded |
 | 3.3 | Insurer identification | Sender-domain match; unknown senders to review queue |
 | 3.4 | Classification | New case / reminder / additional documents / query |
@@ -150,6 +150,8 @@ Piece IDs (e.g. `3.6`) are stable references for issues, branches and commits.
 | 9.3 | Backups | Backup and restore test |
 | 9.4 | Retention | File retention and archive policy as agreed with the client |
 | 9.5 | Privacy | Consent wording for statements; staff privacy note |
+| 9.6 | Archive sync (admin PC) | Daily download of new evidence, emails and reports per case; SHA-256 re-check; manifest; database backup; catch-up after missed days; restore to cloud on reopen |
+| 9.7 | Cloud purge job | Removes cloud copies of evidence only after verified archive and ≥7 days after submission; records stay |
 
 ### M10 — Testing, Pilot & Rollout (10 days)
 

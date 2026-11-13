@@ -9,3 +9,12 @@ build/
 .expo/
 supabase/.temp/
 *.log
+
+# Next.js / tooling
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.open-next/
+.wrangler/
+.dev.vars
+cloudflare-env.d.ts

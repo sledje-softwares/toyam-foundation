@@ -22,7 +22,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 ## Non-negotiable design rules
 
 1. **Flexibility through tasks, not statuses.** Case status stays a short, fixed list. Any extra investigation (including re-investigation) is a new `task` with its own checklist.
-2. **Evidence is immutable.** Core evidence fields cannot be updated and evidence cannot be deleted (enforced by trigger). Only `is_flagged` / `flag_reason` may change.
+2. **Evidence is immutable.** Core evidence fields cannot be updated and evidence records cannot be deleted (enforced by trigger). Only `is_flagged` / `flag_reason` may change, plus set-once archive fields written by the archive job. Cloud copies of files may be purged only after a hash-verified archive exists (D13).
 3. **Trusted time and integrity.** `server_received_at` is always set by the database. Every file carries a SHA-256 hash computed on the device and re-verified on upload.
 4. **Least privilege.** Field operators see only cases on which they hold a task; they never see emails, extractions, reports or submissions. Enforced by row-level security — do not bypass it with service-role keys in client apps.
 5. **Human confirms, AI suggests.** AI extraction never creates a case without staff confirmation. The investigative conclusion always remains with a person.
@@ -35,15 +35,17 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Enum and column names are `snake_case`; tables are plural.
 - Client-facing documents (proposals, one-pagers) are business-oriented and do not name the technology stack.
 
-## Current status
+## Current status (2026-11-11, paused)
 
-- Planning for Phase 1 complete (scope, build plan, architecture, data model).
-- Phase 1 schema drafted and smoke-tested on local PostgreSQL 16 with a stubbed `auth` schema: duplicate prevention, RLS for field users, evidence immutability, gallery auto-flagging, status history and audit log verified.
-- No application code yet.
+- Decisions D10–D13 recorded (Supabase free, Cloudflare Workers hosting, Cloudflare-based email intake, R2 + daily local archive). Paid-plan decision deferred to before go-live (P5).
+- M1: local Supabase stack (CLI `npx -y supabase@3.1.0`) with 4 new migrations (security hardening, auth→profiles, storage, evidence R2/archive), seed data and 152 passing pgTAP tests. Web shell in `apps/web` (Next.js on Cloudflare via OpenNext) deployed to https://toyam-web.sledjesoftwares.workers.dev.
+- Hosted `toyam-dev` (ref `ezycvkthddhqtwtqvmlg`) is **partially migrated**: only the initial schema; the security-hardening migration was declined; no admin user. Do not use it until the remaining 4 migrations are applied (needs user approval).
+- M2 design done: `docs/08-m2-admin-design.md`. Implementation of T1–T5 was started and **stopped mid-way** — `supabase/migrations/20261112000000_m2_admin.sql`, `supabase/tests/06_m2_admin.test.sql`, `supabase/functions/` and new files in `apps/web` may be incomplete; review before continuing.
+- Nothing committed since the initial commit (user instruction).
 
 ## Next steps
 
-1. Resolve the open questions in `docs/07-decisions-and-open-questions.md` (Workspace vs @gmail.com is the most urgent).
-2. M0 Discovery: collect sample emails, report formats and checklists from the client.
-3. M1 Foundation: create Supabase dev/prod projects (Mumbai region), apply the migration, scaffold `apps/web`.
-4. Design the email intake flow in detail (classification, extraction fields, review screen) before building M3.
+1. User decision on `toyam-dev`: apply remaining 4 migrations + create admin, or roll back.
+2. Review the partial M2 T1–T5 work; finish T1–T5, then T7–T15 (Sonnet), per §5 of the design.
+3. Answer M2 open questions (§6 of the design) and Q10 with the client; M0 inputs still outstanding.
+4. Field sign-in default: mobile + password (no SMS cost) — confirm with the client.

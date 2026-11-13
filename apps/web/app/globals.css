@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* Design tokens (docs/08 §3.1). Utilities: bg-primary, text-text-muted, border-border, ... */
+@theme {
+  --color-primary: #1e40af; /* blue-800, white text 8.6:1 */
+  --color-primary-hover: #1e3a8a; /* blue-900 */
+  --color-primary-soft: #eff6ff; /* blue-50 */
+  --color-text: #0f172a; /* slate-900 */
+  --color-text-muted: #475569; /* slate-600, 7.6:1 on white */
+  --color-border: #e2e8f0; /* slate-200 */
+  --color-border-input: #94a3b8; /* slate-400, 3:1 non-text */
+  --color-bg: #f8fafc; /* slate-50 */
+  --color-surface: #ffffff;
+  --color-danger: #b91c1c; /* red-700 */
+  --color-danger-hover: #991b1b;
+  --color-danger-soft: #fef2f2; /* red-50 */
+  --color-warning: #92400e; /* amber-800 */
+  --color-warning-soft: #fffbeb; /* amber-50 */
+  --color-success: #166534; /* green-800 */
+  --color-success-soft: #f0fdf4; /* green-50 */
+  --color-focus: #1d4ed8; /* blue-700 */
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Focus ring: 2px blue-700, 2px offset, on every focusable element. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Dense tables and forms use 14px base; tabular numerals in tables. */
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+dialog::backdrop {
+  background: rgb(15 23 42 / 0.5);
+}
