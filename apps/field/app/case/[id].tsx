@@ -10,6 +10,7 @@ import { colors, s } from '../../src/theme';
 import { checklistView, clockSheetView, freshnessView, type ChecklistRow } from '../../src/ui-logic/offline';
 import { checklistMenuLabel } from '../../src/ui-logic/threadMenu';
 import { ChecklistSheet, ClockSheet, Fresh, Sheet } from '../../src/ui/components';
+import { Composer } from '../../src/ui/Composer';
 import { useOffline } from '../../src/ui/OutboxProvider';
 import { StatusStack } from '../../src/ui/StatusStack';
 
@@ -99,7 +100,6 @@ export default function Thread() {
         <Text style={s.title}>{header?.title ?? header?.case_ref ?? ''}</Text>
         {header ? <Text style={s.muted}>{header.insurer_name}</Text> : null}
         <Fresh {...freshnessView(syncedAt[id ?? ''], now)} />
-        <Text style={[s.muted, { marginTop: 8 }]}>Messages are read-only in this version.</Text>
       </View>
       {error ? <Text style={[s.error, { marginHorizontal: 16 }]}>{error}</Text> : null}
       <FlatList
@@ -141,6 +141,7 @@ export default function Thread() {
         </Pressable>
       </Sheet>
       <ChecklistSheet view={checkOpen ? check : null} loading={false} onClose={() => setCheckOpen(false)} />
+      {id ? <Composer caseId={id} /> : null}
     </SafeAreaView>
   );
 }

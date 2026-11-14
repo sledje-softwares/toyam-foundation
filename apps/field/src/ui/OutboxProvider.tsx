@@ -25,6 +25,7 @@ import {
 } from './notifications';
 import { allSentContent } from '../ui-logic/offline';
 import { sendingNotificationText } from '../ui-logic/threadMenu';
+import { clearCaptureContext } from '../capture/useCaptureContext';
 
 interface DrainState {
   phase: DrainPhase;
@@ -189,6 +190,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     try { await (await drainClient())?.finish(left); } catch { /* wipe anyway */ }
     await o.wipe();
     await cacheRef.current?.clear().catch(() => {});
+    clearCaptureContext();
     await forgetDevice(secretStore);
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
@@ -241,6 +243,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     }
     if (outbox) await outbox.wipe();
     await cache?.clear().catch(() => {});
+    clearCaptureContext();
     await forgetDevice(secretStore).catch(() => {});
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut();

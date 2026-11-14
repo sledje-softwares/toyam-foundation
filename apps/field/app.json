@@ -8,9 +8,41 @@
     "userInterfaceStyle": "light",
     "platforms": ["android"],
     "android": {
-      "package": "in.toyaminvestigation.field"
+      "package": "in.toyaminvestigation.field",
+      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_COARSE_LOCATION", "android.permission.ACCESS_FINE_LOCATION"],
+      "blockedPermissions": ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE"]
     },
-    "plugins": ["expo-router", "expo-status-bar", "expo-secure-store", "expo-sqlite", "expo-background-task"],
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-background-task",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Toyam Field uses the camera to take photos for your cases. Photos stay inside the app and are not saved to your gallery.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Toyam Field adds your location to the photos you take in the app, so the office knows where they were taken. You can say no and still take photos.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Toyam Field lets you choose photos from your gallery to send for a case. Only the photos you choose are sent.",
+          "cameraPermission": "Toyam Field uses the camera to take photos for your cases.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-document-picker"
+    ],
     "experiments": { "typedRoutes": true }
   }
 }
