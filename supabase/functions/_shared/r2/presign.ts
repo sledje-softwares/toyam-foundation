@@ -1,5 +1,5 @@
 // R2 evidence storage (D13): object key scheme and AWS SigV4 query-string presigning, shared by the
-// `field-drain` and `evidence-upload` edge functions. Pure, no npm imports: runs in Deno and in Node's
+// `field-drain` and `evidence-upload` edge functions (PUT) and `evidence-view` (GET). Pure, no npm imports: runs in Deno and in Node's
 // type stripping. Uses WebCrypto (crypto.subtle). Never logs or returns the secret access key.
 
 /** R2 object key; the same convention is enforced by the database. */
@@ -43,6 +43,8 @@ export interface PresignInput {
   headers?: Record<string, string>;
   /** Payload hash in the canonical request; defaults to UNSIGNED-PAYLOAD. */
   payloadHash?: string;
+  /** Extra signed query parameters (e.g. response-content-disposition on a GET). */
+  query?: Record<string, string>;
 }
 
 export async function presignUrl(p: PresignInput): Promise<string> {
@@ -59,6 +61,7 @@ export async function presignUrl(p: PresignInput): Promise<string> {
     'X-Amz-Date': stamp,
     'X-Amz-Expires': String(p.expiresSeconds),
     'X-Amz-SignedHeaders': names.join(';'),
+    ...(p.query ?? {}),
   };
   const canonicalQuery = Object.keys(query).sort().map((k) => `${uriEncode(k)}=${uriEncode(query[k])}`).join('&');
   const canonicalPath = uriEncode(p.path, true);
@@ -116,4 +119,33 @@ export async function presignEvidencePut(cfg: R2Config, key: string, sha256: str
     payloadHash: sha256,
   });
   return { url, headers: { 'x-amz-content-sha256': sha256 }, expires_in: PUT_EXPIRES_SECONDS };
+}
+
+export const GET_EXPIRES_SECONDS = 300;
+
+/**
+ * Presigned GET for viewing / downloading one evidence object. `contentType` and
+ * `contentDisposition` become the signed `response-content-type` / `response-content-disposition`
+ * overrides, so the store answers with the type recorded in the database (not whatever the uploader
+ * sent) and the chosen inline / attachment disposition.
+ */
+export async function presignEvidenceGet(cfg: R2Config, key: string, now: Date, opts: {
+  contentType: string;
+  contentDisposition: string;
+  expiresSeconds?: number;
+}): Promise<{ url: string; expires_in: number }> {
+  const expires = opts.expiresSeconds ?? GET_EXPIRES_SECONDS;
+  const url = await presignUrl({
+    method: 'GET',
+    host: `${cfg.accountId}.r2.cloudflarestorage.com`,
+    path: `/${cfg.bucket}/${key}`,
+    region: 'auto',
+    service: 's3',
+    accessKeyId: cfg.accessKeyId,
+    secretAccessKey: cfg.secretAccessKey,
+    date: now,
+    expiresSeconds: expires,
+    query: { 'response-content-disposition': opts.contentDisposition, 'response-content-type': opts.contentType },
+  });
+  return { url, expires_in: expires };
 }
