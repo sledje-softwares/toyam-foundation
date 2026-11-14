@@ -12,8 +12,8 @@ Route `/dashboard`. Read-only. Roles: admin, orchestrator, office (all staff; se
 | Overdue vs TAT | open cases with `due_at` before today (IST) | `/cases?scope=open&due=overdue` |
 | Reports awaiting approval | `report_approvals` count, `decision = pending` | `/reports?approval=pending` |
 | Workload, office | open cases grouped by `office_owner_id` (+ unassigned) | `/cases?scope=open&owner=<profile_id>` (`owner=none` for unassigned) |
-| Workload, field | `tasks` with `status in (pending, in_progress)` grouped by `assignee_id` | `/tasks?status=open&assignee=<profile_id>` |
-| Ageing vs TAT | open cases (`id, insurer_id, due_at`) bucketed in code by IST calendar days to `due_at`: on time (due after today), due today, overdue 1-2 days, overdue 3+ days, no due date | `/cases?scope=open&due=<ontime\|today\|1-2\|3plus\|none>&insurer=<insurer_id>` |
+| Workload, field | `tasks` with `status in (pending, in_progress)` grouped by `assignee_id` | `/tasks?scope=all&operator=<profile_id>` |
+| Ageing vs TAT | open cases (`id, insurer_id, due_at`) bucketed in code by IST calendar days to `due_at`: on time (due after today), due today, overdue 1-2 days, overdue 3+ days, no due date | `/cases?scope=open&due=<on_track\|soon\|overdue\|none>` (buckets mapped by `BUCKET_TO_CASES_DUE`: due today → soon, both overdue buckets → overdue)`&insurer=<insurer_id>` |
 | Recent escalations | the viewer's own `notifications` of kind `case_unassigned`, `no_field_task`, `intake_retry_stuck`, newest 8 (RLS: own rows only) | embeds `cases(case_ref)`; rows link to `/cases/<case_ref>`, or `/intake/failed` for retry alerts |
 | Turnaround per stage | `case_status_history` of the last 90 days (limit 5000): time spent in a status = next change minus this change; count, median, mean per stage; still-current stages are skipped | none |
 | Model cost vs budget | none yet: placeholder "after 6.10" | none |
@@ -22,8 +22,8 @@ Aggregates are shaped in `lib/dashboard.ts` (pure, tested). At ~300 cases a mont
 
 ## Query parameters other pages should honour
 
-- `/cases`: `scope=open`, `status=<case_status>`, `due=overdue|today|1-2|3plus|ontime|none`, `insurer=<uuid>`, `owner=<uuid>|none`.
-- `/tasks`: `status=open` (pending + in progress), `assignee=<uuid>`.
+- `/cases` (as built, `lib/cases.ts`): `status=<case_status>|all` (default open), `due=overdue|soon|on_track|none`, `insurer=<uuid>`, `owner=me|none|<uuid>`; `scope=open` is ignored (open is the default).
+- `/tasks` (as built, `lib/tasks.ts`): default status is open (pending + in progress); `operator=<uuid>`, `scope=mine|all` (office staff default to `mine`, so dashboard links pass `scope=all`).
 - `/reports`: `approval=pending`.
 
 ## Wireframe

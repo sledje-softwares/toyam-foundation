@@ -196,5 +196,22 @@ export function casesLink(params: Record<string, string | undefined> = {}): stri
   return `/cases?${q.toString()}`;
 }
 
+/**
+ * Ageing bucket → the closest `due` filter /cases understands (`lib/cases.ts` DUE_FILTERS).
+ * "Due today" maps to "due within 2 days"; both overdue buckets map to "overdue".
+ */
+export const BUCKET_TO_CASES_DUE: Record<Bucket, "overdue" | "soon" | "on_track" | "none"> = {
+  ontime: "on_track",
+  today: "soon",
+  "1-2": "overdue",
+  "3plus": "overdue",
+  none: "none",
+};
+
+/** Open tasks of one operator, across all cases (office staff default to their own cases). */
+export function operatorTasksLink(id: string | null): string {
+  return id ? `/tasks?scope=all&operator=${encodeURIComponent(id)}` : "/tasks?scope=all";
+}
+
 /** `owner=none` on /cases means "no office owner". */
 export const OWNER_NONE = "none";

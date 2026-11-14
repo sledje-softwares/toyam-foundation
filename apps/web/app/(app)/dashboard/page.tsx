@@ -3,6 +3,8 @@ import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatRelativeDay } from "@/lib/format";
 import {
+  BUCKET_TO_CASES_DUE,
+  operatorTasksLink,
   ageingByInsurer,
   BUCKETS,
   casesLink,
@@ -137,7 +139,7 @@ export default async function DashboardPage() {
             <WorkloadList
               rows={fieldRows}
               unit="Open tasks"
-              hrefFor={(id) => `/tasks?status=open&assignee=${id ?? ""}`}
+              hrefFor={operatorTasksLink}
             />
           )}
         </Section>
@@ -174,7 +176,7 @@ export default async function DashboardPage() {
                       <td key={b.key} className="px-2 py-1.5 text-right">
                         {r.counts[b.key] > 0 ? (
                           <Link
-                            href={casesLink({ due: b.key, insurer: r.insurerId })}
+                            href={casesLink({ due: BUCKET_TO_CASES_DUE[b.key], insurer: r.insurerId })}
                             className={`underline hover:no-underline ${
                               b.key === "3plus" ? "font-medium text-danger" : b.key === "1-2" ? "text-warning" : "text-primary"
                             }`}
