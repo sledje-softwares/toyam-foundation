@@ -1,4 +1,6 @@
-import type { UserRole } from "@/lib/database.types";
+import type { Enums } from "@/lib/database.types";
+
+type UserRole = Enums<"user_role">;
 
 export type NavItem = {
   href: string;

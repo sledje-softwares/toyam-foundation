@@ -28,7 +28,7 @@ npm run build && npm run lint && npm run typecheck
 - Sign-in is email + password for staff. Field users and inactive profiles are signed out.
 - `middleware.ts` refreshes the session and redirects anonymous visitors to `/login`.
 - Roles are enforced in layouts/pages (`lib/auth.ts`); row-level security is the real guard.
-- `lib/database.types.ts` is hand-written; replace it with `supabase gen types`.
+- `lib/database.types.ts` is generated; regenerate it after schema changes with `npx -y supabase@3.1.0 gen types typescript --local > apps/web/lib/database.types.ts` (run from the repo root).
 
 ## Cloudflare Workers (OpenNext)
 

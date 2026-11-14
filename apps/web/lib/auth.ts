@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import type { UserRole } from "@/lib/database.types";
+import type { Enums } from "@/lib/database.types";
+
+type UserRole = Enums<"user_role">;
 
 export type CurrentProfile = { id: string; role: UserRole; full_name: string };
 

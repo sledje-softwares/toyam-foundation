@@ -1,4 +1,6 @@
-import type { UserRole } from "@/lib/database.types";
+import type { Enums } from "@/lib/database.types";
+
+type UserRole = Enums<"user_role">;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Admin",
