@@ -11,7 +11,7 @@
 // Secrets: R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (presign only).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { type Gateway, handleFieldDrain } from '../_shared/field-drain/handler.ts';
-import { readR2Config } from '../_shared/field-drain/logic.ts';
+import { readR2Config } from '../_shared/r2/presign.ts';
 
 const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   auth: { persistSession: false, autoRefreshToken: false },

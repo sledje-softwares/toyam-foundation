@@ -453,3 +453,10 @@ verify_jwt = true
 [functions.field-drain]
 enabled = true
 verify_jwt = false
+
+# Signed-in evidence presigner (build plan 1.4): called by the field app with the operator's access
+# token; every check runs with that JWT (no service-role key). Contract: functions/evidence-upload/README.md.
+# Secrets R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (same as field-drain).
+[functions.evidence-upload]
+enabled = true
+verify_jwt = true

@@ -2,16 +2,8 @@
 // is tested from Node with fakes. The Deno entry point (../../field-drain/index.ts) wires `rpc` to
 // a service-role supabase-js client. Every decision (device secret, deactivation, windows, audit)
 // is made by the drain_* SQL functions; this layer validates, maps errors and presigns R2 PUTs.
-import {
-  type DbErrorLike,
-  evidenceKey,
-  type Failure,
-  fail,
-  mapDbError,
-  parseRequest,
-  presignEvidencePut,
-  type R2Config,
-} from './logic.ts';
+import { type DbErrorLike, type Failure, fail, mapDbError, parseRequest } from './logic.ts';
+import { evidenceKey, presignEvidencePut, type R2Config } from '../r2/presign.ts';
 
 /** 30 files with on-device OCR text fit comfortably. */
 export const MAX_BODY_CHARS = 1_000_000;
