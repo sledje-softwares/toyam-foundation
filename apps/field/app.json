@@ -10,7 +10,7 @@
     "android": {
       "package": "in.toyaminvestigation.field"
     },
-    "plugins": ["expo-router", "expo-status-bar", "expo-secure-store", "expo-sqlite"],
+    "plugins": ["expo-router", "expo-status-bar", "expo-secure-store", "expo-sqlite", "expo-background-task"],
     "experiments": { "typedRoutes": true }
   }
 }

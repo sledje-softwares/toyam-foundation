@@ -2,6 +2,7 @@ import { Redirect, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '../src/auth';
+import '../src/outbox/background'; // defines the background send task at module scope (5.7)
 import { colors } from '../src/theme';
 
 function Gate() {
