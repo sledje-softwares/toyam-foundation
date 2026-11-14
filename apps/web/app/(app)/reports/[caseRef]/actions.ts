@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole, STAFF_ROLES } from "@/lib/auth";
+import { getFileLinks, linkErrorMessage, linkKey } from "@/lib/evidence-view";
 import { setFlash } from "@/lib/flash-server";
 import { createClient } from "@/lib/supabase/server";
 import { approvalModel, APPROVER_ROLES, editLock, EDITOR_ROLES, planSectionSave, readSectionForm, REQUESTER_ROLES, type ActionResult, type LinkResult, type SectionState } from "@/lib/reports";
@@ -256,15 +257,12 @@ export async function reportFileLink(reportId: string, format: string): Promise<
   return { error: null, url: signed.data.signedUrl };
 }
 
-/** 60-second link to an insurer attachment (bucket `email-raw`). Field files on R2 need an evidence-view function (gap G3). */
+/** 5-minute link to any evidence file (R2 or insurer attachment) via the evidence-view function; RLS decides. */
 export async function evidenceLink(evidenceId: string): Promise<LinkResult> {
   await requireRole(STAFF_ROLES);
   if (!Id.safeParse(evidenceId).success) return { error: RELOAD, url: null };
-  const supabase = await createClient();
-  const { data } = await supabase.from("evidence").select("storage_backend, storage_path").eq("id", evidenceId).maybeSingle();
-  if (!data?.storage_path) return { error: "This file is not available.", url: null };
-  if (data.storage_backend !== "supabase") return { error: "Opening field files from the office is not built yet.", url: null };
-  const signed = await supabase.storage.from("email-raw").createSignedUrl(data.storage_path, 60);
-  if (signed.error || !signed.data) return { error: "The link could not be created. Try again.", url: null };
-  return { error: null, url: signed.data.signedUrl };
+  const r = await getFileLinks({ evidenceIds: [evidenceId] });
+  if (!r.ok) return { error: r.message, url: null };
+  const link = r.links.get(linkKey("evidence", evidenceId));
+  return link ? { error: null, url: link.url } : { error: linkErrorMessage(r.errors.get(linkKey("evidence", evidenceId)) ?? "unavailable"), url: null };
 }

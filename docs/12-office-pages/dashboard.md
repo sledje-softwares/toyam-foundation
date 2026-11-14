@@ -1,6 +1,8 @@
 # Dashboard (M9, structure pass)
 
-Route `/dashboard`. Read-only. Roles: admin, orchestrator, office (all staff; see `lib/nav.ts`). Everything is read through the signed-in user's session under RLS (`is_staff()`); no service-role key and no database change.
+Route `/dashboard`. Read-only. Roles: admin, orchestrator, office (all staff; see `lib/nav.ts`). Everything is read through the signed-in user's session under RLS; no service-role key and no database change.
+
+**Office view (D44):** RLS limits an `office` user to the cases assigned to them, so the page shows their own figures: "My open cases", overdue and ageing on their cases, approvals on their cases, a one-row "Workload: you", and field workload only for operators with open tasks on their cases. The intake and failed-mail tiles stay shared (unlinked mail is visible to all staff). Orchestrator / admin see the firm-wide view as before.
 
 ## Tiles and data sources
 
@@ -22,8 +24,8 @@ Aggregates are shaped in `lib/dashboard.ts` (pure, tested). At ~300 cases a mont
 
 ## Query parameters other pages should honour
 
-- `/cases` (as built, `lib/cases.ts`): `status=<case_status>|all` (default open), `due=overdue|soon|on_track|none`, `insurer=<uuid>`, `owner=me|none|<uuid>`; `scope=open` is ignored (open is the default).
-- `/tasks` (as built, `lib/tasks.ts`): default status is open (pending + in progress); `operator=<uuid>`, `scope=mine|all` (office staff default to `mine`, so dashboard links pass `scope=all`).
+- `/cases` (as built, `lib/cases.ts`): `status=<case_status>|all` (default open), `due=overdue|soon|on_track|none`, `insurer=<uuid>`, `owner=me|none|<uuid>` (ignored for office, D44); `scope=open` is ignored (open is the default).
+- `/tasks` (as built, `lib/tasks.ts`): default status is open (pending + in progress); `operator=<uuid>`, `scope=mine|all` (orchestrator / admin; office is always scoped to their own cases by RLS and `scope` is ignored).
 - `/reports`: `approval=pending`.
 
 ## Wireframe

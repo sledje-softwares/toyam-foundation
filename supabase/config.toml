@@ -460,3 +460,12 @@ verify_jwt = false
 [functions.evidence-upload]
 enabled = true
 verify_jwt = true
+
+# Short-lived view / download links (R2 presigned GET, Storage signed URL) for evidence and insurer
+# attachments: called from the web server with the signed-in user's access token; rows are read and
+# links signed under RLS (no service-role key). Contract: functions/evidence-view/README.md.
+# Secrets R2_ACCOUNT_ID, R2_BUCKET, R2_READ_ACCESS_KEY_ID, R2_READ_SECRET_ACCESS_KEY (optional
+# PUBLIC_SUPABASE_URL for local dev).
+[functions.evidence-view]
+enabled = true
+verify_jwt = true

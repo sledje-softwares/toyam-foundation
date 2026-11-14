@@ -1,6 +1,8 @@
 import type { ActionResult, LinkResult, PanelFile } from "@/lib/reports";
 import { formatRelativeDay } from "@/lib/format";
 import { Badge } from "@/components/ui";
+import { FileThumb } from "@/components/evidence/file-thumb";
+import { fileHref } from "@/lib/evidence-view-core";
 import { LabelEditor, OpenFileButton, RelevanceButton } from "./evidence-actions";
 import { PlannedButton, PlannedNote } from "./planned";
 
@@ -31,13 +33,12 @@ function Tile({ f, caseRef, editable, labelOptions, actions }: { f: PanelFile; c
     <li className={`rounded border border-border bg-surface p-2 ${f.relevance === "not_relevant" ? "opacity-70" : ""}`}>
       <div className="flex gap-3">
         <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100 text-xs uppercase text-text-muted">
-          {f.thumbUrl ? (
-            // Short-lived signed storage URL; next/image would need the storage host in remotePatterns.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={f.thumbUrl} alt={f.name} className="size-full object-cover" loading="lazy" />
-          ) : (
-            <span aria-hidden="true">{f.mime?.split("/")[1]?.slice(0, 4) ?? f.type}</span>
-          )}
+          <FileThumb
+            src={f.thumbUrl}
+            fallbackHref={fileHref("evidence", f.id)}
+            alt={f.name}
+            placeholder={<span aria-hidden="true">{f.mime?.split("/")[1]?.slice(0, 4) ?? f.type}</span>}
+          />
         </div>
         <div className="min-w-0 flex-1 space-y-1">
           <p className="truncate text-sm font-medium" title={f.name}>
@@ -61,7 +62,7 @@ function Tile({ f, caseRef, editable, labelOptions, actions }: { f: PanelFile; c
         </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3">
-        <OpenFileButton evidenceId={f.id} canOpen={f.backend === "supabase"} link={actions.evidenceLink} />
+        <OpenFileButton evidenceId={f.id} canOpen link={actions.evidenceLink} />
         {editable && <RelevanceButton evidenceId={f.id} caseRef={caseRef} notRelevant={f.relevance === "not_relevant"} action={actions.setRelevance} />}
         <span className="text-xs text-text-muted" title="Planned (7.3): OCR text with tap-to-fill into the focused field">
           OCR text <span className="rounded bg-slate-100 px-1 py-0.5">Planned · 7.3</span>

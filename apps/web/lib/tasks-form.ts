@@ -17,6 +17,9 @@ export const TITLE_MAX = 120;
 export const INSTRUCTIONS_MAX = 4000;
 export const REQUEST_MIN = 10;
 export const LOCATION_MAX = 300;
+/** tasks.reason: optional, 3-500 characters (create_field_task checks too). */
+export const REASON_MIN = 3;
+export const REASON_MAX = 500;
 const MAX_DUE_DAYS = 366;
 
 export type TaskFormValues = {
@@ -30,12 +33,13 @@ export type TaskFormValues = {
   checklist_id: string;
   due_at: string;
   location: string;
+  reason: string;
 };
 
 export type TaskFieldErrors = Partial<Record<keyof TaskFormValues, string>>;
 
 export function emptyTaskForm(mode: TaskMode): TaskFormValues {
-  return { mode, case_id: "", assignee_id: "", kind: "", parent_task_id: "", title: "", instructions: "", checklist_id: "", due_at: "", location: "" };
+  return { mode, case_id: "", assignee_id: "", kind: "", parent_task_id: "", title: "", instructions: "", checklist_id: "", due_at: "", location: "", reason: "" };
 }
 
 export function readTaskForm(fd: FormData): TaskFormValues {
@@ -54,6 +58,7 @@ export function readTaskForm(fd: FormData): TaskFormValues {
     checklist_id: s("checklist_id"),
     due_at: s("due_at"),
     location: s("location"),
+    reason: s("reason"),
   };
 }
 
@@ -100,6 +105,7 @@ export type CreateTaskInput = {
   p_due_at?: string;
   p_location_text?: string;
   p_parent_task_id?: string;
+  p_reason?: string;
 };
 
 /** Field errors, and the create_field_task() arguments when there are none. */
@@ -131,6 +137,8 @@ export function validateTaskForm(v: TaskFormValues, ctx: TaskFormContext): { err
   }
 
   if (v.location.length > LOCATION_MAX) e.location = `Use at most ${LOCATION_MAX} characters.`;
+  if (v.reason && (v.reason.length < REASON_MIN || v.reason.length > REASON_MAX))
+    e.reason = `Enter a reason of ${REASON_MIN} to ${REASON_MAX} characters, or leave it empty.`;
 
   if (Object.keys(e).length > 0 || !kind) return { errors: e, input: null };
   return {
@@ -145,6 +153,7 @@ export function validateTaskForm(v: TaskFormValues, ctx: TaskFormContext): { err
       ...(due && { p_due_at: due.toISOString() }),
       ...(v.location && { p_location_text: v.location }),
       ...(v.parent_task_id && { p_parent_task_id: v.parent_task_id }),
+      ...(v.reason && { p_reason: v.reason }),
     },
   };
 }

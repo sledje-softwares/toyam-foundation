@@ -13,6 +13,7 @@ import {
   isGuid,
   isTaskKind,
   OPEN_STATUSES,
+  hasScopeChoice,
   parseScope,
   parseStatusFilter,
   progressLabel,
@@ -103,7 +104,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   }
 
   type Row = (typeof rows)[number];
-  const filtered = Boolean(term || operator || kind || due || caseRef || status.value || first(sp.scope));
+  const filtered = Boolean(term || operator || kind || due || caseRef || status.value || (hasScopeChoice(me.role) && first(sp.scope)));
 
   const columns: Column<Row>[] = [
     { key: "title", header: "Task", cell: (r) => <span className="block max-w-72 truncate">{r.title}</span> },
@@ -151,10 +152,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     { key: "created_at", header: "Assigned", sortable: true, cell: (r) => formatRelativeDay(r.created_at, now) },
   ];
 
-  const scopeFilter =
-    me.role === "office"
-      ? { name: "scope", label: "Cases", allLabel: "My cases", options: [{ value: "all", label: "All cases" }] }
-      : { name: "scope", label: "Cases", allLabel: "All cases", options: [{ value: "mine", label: "My cases" }] };
+  // Office staff see only their own cases' tasks (D44, RLS), so they get no scope filter.
+  const scopeFilter = hasScopeChoice(me.role)
+    ? [{ name: "scope", label: "Cases", allLabel: "All cases", options: [{ value: "mine", label: "My cases" }] }]
+    : [];
 
   return (
     <>
@@ -186,7 +187,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             },
             { name: "due", label: "Due", options: Object.entries(DUE_FILTERS).map(([value, label]) => ({ value, label })) },
             { name: "kind", label: "Kind", options: TASK_KINDS.map((k) => ({ value: k, label: TASK_KIND_LABELS[k].label })) },
-            scopeFilter,
+            ...scopeFilter,
           ]}
         />
       </Suspense>

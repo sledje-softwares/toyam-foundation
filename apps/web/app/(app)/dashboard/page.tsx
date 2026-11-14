@@ -28,7 +28,9 @@ export const dynamic = "force-dynamic";
 const HISTORY_DAYS = 90;
 
 export default async function DashboardPage() {
-  await requireRole(STAFF_ROLES);
+  const me = await requireRole(STAFF_ROLES);
+  // D44: an office user's reads cover only the cases assigned to them, so the page shows their own figures.
+  const own = me.role === "office";
   const supabase = await createClient();
   const now = new Date();
   const since = new Date(now.getTime() - HISTORY_DAYS * 86_400_000).toISOString();
@@ -72,8 +74,12 @@ export default async function DashboardPage() {
   const ageing = openCases.error ? [] : ageingByInsurer(cases, insurers.data ?? [], now);
   const totals = totalBuckets(ageing);
   const overdue = openCases.error ? null : overdueTotal(totals);
-  const officeRows = workload(cases.map((c) => c.office_owner_id), office.data ?? [], "Unassigned");
-  const fieldRows = workload((openTasks.data ?? []).map((t) => t.assignee_id), field.data ?? []);
+  const officeRows = own
+    ? workload(cases.map((c) => c.office_owner_id), [{ id: me.id, full_name: me.full_name }])
+    : workload(cases.map((c) => c.office_owner_id), office.data ?? [], "Unassigned");
+  const allFieldRows = workload((openTasks.data ?? []).map((t) => t.assignee_id), field.data ?? []);
+  // Office: only operators working on one of their cases.
+  const fieldRows = own ? allFieldRows.filter((r) => r.count > 0) : allFieldRows;
   const stages = stageTurnaround(history.data ?? []);
   const partial =
     cases.length >= ROW_CAP || (openTasks.data?.length ?? 0) >= ROW_CAP || (history.data?.length ?? 0) >= ROW_CAP;
@@ -88,7 +94,7 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatTile label="Open cases" count={openCases.error ? null : cases.length} href={casesLink()} />
+        <StatTile label={own ? "My open cases" : "Open cases"} count={openCases.error ? null : cases.length} href={casesLink()} />
         <StatTile
           label="Awaiting intake review"
           count={intake.error ? null : (intake.count ?? 0)}
@@ -117,7 +123,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <Section title="Workload: office staff" note="Open cases">
+        <Section title={own ? "Workload: you" : "Workload: office staff"} note="Open cases">
           {office.error || openCases.error ? (
             <SectionError what="Workload" />
           ) : officeRows.length === 0 ? (
@@ -126,15 +132,18 @@ export default async function DashboardPage() {
             <WorkloadList
               rows={officeRows}
               unit="Open cases"
-              hrefFor={(id) => casesLink({ owner: id ?? OWNER_NONE })}
+              hrefFor={(id) => (own ? casesLink() : casesLink({ owner: id ?? OWNER_NONE }))}
             />
           )}
         </Section>
-        <Section title="Workload: field operators" note="Open tasks (pending or in progress)">
+        <Section
+          title="Workload: field operators"
+          note={own ? "Open tasks on your cases (pending or in progress)" : "Open tasks (pending or in progress)"}
+        >
           {field.error || openTasks.error ? (
             <SectionError what="Workload" />
           ) : fieldRows.length === 0 ? (
-            <Empty>No field operators yet.</Empty>
+            <Empty>{own ? "No open field work on your cases." : "No field operators yet."}</Empty>
           ) : (
             <WorkloadList
               rows={fieldRows}

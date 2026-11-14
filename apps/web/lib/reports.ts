@@ -468,7 +468,7 @@ export type PanelFile = PanelEvidence & {
   mime: string | null;
   source: Enums<"capture_source">;
   backend: string;
-  /** Signed thumbnail (insurer attachments only; R2 needs gap G3). */
+  /** Short-lived thumbnail link from evidence-view (images only), or null. */
   thumbUrl: string | null;
   labels: { categoryId: string; name: string; confidence: number | null; source: Enums<"label_source"> }[];
   description: string | null;

@@ -235,6 +235,16 @@ export function requiredErrors(
   return errors;
 }
 
+/**
+ * Flash after confirming intake when the new (or matched) case is assigned to someone else (D44):
+ * the confirming office user cannot open it, so they go back to the queue with the reference.
+ */
+export function confirmedElsewhereMessage(caseRef: string | null | undefined): string {
+  return caseRef
+    ? `Intake confirmed: case ${caseRef}. It is assigned to another office employee, so it does not open for you.`
+    : "Intake confirmed. The case is assigned to another office employee.";
+}
+
 /** "IGI Motor OD · standard v3" style label for a template. */
 export function templateLabel(t: { name: string; variant: string; version?: number | null }): string {
   return `${t.name} · ${t.variant}${t.version ? ` v${t.version}` : ""}`;

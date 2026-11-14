@@ -6,6 +6,7 @@ import {
   defaultKind,
   dueBounds,
   formatBytes,
+  hasScopeChoice,
   isCaseRef,
   isOverdue,
   istDayStart,
@@ -32,9 +33,15 @@ describe("tasks list filters", () => {
     expect(parseScope(undefined, "office")).toBe("mine");
     expect(parseScope(undefined, "orchestrator")).toBe("all");
     expect(parseScope(undefined, "admin")).toBe("all");
-    expect(parseScope("all", "office")).toBe("all");
+    expect(parseScope("all", "office")).toBe("mine"); // D44: office only ever sees its own cases
     expect(parseScope("mine", "admin")).toBe("mine");
     expect(parseScope("x", "office")).toBe("mine");
+  });
+
+  it("offers the scope choice to orchestrators and admins only", () => {
+    expect(hasScopeChoice("office")).toBe(false);
+    expect(hasScopeChoice("orchestrator")).toBe(true);
+    expect(hasScopeChoice("admin")).toBe(true);
   });
 
   it("computes the IST day start", () => {
