@@ -48,7 +48,9 @@ export function mapDbError(error: DbErrorLike): MappedError {
     }
     // Raised by our own functions with a message for people (e.g. confirm_intake: "Claim number is required",
     // "Nothing to confirm"); anything technical falls back to the generic text.
+    // 55000: the record is not in a state that allows this (e.g. save_case_field_values on a submitted case).
     case "22023":
+    case "55000":
     case "P0002": {
       if (msg && !looksTechnical(msg)) return { message: msg };
       return { message: GENERIC_MESSAGE };

@@ -228,7 +228,7 @@ reset role;
 update public.cases set template_id = (select id from public.case_templates where insurer_id = '27000000-0000-4000-8000-000000000001' and version = 1)
  where id = '37000000-0000-4000-8000-000000000001';
 
-set local role authenticated;
+-- values are written by intake (definer functions) or save_case_field_values (19_report_guards); here as the system
 set local request.jwt.claims to '{"sub":"17000000-0000-4000-8000-0000000000b1","role":"authenticated"}';
 select lives_ok($$insert into public.case_field_values (case_id, field_id, value, source)
                   select '37000000-0000-4000-8000-000000000001', f.id, 'Ravi S', 'email_parser'
@@ -245,6 +245,7 @@ select throws_ok($$insert into public.case_field_values (case_id, field_id, valu
                      from public.case_template_fields f join public.case_templates t on t.id = f.template_id
                     where t.version = 2 and t.insurer_id = '27000000-0000-4000-8000-000000000001' and f.key = 'insured_name'$$,
     '23514', null::text, 'field of another template version rejected');
+set local role authenticated;
 select lives_ok($$select public.set_evidence_labels((select id from public.evidence where sha256 = repeat('b1', 32)),
                   array[(select id from public.evidence_categories where code = 'r_dl_extract')])$$, 'office corrects labels');
 select is((select string_agg(l.source::text || ':' || l.is_active, ',' order by l.source) from public.evidence_labels l

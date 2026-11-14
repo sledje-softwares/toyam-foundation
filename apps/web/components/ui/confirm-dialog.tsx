@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useId, useRef } from "react";
 import { Button, type ButtonVariant } from "./button";
 import { SubmitButton } from "./submit-button";
 
@@ -29,6 +29,8 @@ export function ConfirmDialog({
   onConfirm?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Unique per dialog: several dialogs can be on one page (e.g. one per table row).
+  const titleId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => {
     ref.current?.close();
@@ -49,7 +51,7 @@ export function ConfirmDialog({
       </button>
       <dialog
         ref={ref}
-        aria-labelledby="confirm-title"
+        aria-labelledby={titleId}
         onClose={() => triggerRef.current?.focus()}
         className="m-auto w-full max-w-md rounded-lg border border-border bg-surface p-0 text-text shadow-xl"
       >
@@ -61,7 +63,7 @@ export function ConfirmDialog({
           }}
           className="p-6"
         >
-          <h2 id="confirm-title" className="text-xl font-semibold">
+          <h2 id={titleId} className="text-xl font-semibold">
             {title}
           </h2>
           {children && <div className="mt-2 text-sm text-text-muted">{children}</div>}
