@@ -7,6 +7,7 @@ import { relativeTime } from '../../src/lib/time';
 import { colors, s } from '../../src/theme';
 import { checklistView, clockSheetView, freshnessView, type ChecklistRow } from '../../src/ui-logic/offline';
 import { Btn, ChecklistSheet, ClockSheet, Fresh } from '../../src/ui/components';
+import { Composer } from '../../src/ui/Composer';
 import { useOffline } from '../../src/ui/OutboxProvider';
 import { StatusStack } from '../../src/ui/StatusStack';
 
@@ -123,6 +124,7 @@ export default function Thread() {
         onClose={() => setClockId(null)}
       />
       <ChecklistSheet view={checkOpen ? check : null} loading={false} onClose={() => setCheckOpen(false)} />
+      {id ? <Composer caseId={id} /> : null}
     </SafeAreaView>
   );
 }
