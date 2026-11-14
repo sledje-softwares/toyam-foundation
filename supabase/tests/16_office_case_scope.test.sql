@@ -89,8 +89,11 @@ insert into public.reports (id, case_id, version, storage_path, uploaded_by)
 select r, c, 1, 'cases/' || c || '/r1.docx', coalesce(owner, '16000000-0000-4000-8000-00000000000d') from k;
 insert into public.report_files (report_id, format, storage_path) select r, 'pdf', 'cases/' || c || '/r1.pdf' from k;
 insert into public.report_annexures (report_id, evidence_id, position) select r, ev, 1 from k;
+-- fixture rows only: the request rules (open field work, required fields) are tested in 19_report_guards
+alter table public.report_approvals disable trigger trg_report_approvals_guard;
 insert into public.report_approvals (case_id, report_id, requested_by)
 select c, r, coalesce(owner, '16000000-0000-4000-8000-00000000000d') from k;
+alter table public.report_approvals enable trigger trg_report_approvals_guard;
 insert into public.submissions (case_id, report_id, channel, submitted_by)
 select c, r, 'email', '16000000-0000-4000-8000-00000000000c' from k;
 

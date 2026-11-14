@@ -1293,17 +1293,23 @@ isOneToOne: false
                   ]
                 },"submissions": {
                   Row: {
-                    "acknowledged_at": string | null,"case_id": string,"cc_addresses": (string)[],"channel": Database["public"]['Enums']["submission_channel"],"formats": (string)[],"gmail_thread_id": string | null,"id": string,"insurer_reference": string | null,"notes": string | null,"report_id": string,"sent_message_id": string | null,"submitted_at": string,"submitted_by": string,"to_addresses": (string)[]
+                    "ack_note": string | null,"acknowledged_at": string | null,"acknowledged_by": string | null,"case_id": string,"cc_addresses": (string)[],"channel": Database["public"]['Enums']["submission_channel"],"formats": (string)[],"gmail_thread_id": string | null,"id": string,"insurer_reference": string | null,"notes": string | null,"reopen_reason": string | null,"reopened_at": string | null,"reopened_by": string | null,"report_id": string,"sent_message_id": string | null,"submitted_at": string,"submitted_by": string,"to_addresses": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "acknowledged_at"?: string | null,"case_id": string,"cc_addresses"?: (string)[],"channel": Database["public"]['Enums']["submission_channel"],"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"insurer_reference"?: string | null,"notes"?: string | null,"report_id": string,"sent_message_id"?: string | null,"submitted_at"?: string,"submitted_by": string,"to_addresses"?: (string)[]
+                    "ack_note"?: string | null,"acknowledged_at"?: string | null,"acknowledged_by"?: string | null,"case_id": string,"cc_addresses"?: (string)[],"channel": Database["public"]['Enums']["submission_channel"],"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"insurer_reference"?: string | null,"notes"?: string | null,"reopen_reason"?: string | null,"reopened_at"?: string | null,"reopened_by"?: string | null,"report_id": string,"sent_message_id"?: string | null,"submitted_at"?: string,"submitted_by": string,"to_addresses"?: (string)[]
                   }
                   Update: {
-                    "acknowledged_at"?: string | null,"case_id"?: string,"cc_addresses"?: (string)[],"channel"?: Database["public"]['Enums']["submission_channel"],"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"insurer_reference"?: string | null,"notes"?: string | null,"report_id"?: string,"sent_message_id"?: string | null,"submitted_at"?: string,"submitted_by"?: string,"to_addresses"?: (string)[]
+                    "ack_note"?: string | null,"acknowledged_at"?: string | null,"acknowledged_by"?: string | null,"case_id"?: string,"cc_addresses"?: (string)[],"channel"?: Database["public"]['Enums']["submission_channel"],"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"insurer_reference"?: string | null,"notes"?: string | null,"reopen_reason"?: string | null,"reopened_at"?: string | null,"reopened_by"?: string | null,"report_id"?: string,"sent_message_id"?: string | null,"submitted_at"?: string,"submitted_by"?: string,"to_addresses"?: (string)[]
                   }
                   Relationships: [
                     {
+      foreignKeyName: "submissions_acknowledged_by_fkey"
+      columns: ["acknowledged_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "submissions_case_id_fkey"
       columns: ["case_id"]
 isOneToOne: false
@@ -1321,6 +1327,12 @@ isOneToOne: false
 isOneToOne: false
       referencedRelation: "v_report_progress"
       referencedColumns: ["case_id"]
+    },{
+      foreignKeyName: "submissions_reopened_by_fkey"
+      columns: ["reopened_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
     },{
       foreignKeyName: "submissions_report_id_fkey"
       columns: ["report_id"]
@@ -1705,11 +1717,20 @@ isOneToOne: false
 "reassign_field_task":
 { Args: { "p_assignee_id": string,"p_reason": string,"p_task_id": string }; Returns: undefined
                            },
+"record_manual_submission":
+{ Args: { "p_case_id": string,"p_channel": Database["public"]['Enums']["submission_channel"],"p_formats": (string)[],"p_insurer_reference": string,"p_note": string,"p_report_id"?: string,"p_submitted_at"?: string }; Returns: string
+                           },
+"record_submission_ack":
+{ Args: { "p_ack_at": string,"p_insurer_reference"?: string,"p_note": string,"p_submission_id": string }; Returns: undefined
+                           },
 "register_field_device":
 { Args: { "p_device_id": string,"p_platform"?: string,"p_secret_sha256": string }; Returns: undefined
                            },
 "reject_intake":
 { Args: { "p_extraction_id": string,"p_reason": string }; Returns: undefined
+                           },
+"reopen_case":
+{ Args: { "p_case_id": string,"p_reason": string }; Returns: undefined
                            },
 "report_outbox_status":
 { Args: { "p_device_id": string,"p_oldest_pending_at"?: string,"p_pending_bytes": number,"p_pending_count": number }; Returns: undefined
@@ -1719,6 +1740,9 @@ isOneToOne: false
                            },
 "retry_auto_assign":
 { Args: { "p_case_id": string }; Returns: string
+                           },
+"save_case_field_values":
+{ Args: { "p_case_id": string,"p_expected": Json,"p_values": Json }; Returns: Json
                            },
 "save_checklist_template":
 { Args: { "p_claim_type": Database["public"]['Enums']["claim_type"],"p_expected_version": number,"p_insurer_id": string,"p_items": Json,"p_name": string,"p_template_id": string }; Returns: {

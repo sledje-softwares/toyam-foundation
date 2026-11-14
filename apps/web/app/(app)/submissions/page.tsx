@@ -13,10 +13,14 @@ import {
   isChannel,
   latestPerCase,
   recipientsSummary,
+  rowActions,
   SUBMISSION_STATES,
   submissionState,
 } from "@/lib/submissions";
+import { canManageCase } from "@/lib/reports";
 import { Badge, DataTable, EmptyState, ErrorState, FilterBar, Pagination, PageHeader, type Column } from "@/components/ui";
+import { AckDialog, ManualSubmissionDialog, ReopenDialog } from "@/components/submissions/submission-actions";
+import { recordAcknowledgement, recordManualSubmission, reopenCase } from "./actions";
 
 export const metadata = { title: "Submissions" };
 
@@ -30,15 +34,18 @@ const LIST: ListConfig = {
 };
 
 const SELECT =
-  "id, case_id, submitted_at, channel, formats, to_addresses, cc_addresses, acknowledged_at, insurer_reference, cases!inner(case_ref, insurer_claim_no, status, insurer_id, insurers(code, name)), reports(version), sender:profiles!submissions_submitted_by_fkey(full_name)";
+  "id, case_id, submitted_at, channel, formats, to_addresses, cc_addresses, acknowledged_at, insurer_reference, ack_note, reopened_at, reopen_reason, cases!inner(case_ref, insurer_claim_no, status, insurer_id, office_owner_id, insurers(code, name)), reports(version), sender:profiles!submissions_submitted_by_fkey(full_name)";
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
 export default async function SubmissionsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  await requireRole(STAFF_ROLES);
+  const me = await requireRole(STAFF_ROLES);
   const sp = await searchParams;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) for (const x of Array.isArray(v) ? v : v ? [v] : []) qs.append(k, x);
+  const back = qs.toString() ? `${BASE}?${qs.toString()}` : BASE;
   const list = parseListParams(sp, LIST);
   const channel = isChannel(list.filters.channel) ? list.filters.channel : null;
   const insurer = list.filters.insurer && GUID.test(list.filters.insurer) ? list.filters.insurer : null;
@@ -69,6 +76,7 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
 
   type Row = (typeof rows)[number];
   const filtered = Boolean(term || channel || insurer || ack);
+  const stateOf = (r: Row) => submissionState(r, one(r.cases)?.status ?? "submitted", latest.get(r.case_id));
 
   const columns: Column<Row>[] = [
     { key: "submitted_at", header: "Sent", sortable: true, width: "w-44", cell: (r) => formatDateTime(r.submitted_at) },
@@ -116,7 +124,9 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
       header: "Acknowledged",
       cell: (r) =>
         r.acknowledged_at ? (
-          <span title={r.insurer_reference ? `Insurer reference: ${r.insurer_reference}` : undefined}>{formatDate(r.acknowledged_at)}</span>
+          <span title={[r.insurer_reference ? `Insurer reference: ${r.insurer_reference}` : "", r.ack_note ?? ""].filter(Boolean).join("\n") || undefined}>
+            {formatDate(r.acknowledged_at)}
+          </span>
         ) : (
           <Badge tone="warning">Awaiting</Badge>
         ),
@@ -125,10 +135,31 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
       key: "state",
       header: "State",
       cell: (r) => {
-        const s = SUBMISSION_STATES[submissionState(r, one(r.cases)?.status ?? "submitted", latest.get(r.case_id))];
+        const s = SUBMISSION_STATES[stateOf(r)];
         return (
-          <span title={s.hint}>
+          <span title={r.reopen_reason ? `${s.hint} Reason: ${r.reopen_reason}` : s.hint}>
             <Badge tone={s.tone}>{s.label}</Badge>
+          </span>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      cell: (r) => {
+        const c = one(r.cases);
+        if (!c) return null;
+        const can = rowActions({
+          canManage: canManageCase(me.role, c.office_owner_id, me.id),
+          acknowledged: !!r.acknowledged_at,
+          state: stateOf(r),
+          caseStatus: c.status,
+        });
+        if (!can.ack && !can.reopen) return <span className="text-text-muted">—</span>;
+        return (
+          <span className="flex flex-wrap gap-2">
+            {can.ack && <AckDialog submissionId={r.id} caseRef={c.case_ref} back={back} action={recordAcknowledgement} />}
+            {can.reopen && <ReopenDialog caseId={r.case_id} caseRef={c.case_ref} back={back} action={reopenCase} />}
           </span>
         );
       },
@@ -140,15 +171,18 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
       <PageHeader
         title="Submissions"
         actions={
-          <Link href="/reports" className="text-sm text-primary underline hover:no-underline">
-            Reports
-          </Link>
+          <span className="flex flex-wrap items-center gap-3">
+            <Link href="/reports" className="text-sm text-primary underline hover:no-underline">
+              Reports
+            </Link>
+            <ManualSubmissionDialog back={back} action={recordManualSubmission} />
+          </span>
         }
       />
       <p className="mb-4 max-w-3xl text-sm text-text-muted">
-        Every report sent to an insurer: when, how and to whom, and whether the insurer has acknowledged it. Reports are sent
-        from the case&apos;s report page once approved; recording acknowledgements and reopening a case on an insurer&apos;s query
-        are not built yet.
+        Every report sent to an insurer: when, how and to whom, and whether the insurer has acknowledged it. Record the
+        insurer&apos;s acknowledgement, a report uploaded to a portal or delivered another way, or reopen a sent case on an
+        insurer&apos;s query. Office staff act on the cases they own; orchestrators and admins on all.
       </p>
       <Suspense>
         <FilterBar

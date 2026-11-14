@@ -12,6 +12,7 @@ import {
   type SectionState,
   type WorkspaceField,
 } from "@/lib/reports";
+import { formatDateTime } from "@/lib/format";
 import { Badge, Button, Checkbox, FormField, InlineAlert, Select, SubmitButton, Textarea, TextInput } from "@/components/ui";
 import { toast } from "@/components/ui/toaster";
 import { useUnsavedChangesGuard } from "./unsaved-guard";
@@ -24,19 +25,26 @@ export function SourceBadge({ f }: { f: WorkspaceField }) {
   return <Badge tone={s.tone}>{s.label}</Badge>;
 }
 
-function ConflictNote({ value }: { value: string }) {
+type ConflictMeta = { by: string | null; at: string | null };
+
+function ConflictNote({ value, meta }: { value: string; meta?: ConflictMeta }) {
+  const who = [meta?.by ? `by ${meta.by}` : "by someone else", meta?.at ? `at ${formatDateTime(meta.at)}` : null].filter(Boolean).join(" ");
   return (
     <p className="mt-1 rounded bg-warning-soft px-2 py-1 text-xs text-warning">
-      Saved meanwhile by someone else: {value ? <strong className="break-words">{value}</strong> : <em>cleared</em>}
+      Saved meanwhile {who}: {value ? <strong className="break-words">{value}</strong> : <em>cleared</em>}
     </p>
   );
 }
 
-function Control({ f, values, error, conflict }: { f: WorkspaceField; values: string[]; error?: string; conflict?: string }) {
+function Control({ f, values, error, conflict, meta }: { f: WorkspaceField; values: string[]; error?: string; conflict?: string; meta?: ConflictMeta }) {
   const name = `${FIELD_PREFIX}${f.key}`;
   const value = values[0] ?? "";
   const hint =
-    [f.asText ? `Stored as "${f.value}", which is not in the expected format. Correct it if needed.` : null, f.help]
+    [
+      f.asText ? `Stored as "${f.value}", which is not in the expected format. Correct it if needed.` : null,
+      f.mirrored ? "Saving also updates the case record." : null,
+      f.help,
+    ]
       .filter(Boolean)
       .join(" ") || undefined;
 
@@ -59,7 +67,7 @@ function Control({ f, values, error, conflict }: { f: WorkspaceField; values: st
             {error}
           </p>
         )}
-        {conflict !== undefined && <ConflictNote value={conflict} />}
+        {conflict !== undefined && <ConflictNote value={conflict} meta={meta} />}
       </fieldset>
     );
   }
@@ -91,12 +99,12 @@ function Control({ f, values, error, conflict }: { f: WorkspaceField; values: st
           }
         }}
       </FormField>
-      {conflict !== undefined && <ConflictNote value={conflict} />}
+      {conflict !== undefined && <ConflictNote value={conflict} meta={meta} />}
     </>
   );
 }
 
-/** Read view of a value (locked workspace, mirrored fields). */
+/** Read view of a value (locked workspace). */
 export function ValueText({ f }: { f: WorkspaceField }) {
   if (!f.value.trim()) return <span className="text-text-muted">—</span>;
   if (f.type === "multi_choice") return <>{parseMulti(f.value).join(", ")}</>;
@@ -159,33 +167,19 @@ export function SectionEditor({
           const wide = f.type === "long_text" || f.type === "multi_choice";
           return (
             <div key={f.key} className={wide ? "md:col-span-2" : undefined}>
-              {f.readOnly ? (
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-text">
-                    {f.label}
-                    {f.required && <span aria-hidden="true" className="text-danger"> *</span>}
-                  </p>
-                  <p className="text-xs text-text-muted">Kept in step with the case record, so it is not edited here.</p>
-                  <p className="min-h-9 rounded border border-border bg-slate-50 px-3 py-2 text-sm">
-                    <ValueText f={f} />
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <input type="hidden" name={`${PRESENT_PREFIX}${f.key}`} value="" />
-                  <input
-                    type="hidden"
-                    name={`${ORIGINAL_PREFIX}${f.key}`}
-                    value={failed && f.key in state.conflicts ? state.conflicts[f.key] : f.value}
-                  />
-                  <Control
-                    f={f}
-                    values={valuesOf(f)}
-                    error={failed ? state.fieldErrors[f.key] : undefined}
-                    conflict={failed ? state.conflicts[f.key] : undefined}
-                  />
-                </>
-              )}
+              <input type="hidden" name={`${PRESENT_PREFIX}${f.key}`} value="" />
+              <input
+                type="hidden"
+                name={`${ORIGINAL_PREFIX}${f.key}`}
+                value={failed && f.key in state.conflicts ? state.conflicts[f.key] : f.value}
+              />
+              <Control
+                f={f}
+                values={valuesOf(f)}
+                error={failed ? state.fieldErrors[f.key] : undefined}
+                conflict={failed ? state.conflicts[f.key] : undefined}
+                meta={failed ? state.conflictInfo[f.key] : undefined}
+              />
               {f.source && (
                 <p className="mt-1">
                   <SourceBadge f={f} />

@@ -7,7 +7,21 @@ import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { getFileLinks, linkErrorMessage, linkKey } from "@/lib/evidence-view";
 import { setFlash } from "@/lib/flash-server";
 import { createClient } from "@/lib/supabase/server";
-import { approvalModel, APPROVER_ROLES, editLock, EDITOR_ROLES, planSectionSave, readSectionForm, REQUESTER_ROLES, type ActionResult, type LinkResult, type SectionState } from "@/lib/reports";
+import {
+  approvalModel,
+  APPROVER_ROLES,
+  conflictMessage,
+  editLock,
+  EDITOR_ROLES,
+  INITIAL_SECTION_STATE,
+  parseSaveResult,
+  planSectionSave,
+  readSectionForm,
+  REQUESTER_ROLES,
+  type ActionResult,
+  type LinkResult,
+  type SectionState,
+} from "@/lib/reports";
 import { mapDbError } from "@/lib/validation/db-errors";
 
 const Id = z.guid();
@@ -37,7 +51,11 @@ function submittedValues(fd: FormData): Record<string, string[]> {
   return out;
 }
 
-/** Upserts the changed fields of one section into case_field_values (source office). */
+/**
+ * Saves the changed fields of one section through public.save_case_field_values(p_case_id, p_values, p_expected):
+ * owner / orchestrator / admin only (D44, D45), editable statuses only, atomic compare-and-set per field. Fields
+ * changed underneath come back as conflicts (not written); the others are saved.
+ */
 export async function saveSection(_prev: SectionState, fd: FormData): Promise<SectionState> {
   const me = await requireRole(EDITOR_ROLES);
   const caseId = String(fd.get("case_id") ?? "");
@@ -47,6 +65,7 @@ export async function saveSection(_prev: SectionState, fd: FormData): Promise<Se
     error,
     fieldErrors: {},
     conflicts: {},
+    conflictInfo: {},
     values,
     savedAt: null,
     saved: 0,
@@ -55,12 +74,17 @@ export async function saveSection(_prev: SectionState, fd: FormData): Promise<Se
   if (!Id.safeParse(caseId).success || !Id.safeParse(sectionId).success) return fail(RELOAD);
 
   const supabase = await createClient();
-  const { data: c, error: caseError } = await supabase.from("cases").select("id, case_ref, status, template_id").eq("id", caseId).maybeSingle();
+  const { data: c, error: caseError } = await supabase
+    .from("cases")
+    .select("id, case_ref, status, template_id, office_owner_id")
+    .eq("id", caseId)
+    .maybeSingle();
   if (caseError || !c || !c.template_id) return fail(RELOAD);
-  const lock = editLock(me.role, c.status);
+  // Same rules as the database; checked here first for a clear message.
+  const lock = editLock(me.role, c.status, c.office_owner_id === me.id);
   if (!lock.editable) return fail(lock.reason);
 
-  // The section must belong to the case's template version (the trigger checks every field again).
+  // The section must belong to the case's template version (the database checks every field again).
   const { data: fields, error: fieldsError } = await supabase
     .from("case_template_fields")
     .select("id, key, field_type, is_required, options")
@@ -68,44 +92,34 @@ export async function saveSection(_prev: SectionState, fd: FormData): Promise<Se
     .eq("section_id", sectionId);
   if (fieldsError || !fields?.length) return fail(RELOAD);
 
-  const { data: currentRows, error: currentError } = await supabase
-    .from("case_field_values")
-    .select("field_id, value")
-    .eq("case_id", c.id)
-    .in("field_id", fields.map((f) => f.id));
-  if (currentError) return fail(mapDbError(currentError).message);
-  const keyOf = new Map(fields.map((f) => [f.id, f.key]));
-  const current = new Map((currentRows ?? []).map((r) => [keyOf.get(r.field_id) ?? "", r.value]));
+  const plan = planSectionSave(fields, readSectionForm(fd.entries()));
+  if (Object.keys(plan.errors).length) return fail("Check the highlighted fields.", { fieldErrors: plan.errors });
+  if (!plan.writes.length) return { ...INITIAL_SECTION_STATE, savedAt: Date.now() };
 
-  const plan = planSectionSave(fields, readSectionForm(fd.entries()), current);
-  const nErr = Object.keys(plan.errors).length;
-  const nConf = Object.keys(plan.conflicts).length;
-  if (nErr || nConf) {
-    return fail(
-      nConf
-        ? `${nConf === 1 ? "A field was" : `${nConf} fields were`} changed by someone else while you were editing. Their value is shown under the field; save again to replace it.`
-        : "Check the highlighted fields.",
-      { fieldErrors: plan.errors, conflicts: plan.conflicts },
-    );
+  const { data, error } = await supabase.rpc("save_case_field_values", {
+    p_case_id: c.id,
+    p_values: Object.fromEntries(plan.writes.map((w) => [w.key, w.value])),
+    p_expected: Object.fromEntries(plan.writes.map((w) => [w.key, w.expected])),
+  });
+  if (error) {
+    const mapped = mapDbError(error);
+    const claim = plan.writes.find((w) => w.key === "insurer_claim_no");
+    if (error.code === "23505" && claim) return fail(mapped.message, { fieldErrors: { [claim.key]: mapped.message } });
+    return fail(mapped.message);
   }
-  if (!plan.writes.length) return { error: null, fieldErrors: {}, conflicts: {}, values: {}, savedAt: Date.now(), saved: 0 };
+  const result = parseSaveResult(data);
+  if (!result) return fail(RELOAD);
+  if (result.saved.length) revalidateReports(c.case_ref);
 
-  const { error } = await supabase.from("case_field_values").upsert(
-    plan.writes.map((w) => ({
-      case_id: c.id,
-      field_id: w.field_id,
-      value: w.value,
-      source: "office" as const,
-      confidence: null,
-      source_evidence_id: null,
-      source_ref: null,
-    })),
-    { onConflict: "case_id,field_id" },
-  );
-  if (error) return fail(mapDbError(error).message);
-
-  revalidateReports(c.case_ref);
-  return { error: null, fieldErrors: {}, conflicts: {}, values: {}, savedAt: Date.now(), saved: plan.writes.length };
+  const keys = Object.keys(result.conflicts);
+  if (keys.length) {
+    return fail(conflictMessage(result.saved.length, keys.length), {
+      conflicts: Object.fromEntries(keys.map((k) => [k, result.conflicts[k].value])),
+      conflictInfo: Object.fromEntries(keys.map((k) => [k, { by: result.conflicts[k].by, at: result.conflicts[k].at }])),
+      saved: result.saved.length,
+    });
+  }
+  return { ...INITIAL_SECTION_STATE, savedAt: Date.now(), saved: result.saved.length };
 }
 
 // ---------------------------------------------------------------------
@@ -167,9 +181,9 @@ export async function requestApproval(fd: FormData): Promise<void> {
   const back = workspacePath(parsed.data.case_ref);
   const supabase = await createClient();
 
-  // The same rules the page shows (the database does not check required fields or the status yet: gap G5).
+  // The same rules the page shows; report_approvals_guard checks owner, status and required fields again (G5).
   const [c, versions, progress] = await Promise.all([
-    supabase.from("cases").select("status, case_templates(requires_approval)").eq("id", parsed.data.case_id).maybeSingle(),
+    supabase.from("cases").select("status, office_owner_id, case_templates(requires_approval)").eq("id", parsed.data.case_id).maybeSingle(),
     supabase.from("reports").select("id, version, report_approvals(id, decision, requested_by, requested_at)").eq("case_id", parsed.data.case_id),
     supabase.from("v_report_progress").select("required_total, required_filled").eq("case_id", parsed.data.case_id),
   ]);
@@ -179,6 +193,7 @@ export async function requestApproval(fd: FormData): Promise<void> {
   }
   const model = approvalModel({
     role: me.role,
+    ownsCase: c.data.office_owner_id === me.id,
     requiresApproval: oneOf(c.data.case_templates)?.requires_approval ?? true,
     status: c.data.status,
     versions: (versions.data ?? []).map((v) => ({ id: v.id, version: v.version, approval: oneOf(v.report_approvals) })),
