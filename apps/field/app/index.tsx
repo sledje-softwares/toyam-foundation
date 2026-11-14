@@ -1,9 +1,9 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { fetchCaseList, fetchOpenTasks } from '../src/cache/fetch';
 import { splitCases, type CaseRow, type CaseTab } from '../src/lib/cases';
-import { supabase } from '../src/lib/supabase';
 import { relativeTime } from '../src/lib/time';
 import { colors, s } from '../src/theme';
 import { outboxMenuLabel } from '../src/ui-logic/offline';
@@ -12,26 +12,41 @@ import { StatusStack } from '../src/ui/StatusStack';
 
 export default function Cases() {
   const router = useRouter();
-  const { snapshot, requestSignOut, rememberNames, markSynced } = useOffline();
+  const { snapshot, requestSignOut, rememberNames, cache, applyOpenTasks } = useOffline();
   const outboxLabel = outboxMenuLabel(snapshot.items);
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [tab, setTab] = useState<CaseTab>('open');
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const names = useCallback((list: CaseRow[]) => rememberNames(Object.fromEntries(list.map((r) => [r.case_id, { case_ref: r.case_ref, title: r.title }]))), [rememberNames]);
+
+  // cache first: the stored list shows at once (and offline), then the refresh replaces it
+  const shown = useRef(false);
+  useEffect(() => {
+    if (!cache || shown.current) return;
+    shown.current = true;
+    void cache.getList().then((c) => {
+      if (!c) return;
+      setRows((cur) => (cur.length > 0 ? cur : c.data));
+      names(c.data);
+    });
+  }, [cache, names]);
+
   const load = useCallback(async () => {
     setRefreshing(true);
-    const { data, error: e } = await supabase.rpc('field_case_list');
-    if (e) setError('Could not load your cases. Pull down to try again.');
+    const list = await fetchCaseList();
+    if (!list) setError((e) => e ?? 'Could not load your cases. Pull down to try again.');
     else {
       setError(null);
-      const list = (data ?? []) as CaseRow[];
       setRows(list);
-      rememberNames(Object.fromEntries(list.map((r) => [r.case_id, { case_ref: r.case_ref, title: r.title }])));
-      for (const r of list) markSynced(r.case_id);
+      names(list);
+      void cache?.putList(list);
+      const open = await fetchOpenTasks();
+      if (open) void applyOpenTasks(open);
     }
     setRefreshing(false);
-  }, [rememberNames, markSynced]);
+  }, [names, cache, applyOpenTasks]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -61,7 +76,7 @@ export default function Cases() {
           </Pressable>
         ))}
       </View>
-      {error ? <Text style={[s.error, { marginHorizontal: 16 }]}>{error}</Text> : null}
+      {error && rows.length === 0 ? <Text style={[s.error, { marginHorizontal: 16 }]}>{error}</Text> : null}
       <FlatList
         data={list}
         keyExtractor={(r) => r.case_id}
