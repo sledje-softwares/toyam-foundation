@@ -21,3 +21,4 @@ cloudflare-env.d.ts
 
 # labelling bake-off output (may contain personal data)
 bakeoff-results/
+.claude/worktrees/
