@@ -10,7 +10,7 @@ if (!anon || !password) {
   console.error("Set SUPABASE_ANON_KEY and SMOKE_PASSWORD (and optionally SMOKE_FIELD_PHONE / SMOKE_FIELD_OTP).");
   process.exit(2);
 }
-const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks"];
+const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/users/new", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks"];
 const adminOnly = (r) => r.startsWith("/admin") || r === "/dev/ui";
 const ok = { status: 200 };
 const to = (p) => ({ status: [307, 308, 302, 303], loc: p });
@@ -66,21 +66,25 @@ let mismatches = 0;
 const rows = [];
 for (const role of Object.keys(expectFor)) {
   let cookie = "";
+  let userId = "";
   try {
-    cookie = cookieHeader(await session(role));
+    const sess = await session(role);
+    userId = sess?.user?.id ?? "";
+    cookie = cookieHeader(sess);
   } catch (e) {
     console.error(`${role}: sign-in failed: ${e.message}`);
     mismatches++;
     continue;
   }
-  for (const r of routes) {
+  // The user's own detail page exercises /admin/users/[userId] with a real id.
+  for (const r of userId ? [...routes, `/admin/users/${userId}`] : routes) {
     const res = await fetch(web + r, { redirect: "manual", headers: cookie ? { cookie } : {} });
     const loc = res.headers.get("location");
     const path = loc ? new URL(loc, web).pathname : "";
     const want = expectFor[role](r);
     const good = Array.isArray(want.status) ? want.status.includes(res.status) && path === want.loc : res.status === want.status && !loc;
     if (!good) mismatches++;
-    rows.push(`${good ? "ok  " : "FAIL"} ${role.padEnd(12)} ${r.padEnd(17)} ${res.status}${path ? " -> " + path : ""}`);
+    rows.push(`${good ? "ok  " : "FAIL"} ${role.padEnd(12)} ${r.padEnd(17).slice(0, 60)} ${res.status}${path ? " -> " + path : ""}`);
   }
 }
 console.log(rows.join("\n"));
