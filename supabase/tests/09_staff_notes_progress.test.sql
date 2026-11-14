@@ -142,7 +142,7 @@ select is((select count(*)::int from public.evidence_field_matches), 0, 'field u
 -- D. Realtime
 -- =====================================================================
 reset role;
-select results_eq($$select tablename::text from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'
+select results_eq($$select tablename::text collate "default" from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'
                       and tablename in ('case_messages', 'case_field_values', 'evidence_labels', 'notifications') order by 1$$,
     array['case_field_values', 'case_messages', 'evidence_labels', 'notifications'], 'thread, values, labels and notifications are published');
 
