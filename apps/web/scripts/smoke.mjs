@@ -11,15 +11,19 @@ if (!anon || !password) {
   process.exit(2);
 }
 const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks"];
-const adminOnly = (r) => r.startsWith("/admin");
+const adminOnly = (r) => r.startsWith("/admin") || r === "/dev/ui";
 const ok = { status: 200 };
 const to = (p) => ({ status: [307, 308, 302, 303], loc: p });
+// next.config redirects run before the middleware, so /audit-log moves first for everyone.
+const common = (r) => (r === "/audit-log" ? to("/admin/audit-log") : r === "/" ? to("/dashboard") : null);
+const anonExpect = (r) => (r === "/audit-log" ? to("/admin/audit-log") : to("/login"));
+const staff = (r) => common(r) ?? (adminOnly(r) ? to("/forbidden") : ok);
 const expectFor = {
-  anonymous: () => to("/login"),
-  field: () => to("/login"),
-  office: (r) => (r === "/audit-log" ? to("/admin/audit-log") : adminOnly(r) ? to("/forbidden") : ok),
-  orchestrator: (r) => (r === "/audit-log" ? to("/admin/audit-log") : adminOnly(r) ? to("/forbidden") : ok),
-  admin: (r) => (r === "/audit-log" ? to("/admin/audit-log") : ok),
+  anonymous: anonExpect,
+  field: anonExpect,
+  office: staff,
+  orchestrator: staff,
+  admin: (r) => common(r) ?? ok,
 };
 
 async function grant(body, query) {

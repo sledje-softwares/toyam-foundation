@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { applyListParams, parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import {
-  Badge, Button, ButtonLink, Checkbox, ConfirmDialog, DataTable, EmptyState, ErrorState, FilterBar, FormField,
-  InlineAlert, PageHeader, Pagination, Select, StatusBadge, SubmitButton, TableSkeleton, Textarea, TextInput,
+  Badge, Button, ButtonLink, ConfirmDialog, DataTable, EmptyState, ErrorState, FilterBar,
+  InlineAlert, PageHeader, Pagination, StatusBadge, SubmitButton, TableSkeleton,
   STATUS_MAPS, type StatusKind,
 } from "@/components/ui";
 import { ToastDemo } from "./toast-demo";
+import { FormDemo } from "./form-demo";
 
 // Development gallery of the shared UI components. Not available in production builds (404).
 type Row = { id: number; name: string; role: string; status: string; created_at: string };
@@ -86,13 +87,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 
       <section aria-labelledby="g-form" className="max-w-3xl space-y-4">
         <h2 id="g-form" className="text-xl font-semibold">Form fields</h2>
-        <FormField label="Full name" required hint="As on the ID document.">{(p) => <TextInput {...p} defaultValue="" />}</FormField>
-        <FormField label="Email" error="Enter a valid email address.">{(p) => <TextInput {...p} type="email" defaultValue="not-an-email" />}</FormField>
-        <FormField label="Role" required>
-          {(p) => <Select {...p} placeholder="Choose a role" options={[{ value: "admin", label: "Admin" }, { value: "office", label: "Office staff" }]} />}
-        </FormField>
-        <FormField label="Notes">{(p) => <Textarea {...p} />}</FormField>
-        <Checkbox label="Active" defaultChecked />
+        <FormDemo />
       </section>
 
       <section aria-labelledby="g-badges" className="space-y-3">
