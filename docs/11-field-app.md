@@ -78,7 +78,7 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 
 ### Remote sign-out contract (`supabase/functions/field-drain`)
 
-`POST /functions/v1/field-drain`, no `Authorization` (the user is banned; `verify_jwt = false`), JSON body with `device_id` and `secret` (64 lower-case hex) on every call. Errors: `{ok:false, error:{code,message}}` with 401 `device_unknown`, 409 `not_deactivated`, 410 `drain_window_closed` / `drain_finished`, 422 `upload_window_closed` (drop that file; count it as "could not be sent"), 400 `invalid_input`, 5xx retry with backoff.
+`POST /functions/v1/field-drain`, no `Authorization` (the user is banned; `verify_jwt = false`), JSON body with `device_id` and `secret` (64 lower-case hex) on every call. Errors: `{ok:false, error:{code,message}}` with 401 `device_unknown`, 409 `not_deactivated`, 410 `drain_window_closed` / `drain_finished`, 422 `upload_window_closed` (drop that file; count it as "could not be sent"), 400 `invalid_input`, 429 `rate_limited` / `device_locked` (see below), 5xx retry with backoff.
 
 | `action` | Extra fields | Reply |
 |---|---|---|
@@ -87,6 +87,8 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 | `post` | `case_id, client_message_id, kind ('media' \| 'voice'), body?, task_id?, reply_to?, items[]` (same items as `post_thread_message`, each with `device_captured_at`) | `{message_id}`; a retry with the same `client_message_id` returns the same id, even after the window |
 | `outbox` | `pending_count, pending_bytes, oldest_pending_at?` | `{}` |
 | `finish` | `discarded_count?` | `{wipe: true}` — the device id is retired; wipe now |
+
+**Rate limits (per `device_id`, server clock; migration `20261114600000_drain_rate_limit.sql`).** The function has no JWT, so every request first calls `drain_check()`: 5 failed secret checks within 15 minutes lock the device for 1 hour (even the right secret is refused; each lock is written to `audit_log` as `DRAIN_DEVICE_LOCKED`); at most 120 calls per minute; at most 500 presigned files per hour. Over a limit the reply is **429** with `error.code` `rate_limited` or `device_locked` and a `Retry-After` header in seconds. The app should treat 429 as "retry later" and back off by `Retry-After` (not the normal exponential step); a locked phone simply keeps its files and tries again after the hour. Limits live in `app_settings` (`drain_fail_limit`, `drain_fail_window_minutes`, `drain_lock_minutes`, `drain_calls_per_minute`, `drain_presigns_per_hour`).
 
 Accepted only for files captured (device clock) before `profiles.deactivated_at`, within the operator's hold on the task, within 7 days of deactivation; text-only messages are not drained. Every presign and file is audited.
 

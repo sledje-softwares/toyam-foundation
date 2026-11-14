@@ -7,6 +7,8 @@ export type ErrorCode =
   | 'invalid_body'
   | 'invalid_input'
   | 'device_unknown'
+  | 'device_locked'
+  | 'rate_limited'
   | 'not_deactivated'
   | 'drain_window_closed'
   | 'drain_finished'
@@ -17,6 +19,8 @@ export type ErrorCode =
 export interface Failure {
   status: number;
   error: { code: ErrorCode; message: string; field?: string };
+  /** Seconds, for 429 (sent as the Retry-After header). */
+  retryAfter?: number;
 }
 export function fail(status: number, code: ErrorCode, message: string, field?: string): Failure {
   return { status, error: field ? { code, message, field } : { code, message } };
@@ -147,11 +151,25 @@ export interface DbErrorLike {
   code?: string | null;
   message?: string | null;
   hint?: string | null;
+  /** Postgres DETAIL; device_locked carries the seconds left. */
+  details?: string | null;
+}
+
+/** Locked / over a limit: 429 with Retry-After (seconds, clamped to 1 s .. 1 day). */
+export function rateLimited(code: 'rate_limited' | 'device_locked', seconds: number | null | undefined): Failure {
+  const n = Number(seconds);
+  const retryAfter = Number.isFinite(n) && n >= 1 ? Math.min(Math.ceil(n), 86_400) : code === 'device_locked' ? 3600 : 60;
+  const f = code === 'device_locked'
+    ? fail(429, code, 'Too many failed attempts. Try again later.')
+    : fail(429, code, 'Too many requests. Try again later.');
+  return { ...f, retryAfter };
 }
 
 /** Hints raised by the drain_* functions (20261114400000_offline_drain.sql) → HTTP. */
 export function mapDbError(e: DbErrorLike): Failure {
   switch (e.hint) {
+    case 'device_locked':
+      return rateLimited('device_locked', Number(e.details));
     case 'device_unknown':
       return fail(401, 'device_unknown', 'This phone is not recognised. Nothing was sent.');
     case 'not_deactivated':

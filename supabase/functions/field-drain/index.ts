@@ -10,7 +10,7 @@
 // device secret is never logged.
 // Secrets: R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (presign only).
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { type Gateway, handleFieldDrain } from '../_shared/field-drain/handler.ts';
+import { type Gateway, handleFieldDrain, type Reply } from '../_shared/field-drain/handler.ts';
 import { readR2Config } from '../_shared/r2/presign.ts';
 
 const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -29,7 +29,7 @@ const gateway: Gateway = {
 };
 
 Deno.serve(async (req) => {
-  let reply;
+  let reply: Reply;
   try {
     const body = req.method === 'POST' ? await req.text() : '';
     reply = await handleFieldDrain(req.method, body, gateway, r2);
@@ -39,6 +39,10 @@ Deno.serve(async (req) => {
   }
   return new Response(JSON.stringify(reply.body), {
     status: reply.status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      ...(reply.retryAfter ? { 'Retry-After': String(reply.retryAfter) } : {}),
+    },
   });
 });

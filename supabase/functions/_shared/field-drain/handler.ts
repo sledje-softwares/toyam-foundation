@@ -2,7 +2,7 @@
 // is tested from Node with fakes. The Deno entry point (../../field-drain/index.ts) wires `rpc` to
 // a service-role supabase-js client. Every decision (device secret, deactivation, windows, audit)
 // is made by the drain_* SQL functions; this layer validates, maps errors and presigns R2 PUTs.
-import { type DbErrorLike, type Failure, fail, mapDbError, parseRequest } from './logic.ts';
+import { type DbErrorLike, type Failure, fail, mapDbError, parseRequest, rateLimited } from './logic.ts';
 import { evidenceKey, presignEvidencePut, type R2Config } from '../r2/presign.ts';
 
 /** 30 files with on-device OCR text fit comfortably. */
@@ -18,10 +18,14 @@ export interface Gateway {
 export interface Reply {
   status: number;
   body: Record<string, unknown>;
+  /** Seconds; set on 429 (Retry-After header). */
+  retryAfter?: number;
 }
 
 const ok = (data: Record<string, unknown>): Reply => ({ status: 200, body: { ok: true, ...data } });
-const err = (f: Failure): Reply => ({ status: f.status, body: { ok: false, error: f.error } });
+const err = (f: Failure): Reply => ({
+  status: f.status, body: { ok: false, error: f.error }, ...(f.retryAfter ? { retryAfter: f.retryAfter } : {}),
+});
 
 export async function handleFieldDrain(
   method: string,
@@ -42,6 +46,26 @@ export async function handleFieldDrain(
   if (!parsed.ok) return err(parsed.failure);
   const req = parsed.value;
   const dev = { p_device_id: req.device_id, p_secret: req.secret };
+
+  // Rate limits and the failed-secret lock (20261114600000_drain_rate_limit.sql). drain_check returns
+  // a result instead of raising so that its counters commit.
+  const chk = await gw.rpc('drain_check', { ...dev, p_action: req.action });
+  if (chk.error) {
+    gw.logError(`drain_check failed: ${chk.error.code ?? 'unknown'} device ${req.device_id}`);
+    return err(mapDbError(chk.error));
+  }
+  const row = (Array.isArray(chk.data) ? chk.data[0] : chk.data) as { result?: string; retry_after_seconds?: number } | undefined;
+  switch (row?.result) {
+    case 'ok':
+      break;
+    case 'device_unknown':
+      return err(mapDbError({ hint: 'device_unknown' }));
+    case 'device_locked':
+    case 'rate_limited':
+      return err(rateLimited(row.result, row.retry_after_seconds));
+    default:
+      return err(fail(500, 'internal', 'Something went wrong. Try again later.'));
+  }
 
   const call = async (fn: string, args: Record<string, unknown>): Promise<{ data: unknown } | Reply> => {
     const { data, error } = await gw.rpc(fn, { ...dev, ...args });

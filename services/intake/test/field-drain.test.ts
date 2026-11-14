@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  evidenceKey, mapDbError, parseRequest, presignEvidencePut, presignUrl, readR2Config, uriEncode,
+  evidenceKey, mapDbError, parseRequest, rateLimited, presignEvidencePut, presignUrl, readR2Config, uriEncode,
 } from '../../../supabase/functions/_shared/field-drain/logic.ts';
 import { type Gateway, handleFieldDrain, MAX_BODY_CHARS } from '../../../supabase/functions/_shared/field-drain/handler.ts';
 
@@ -17,17 +17,19 @@ const item = { evidence_type: 'photo', capture_source: 'camera', sha256: SHA, de
 
 function fakeGateway(results: Record<string, { data: unknown; error: { code?: string; message?: string; hint?: string } | null }>) {
   const calls: { fn: string; args: Record<string, unknown> }[] = [];
+  const checks: { fn: string; args: Record<string, unknown> }[] = [];
   const logs: string[] = [];
   const gw: Gateway = {
     async rpc(fn, args) {
-      calls.push({ fn, args });
+      (fn === 'drain_check' ? checks : calls).push({ fn, args });
+      if (fn === 'drain_check' && !results[fn]) return { data: [{ result: 'ok', retry_after_seconds: null }], error: null };
       return results[fn] ?? { data: null, error: { code: 'XX000', message: 'unexpected' } };
     },
     logError(msg) {
       logs.push(msg);
     },
   };
-  return { gw, calls, logs };
+  return { gw, calls, checks, logs };
 }
 const post = (gw: Gateway, body: unknown, r2: typeof R2 | null = R2) =>
   handleFieldDrain('POST', JSON.stringify(body), gw, r2, () => new Date('2026-11-14T12:00:00Z'));
@@ -102,6 +104,10 @@ describe('error mapping', () => {
     assert.equal(mapDbError({ code: '42501', hint: 'drain_finished' }).status, 410);
     assert.equal(mapDbError({ code: '42501', hint: 'upload_window_closed' }).error.code, 'upload_window_closed');
     assert.equal(mapDbError({ code: '22023', message: 'bad' }).status, 400);
+    const locked = mapDbError({ code: '42501', hint: 'device_locked', details: '1800' });
+    assert.equal(locked.status, 429);
+    assert.equal(locked.retryAfter, 1800);
+    assert.equal(mapDbError({ code: '42501', hint: 'device_locked' }).retryAfter, 3600);
     assert.equal(mapDbError({ code: '42501' }).status, 500);
   });
 });
@@ -163,5 +169,48 @@ describe('handler', () => {
     assert.equal(calls[0].args.p_discarded_count, 2);
     assert.equal((await post(gw, { action: 'outbox', device_id: DEV, secret: SECRET, pending_count: 3, pending_bytes: 9 })).status, 200);
     assert.deepEqual(calls[1].args, { p_device_id: DEV, p_secret: SECRET, p_pending_count: 3, p_pending_bytes: 9, p_oldest_pending_at: null });
+  });
+});
+
+describe('rate limits', () => {
+  it('clamps Retry-After', () => {
+    assert.equal(rateLimited('rate_limited', 0).retryAfter, 60);
+    assert.equal(rateLimited('rate_limited', 12.2).retryAfter, 13);
+    assert.equal(rateLimited('device_locked', 9_999_999).retryAfter, 86_400);
+    assert.equal(rateLimited('device_locked', null).retryAfter, 3600);
+  });
+  it('checks first and maps a lock to 429 with Retry-After, doing nothing else', async () => {
+    const { gw, calls, checks } = fakeGateway({ drain_check: { data: [{ result: 'device_locked', retry_after_seconds: 3600 }], error: null } });
+    const r = await post(gw, { action: 'status', device_id: DEV, secret: SECRET });
+    assert.equal(r.status, 429);
+    assert.equal(r.retryAfter, 3600);
+    assert.deepEqual((r.body.error as { code: string }).code, 'device_locked');
+    assert.equal(calls.length, 0);
+    assert.equal(checks[0].args.p_action, 'status');
+  });
+  it('maps the call / file cap to 429 and passes the action', async () => {
+    const { gw, calls, checks } = fakeGateway({ drain_check: { data: [{ result: 'rate_limited', retry_after_seconds: 42 }], error: null } });
+    const r = await post(gw, { action: 'presign', device_id: DEV, secret: SECRET, task_id: TASK, sha256: SHA, ext: 'jpg', device_captured_at: '2026-11-13T10:00:00Z' });
+    assert.equal(r.status, 429);
+    assert.equal(r.retryAfter, 42);
+    assert.equal((r.body.error as { code: string }).code, 'rate_limited');
+    assert.equal(calls.length, 0);
+    assert.equal(checks[0].args.p_action, 'presign');
+  });
+  it('a bad secret from the check is a 401 and stops there', async () => {
+    const { gw, calls, checks } = fakeGateway({ drain_check: { data: [{ result: 'device_unknown', retry_after_seconds: null }], error: null } });
+    const r = await post(gw, { action: 'status', device_id: DEV, secret: SECRET });
+    assert.equal(r.status, 401);
+    assert.equal(r.retryAfter, undefined);
+    assert.equal(calls.length, 0);
+  });
+  it('an unexpected check result or error fails closed', async () => {
+    const a = fakeGateway({ drain_check: { data: [], error: null } });
+    assert.equal((await post(a.gw, { action: 'status', device_id: DEV, secret: SECRET })).status, 500);
+    const b = fakeGateway({ drain_check: { data: null, error: { code: 'XX000' } } });
+    const r = await post(b.gw, { action: 'status', device_id: DEV, secret: SECRET });
+    assert.equal(r.status, 500);
+    assert.equal(b.calls.length, 0);
+    assert.equal(b.checks.length, 1);
   });
 });

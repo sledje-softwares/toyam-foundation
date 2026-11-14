@@ -1604,6 +1604,11 @@ isOneToOne: false
 "drain_authorize_upload":
 { Args: { "p_device_captured_at": string,"p_device_id": string,"p_secret": string,"p_sha256": string,"p_task_id": string }; Returns: string
                            },
+"drain_check":
+{ Args: { "p_action"?: string,"p_device_id": string,"p_secret": string }; Returns: {
+              "result": string,"retry_after_seconds": number
+            }[]
+                           },
 "drain_finish":
 { Args: { "p_device_id": string,"p_discarded_count"?: number,"p_secret": string }; Returns: undefined
                            },
