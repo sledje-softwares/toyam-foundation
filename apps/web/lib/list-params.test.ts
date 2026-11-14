@@ -28,7 +28,10 @@ describe("parseListParams", () => {
 
 describe("escapeSearchTerm", () => {
   it("removes filter-grammar and LIKE characters", () => {
-    expect(escapeSearchTerm('a,b(c)*d%e_f"g')).toBe("a b c d e f g");
+    expect(escapeSearchTerm('a,b(c)*d%e\\f"g')).toBe("a b c d e f g");
+  });
+  it("keeps underscores so claim numbers like TIVPL_ILGIC_10 still match", () => {
+    expect(escapeSearchTerm("TIVPL_ILGIC_10")).toBe("TIVPL_ILGIC_10");
   });
 });
 

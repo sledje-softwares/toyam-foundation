@@ -69,8 +69,9 @@ export function parseListParams(sp: SearchParams, cfg: ListConfig): ListParams {
 
 /** Escapes a user string for use inside a PostgREST `or=(col.ilike.*x*)` filter. */
 export function escapeSearchTerm(q: string): string {
-  // Strip characters that have meaning in the or() grammar or in LIKE patterns.
-  return q.replace(/[,()*%_\\"]/g, " ").replace(/\s+/g, " ").trim();
+  // Strip characters that have meaning in the or() grammar, plus % and backslash.
+  // `_` is kept: as a LIKE wildcard it still matches a literal underscore (claim numbers use it).
+  return q.replace(/[,()*%\\"]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /** The subset of the PostgREST builder used here (every method returns the builder). */

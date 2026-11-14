@@ -55,7 +55,9 @@ const columns: Column<Row>[] = [
       <details>
         <summary className="cursor-pointer">{truncateError(r.error)}</summary>
         <pre className="mt-2 max-w-xl whitespace-pre-wrap break-words text-xs">{r.error ?? "—"}</pre>
-        <p className="mt-1 text-xs text-text-muted">Stored message: {r.raw_storage_path ?? "none"}</p>
+        <p className="mt-1 text-xs text-text-muted">
+          {r.raw_storage_path ? "Original message saved — can be retried." : "Original message not saved — cannot be retried."}
+        </p>
       </details>
     ),
   },
