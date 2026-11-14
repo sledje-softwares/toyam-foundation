@@ -347,6 +347,7 @@ export function putInUseText(p: {
     parts.push(
       `It replaces the checklist currently in use with the same name for ${scopeLabel(p.claim_type, p.insurerName)} (version ${p.replaced.version}).`,
     );
+    parts.push("Case templates linked to that checklist switch to this one, so new cases from them get the new items immediately.");
     if (p.replaced.openTasks > 0) parts.push(`${tasksPhrase(p.replaced.openTasks)} a copy of that checklist.`);
   }
   if (p.openTasks > 0) parts.push(`${tasksPhrase(p.openTasks)} an earlier copy of this checklist.`);

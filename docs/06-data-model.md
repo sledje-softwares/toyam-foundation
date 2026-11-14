@@ -44,7 +44,7 @@ Source of truth: all files in `supabase/migrations/` applied in order. Tests: `s
 | `case_template_sections` | Ordered report sections |
 | `case_template_fields` | Fields per section; `source` intake / office; `extract` rules; unique key per template |
 | `case_template_section_categories` | Which evidence categories are relevant to each section (drives the image panel) |
-| `case_template_checklists` | Default field checklist(s) for the template |
+| `case_template_checklists` | Default field checklist(s) for the template. Linked by name at load; `activate_checklist_template()` moves links from the checklist it replaces to the new one, audited (D42) |
 | `case_field_values` | One value per case × field, with source (email_parser / llm / office / suggestion), confidence and evidence reference |
 
 Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, source_file, activate)` (admin or service role). Identical config → no new version; changed config → new version; one active version per insurer × claim type × variant; cases keep their version.

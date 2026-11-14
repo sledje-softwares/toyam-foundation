@@ -214,7 +214,7 @@ describe("categories and impact", () => {
     expect(
       putInUseText({ name: "Hospital visit", claim_type: "health", insurerName: "Demo Health Insurance", replaced: { version: 2, openTasks: 4 }, openTasks: 0 }),
     ).toBe(
-      'Put "Hospital visit" in use for Demo Health Insurance? It replaces the checklist currently in use with the same name for Health · Demo Health Insurance (version 2). 4 open tasks use a copy of that checklist. Tasks already created are not affected.',
+      'Put "Hospital visit" in use for Demo Health Insurance? It replaces the checklist currently in use with the same name for Health · Demo Health Insurance (version 2). Case templates linked to that checklist switch to this one, so new cases from them get the new items immediately. 4 open tasks use a copy of that checklist. Tasks already created are not affected.',
     );
     expect(putInUseText({ name: "X", claim_type: "motor", insurerName: null, replaced: null, openTasks: 1 })).toBe(
       'Put "X" in use for all insurers? 1 open task uses an earlier copy of this checklist. Tasks already created are not affected.',
