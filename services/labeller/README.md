@@ -1,4 +1,4 @@
-# Labeller (D30, D34, D35)
+# Labeller (D30, D34, D35, D37)
 
 Vision labelling for the processing pipeline, and the **bake-off** that chooses its model.
 
@@ -65,6 +65,17 @@ npm run bakeoff -w services/labeller -- --images ~/toyam-samples/images --truth 
 ```
 
 Use one template per run (one insurer's cases); `--template` adds the field list to the prompt (≈ 2,200 tokens in total) and scores field matching. Without it only labels are tested.
+
+## Production flow (D37)
+
+Standard API only; the Batch API is not used because labels must arrive within seconds (D30).
+
+1. Claude Haiku 5.5 labels every file as it arrives, one image per call, with the per-template prompt cached.
+2. Files whose top label confidence is below the bake-off threshold are re-labelled immediately by Claude Sonnet 5.5 (same ~384 px); its label replaces Haiku's under a new `pipeline_version`.
+3. Estimated cost at 90k images a month: about $7 (Haiku) + $13 (Sonnet on ~10 %) = about $20.
+4. **Fallback** if Haiku fails the pass marks: Sonnet on numbered 6x6 collages (D36), about $90 a month, keeping single-image calls for files an operator is waiting on.
+
+The bake-off supplies the threshold and the Haiku-passes check.
 
 ### Collage arm (D36)
 

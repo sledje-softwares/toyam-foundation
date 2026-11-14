@@ -51,7 +51,7 @@ Status: **confirmed** — D10–D13 (Supabase Mumbai on free tiers, web app on C
 apps/web/              Next.js web application
 apps/field/            Expo field app (to be created, M5)
 services/intake/       Gmail relay Worker, template loader, intake tests (parser in supabase/functions/_shared/intake)
-services/pipeline/     Processing workers (to be created, M6)
+services/pipeline/     Processing worker: one container (D38) (to be created, M6)
 config/templates/      Evidence categories and case templates (YAML)
 supabase/migrations/   Database migrations
 supabase/tests/        pgTAP tests
@@ -79,7 +79,7 @@ docs/                  Documentation
 
 ## Processing pipeline (M6)
 
-See `10-processing-pipeline.md`. Workers call `claim_processing_jobs()` / `complete_processing_job()` with the service role; stages run in order per file.
+See `10-processing-pipeline.md`. **Hosting (D38):** one small always-on container in a Mumbai region runs `services/pipeline` (label stage with Haiku → Sonnet escalation per D37, PaddleOCR, field-value rules); Dockerfile shipped, no provider-specific code; the service-role key is held server-side only. Workers call `claim_processing_jobs()` / `complete_processing_job()` with the service role; stages run in order per file.
 
 ## Report pipeline (M7–M8)
 

@@ -10,7 +10,7 @@ export interface Price {
 }
 
 export const DEFAULT_PRICES: Record<string, Price> = {
-  // Prompts up to 100k tokens (a label request is ~1–3k). Batch API: half price.
+  // Prompts up to 100k tokens (a label request is ~1–3k).
   'anthropic/claude-haiku-5-5': { input: 0.10, output: 0.50, cachedRead: 0.01, cacheWrite: 0.125 },
   'anthropic/claude-sonnet-5-5': { input: 2.00, output: 10.00, cachedRead: 0.20, cacheWrite: 2.50 },
   'google/gemini-2.5-flash-lite': { input: 0.10, output: 0.40, cachedRead: 0.025 },

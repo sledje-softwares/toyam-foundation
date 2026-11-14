@@ -1,4 +1,4 @@
-# 10 — Processing Pipeline (D21, D30, D34, D35)
+# 10 — Processing Pipeline (D21, D30, D34, D35, D37, D38)
 
 Every file that reaches a case (field thread, staff upload, insurer attachment) is read and labelled so that the report workspace can place it beside the right section and offer its text for tap-to-fill. The developer optimises the implementation; this document fixes the **contract** so stages can be replaced without touching the apps.
 
@@ -13,7 +13,7 @@ Volume (revised 2026-11-14): 250–300 files per case × ~300 cases ≈ 75–90k
 1. **Label first, each image on its own, at low resolution** (~384 px long edge). At small-model prices a single low-resolution image costs a fraction of a paisa; labelling all 90k images costs ≈ $7 a month on Haiku 5.5 with the prompt cached. **Numbered 6×6 collages are tested as a bake-off arm (D36)** and adopted only if they meet the same pass marks; even then, files an operator is waiting on go singly.
 2. **OCR only where it is needed**, after the label (`ocr_wanted()`). Device OCR (ML Kit) sent with the file is used first; server OCR is a dedicated OCR model (PaddleOCR family) on the fixed-cost CPU worker. Dedicated OCR models read documents better than general vision models and invent fewer characters.
 3. **Numbers come from OCR + rules; the vision model is a second opinion** (below).
-4. **Escalate uncertain labels**: below the confidence threshold chosen in the bake-off, the image is labelled again at higher resolution or by a larger model (expected 5–10 % of images).
+4. **Escalate uncertain labels (D37)**: below the confidence threshold chosen in the bake-off, the image goes immediately to Claude Sonnet 5.5 on the standard API, at the same ~384 px, under a new `pipeline_version`; the Sonnet label replaces Haiku's (Haiku's row is deactivated, kept) (expected ~10 % of images). No Batch API: labels must arrive within seconds.
 5. ~~Embedding classifier later~~ — not planned (D35): every image needs the LLM call for its field matches anyway.
 
 The model is chosen by the bake-off (`services/labeller/README.md`) on real cases labelled by the office; whether images may go to an external provider is the client's decision (Q21). Every label stores its `model`; the provider sits behind one adapter (`services/labeller/src/providers.ts`) so it can be swapped.
@@ -45,7 +45,11 @@ Jobs are created automatically when evidence is inserted (`trg_evidence_enqueue`
 - **Request:** one image, resized to ~384 px on the long edge (JPEG), plus the system prompt built per template version (`buildSystemPrompt(categories, template)`: categories with their `description`, then the template's fields grouped by section, ≈ 2,200 tokens). **The system prompt must be cached** (it is ~90 % of the input); send a case's images close together so the cache stays warm.
 - **Answer:** `{"labels":[{"code","confidence"}], "fields":[{"key","confidence"}], "needs_detail", "detail_reason", "description"}`, parsed by `parseLabelAnswer()`: unknown codes and field keys dropped, at most 3 labels and 5 fields, best first; a missing `needs_detail` counts as true (an extra OCR run is cheaper than a missed number). `description` is `null` unless it adds something (damage and where, a scene, a person, an uncertain or "other" image). The model never returns values, never copies personal numbers and never judges the claim.
 - **Stored:** one `evidence_labels` row per label (source `llm`), with `needs_detail`, `detail_reason`, `description` and `model` (`provider/model-id`); one `evidence_field_matches` row per matched field (`score` = the model's confidence). Sections are derived (`sectionsFor()`), not stored.
-- **Escalation:** when the top confidence is below the bake-off threshold, label again at 1024–1568 px or with a larger model under a new `pipeline_version`; the office sees the file as unlabelled meanwhile.
+- **Escalation (D37):** when the top confidence is below the bake-off threshold, label again immediately with Claude Sonnet 5.5 on the standard API, at the same ~384 px, under a new `pipeline_version`; the Sonnet label replaces Haiku's (Haiku's row deactivated, kept). No Batch API.
+
+## Worker (D38)
+
+One always-on container (Mumbai region, Dockerfile, provider-neutral) runs `services/pipeline`: job polling, `label` (Node, reuses `services/labeller/src`), `ocr` (PaddleOCR, Python) and the field-value rules. The service-role key stays server-side.
 
 ## OCR skip rule — `ocr_wanted(evidence)`
 
