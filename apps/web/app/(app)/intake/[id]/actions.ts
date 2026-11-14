@@ -63,8 +63,7 @@ export async function confirmIntake(_prev: ConfirmState, formData: FormData): Pr
   // confirm_intake returns the existing case when the claim number is already known, so the wording is neutral.
   await setFlash(created?.case_ref ? `Intake confirmed: case ${created.case_ref}.` : "Intake confirmed.");
   revalidatePath("/intake", "layout");
-  // No case page exists yet (M4 /cases/[caseRef]); back to the queue.
-  redirect("/intake");
+  redirect(created?.case_ref ? `/cases/${encodeURIComponent(created.case_ref)}` : "/intake");
 }
 
 const RejectInput = z.object({
