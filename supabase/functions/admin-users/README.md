@@ -15,6 +15,9 @@ Sign-in-level user administration (docs/08 §2.1.5, K2–K5). Profile-only edits
 
 From a Next.js server action with the signed-in user's session:
 `supabase.functions.invoke('admin-users', { body })` (attaches `Authorization: Bearer <access token>`).
+**Server-side only:** there is no CORS / `OPTIONS` handling on purpose, so browsers cannot call it
+directly (a preflight gets 405, and the gateway's `verify_jwt` rejects it anyway). Call it from server
+actions, never from client components.
 `POST` only, JSON body `{ action, ... }`. Every response is JSON:
 
 - success: `200 { ok: true, ...result }`

@@ -18,6 +18,9 @@ import {
   type Role,
 } from './logic.ts';
 
+/** Upper bound on the request body (characters). */
+export const MAX_BODY_CHARS = 16_384;
+
 export interface ProfileRow {
   id: string;
   full_name: string;
@@ -92,6 +95,8 @@ export async function handleAdminUsers(
   if (denied) return err(denied);
 
   // 2. Validate.
+  // Real requests are a few hundred bytes; refuse anything large before parsing it.
+  if (bodyText.length > MAX_BODY_CHARS) return err(fail(400, 'invalid_body', 'The request is too large.'));
   let body: unknown;
   try {
     body = JSON.parse(bodyText);

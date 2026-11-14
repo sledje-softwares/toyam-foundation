@@ -277,6 +277,17 @@ export interface AuthErrorLike {
 export function mapAuthError(err: AuthErrorLike, phoneOwner?: string | null): Failure {
   const code = err.code ?? '';
   const msg = (err.message ?? '').toLowerCase();
+  // On admin updates GoTrue surfaces the raw unique violation: code 23505,
+  // 'duplicate key value violates unique constraint "users_phone_key"' (or users_email_partial_key).
+  const uniqueViolation = code === '23505' || /duplicate key/.test(msg);
+  if (uniqueViolation && /phone/.test(msg)) {
+    return fail(409, 'duplicate',
+      phoneOwner ? `This mobile number is already used by ${phoneOwner}.` : 'This mobile number is already used by another user.',
+      'phone');
+  }
+  if (uniqueViolation && /email/.test(msg)) {
+    return fail(409, 'duplicate', 'This email is already used by another user.', 'email');
+  }
   if (code === 'phone_exists' || (/phone/.test(msg) && /already|exists|registered/.test(msg))) {
     return fail(409, 'duplicate',
       phoneOwner ? `This mobile number is already used by ${phoneOwner}.` : 'This mobile number is already used by another user.',

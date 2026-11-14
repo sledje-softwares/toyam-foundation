@@ -6,7 +6,7 @@ import {
   authorize, generateTemporaryPassword, mapAuthError, mapDbError, normaliseEmail, normalisePhone,
   normaliseRegion, PASSWORD_ALPHABET, parseFieldSignIn, parseRequest,
 } from '../../../supabase/functions/_shared/admin-users/logic.ts';
-import { type AuditRow, type AuthAttrs, type Gateway, handleAdminUsers, type ProfileRow } from '../../../supabase/functions/_shared/admin-users/handler.ts';
+import { type AuditRow, type AuthAttrs, type Gateway, handleAdminUsers, MAX_BODY_CHARS, type ProfileRow } from '../../../supabase/functions/_shared/admin-users/handler.ts';
 
 const ADMIN = 'a0000000-0000-4000-8000-000000000001';
 const OFFICE = 'a0000000-0000-4000-8000-000000000003';
@@ -123,6 +123,12 @@ describe('error mapping', () => {
     assert.equal(em.error.field, 'email');
     assert.equal(mapAuthError({ code: 'user_not_found', status: 404 }).status, 404);
     assert.equal(mapAuthError({ code: 'unexpected_failure', status: 500 }).status, 502);
+  });
+  it('raw unique violations from admin updates → 409 duplicate (shape seen on the local stack)', () => {
+    const ph = mapAuthError({ code: '23505', status: 500, message: 'duplicate key value violates unique constraint "users_phone_key"' }, 'Vijay More');
+    assert.deepEqual(ph, { status: 409, error: { code: 'duplicate', message: 'This mobile number is already used by Vijay More.', field: 'phone' } });
+    const em = mapAuthError({ code: '23505', status: 500, message: 'duplicate key value violates unique constraint "users_email_partial_key"' });
+    assert.deepEqual(em, { status: 409, error: { code: 'duplicate', message: 'This email is already used by another user.', field: 'email' } });
   });
   it('DB2 last-admin trigger → 409 last_admin; other 42501 → 403', () => {
     assert.equal(mapDbError({ code: '42501', message: 'There must be at least one active admin' }).error.code, 'last_admin');
@@ -288,5 +294,12 @@ describe('handleAdminUsers', () => {
   it('invalid JSON → 400 invalid_body', async () => {
     const r = await handleAdminUsers('POST', true, '{', fake(), 'mobile_password');
     assert.equal(r.status, 400);
+  });
+
+  it('oversized body → 400 invalid_body before parsing', async () => {
+    const big = JSON.stringify({ action: 'create', full_name: 'x'.repeat(MAX_BODY_CHARS) });
+    const r = await handleAdminUsers('POST', true, big, fake(), 'mobile_password');
+    assert.equal(r.status, 400);
+    assert.equal((r.body as { error: { code: string } }).error.code, 'invalid_body');
   });
 });
