@@ -45,7 +45,9 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const list = parseListParams(sp, LIST);
   const status = parseStatusFilter(sp.status);
-  const owner = parseOwnerFilter(sp.owner);
+  // D44: office staff see only the cases assigned to them (RLS), so the owner filter is for orchestrators and admins.
+  const ownerChoice = me.role !== "office";
+  const owner = ownerChoice ? parseOwnerFilter(sp.owner) : null;
   const due = parseDueFilter(sp.due);
   const insurer = isGuid(list.filters.insurer) ? list.filters.insurer : null;
   const claimType = isClaimType(list.filters.claim_type) ? list.filters.claim_type : null;
@@ -95,7 +97,9 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   const [{ data, count, error }, insurers, staff] = await Promise.all([
     query,
     supabase.from("insurers").select("id, name").order("name"),
-    supabase.from("profiles").select("id, full_name, is_active").in("role", ["admin", "orchestrator", "office"]).order("full_name"),
+    ownerChoice
+      ? supabase.from("profiles").select("id, full_name, is_active").in("role", ["admin", "orchestrator", "office"]).order("full_name")
+      : Promise.resolve({ data: [] as { id: string; full_name: string; is_active: boolean }[] }),
   ]);
 
   const rows = data ?? [];
@@ -111,7 +115,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
   }
 
   type Row = (typeof rows)[number];
-  const columns: Column<Row>[] = [
+  const allColumns: Column<Row>[] = [
     { key: "case_ref", header: "Case ref", sortable: true, cell: (r) => r.case_ref },
     { key: "insurer", header: "Insurer", cell: (r) => one(r.insurers)?.code ?? "—" },
     { key: "claim_no", header: "Claim no.", cell: (r) => <span className="block max-w-40 truncate">{r.insurer_claim_no}</span> },
@@ -144,6 +148,9 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
     },
   ];
 
+  // Every case an office user sees is their own, so the owner column says nothing new.
+  const columns = ownerChoice ? allColumns : allColumns.filter((c) => c.key !== "owner");
+
   const filtered = Boolean(term || insurer || claimType || owner || due || status.kind !== "open");
   const mine = owner?.kind === "me";
 
@@ -152,15 +159,20 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <PageHeader
         title="Cases"
         actions={
-          <Link
-            href={buildHref(BASE, sp, { owner: mine ? null : "me" })}
-            aria-pressed={mine}
-            className="text-sm text-primary underline hover:no-underline"
-          >
-            {mine ? "Show everyone's cases" : "Show my cases"}
-          </Link>
+          ownerChoice ? (
+            <Link
+              href={buildHref(BASE, sp, { owner: mine ? null : "me" })}
+              aria-pressed={mine}
+              className="text-sm text-primary underline hover:no-underline"
+            >
+              {mine ? "Show everyone's cases" : "Show my cases"}
+            </Link>
+          ) : undefined
         }
       />
+      {!ownerChoice && (
+        <p className="mb-4 max-w-3xl text-sm text-text-muted">Cases assigned to you. An orchestrator assigns and reassigns cases.</p>
+      )}
       <Suspense>
         <FilterBar
           searchLabel="Search ref, claim no. or insured"
@@ -177,17 +189,21 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
             },
             { name: "insurer", label: "Insurer", options: (insurers.data ?? []).map((i) => ({ value: i.id, label: i.name })) },
             { name: "claim_type", label: "Claim type", options: CLAIM_TYPES.map((t) => ({ value: t, label: CLAIM_TYPE_LABELS[t] })) },
-            {
-              name: "owner",
-              label: "Owner",
-              options: [
-                { value: "me", label: "Me" },
-                { value: "none", label: "Unassigned" },
-                ...(staff.data ?? [])
-                  .filter((p) => p.id !== me.id)
-                  .map((p) => ({ value: p.id, label: p.is_active ? p.full_name : `${p.full_name} (inactive)` })),
-              ],
-            },
+            ...(ownerChoice
+              ? [
+                  {
+                    name: "owner",
+                    label: "Owner",
+                    options: [
+                      { value: "me", label: "Me" },
+                      { value: "none", label: "Unassigned" },
+                      ...(staff.data ?? [])
+                        .filter((p) => p.id !== me.id)
+                        .map((p) => ({ value: p.id, label: p.is_active ? p.full_name : `${p.full_name} (inactive)` })),
+                    ],
+                  },
+                ]
+              : []),
             { name: "due", label: "Due", options: Object.entries(DUE_FILTERS).map(([value, label]) => ({ value, label })) },
           ]}
         />

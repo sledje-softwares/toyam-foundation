@@ -24,10 +24,11 @@ values
 insert into public.insurers (id, name, code, tat_days)
 values ('20000000-0000-4000-8000-000000000001', 'Fixture Insurer', 'FIX', 7);
 
-insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status)
-values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned'),
-       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress'),
-       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned');
+-- D44: the office user owns these cases (office sees only its own cases)
+insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status, office_owner_id)
+values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned', '10000000-0000-4000-8000-0000000000a3'),
+       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress', '10000000-0000-4000-8000-0000000000a3'),
+       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned', '10000000-0000-4000-8000-0000000000a3');
 
 insert into public.parties (id, case_id, role, name)
 values ('31000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'insured', 'P1'),
@@ -82,8 +83,8 @@ select is(public.can_upload_evidence(gen_random_uuid()),                      fa
 set local request.jwt.claims to '{"sub":"10000000-0000-4000-8000-0000000000f3","role":"authenticated"}';
 select is(public.can_upload_evidence('40000000-0000-4000-8000-000000000004'), false, 'deactivated field user -> false');
 set local request.jwt.claims to '{"sub":"10000000-0000-4000-8000-0000000000a3","role":"authenticated"}';
-select is(public.can_upload_evidence('40000000-0000-4000-8000-000000000003'), true,  'staff: any task -> true');
-select is(public.can_upload_evidence('40000000-0000-4000-8000-000000000002'), true,  'staff: completed task -> true');
+select is(public.can_upload_evidence('40000000-0000-4000-8000-000000000003'), true,  'office: task on own case -> true');
+select is(public.can_upload_evidence('40000000-0000-4000-8000-000000000002'), true,  'office: completed task on own case -> true');
 reset role;
 set local request.jwt.claims to '';
 select ok(not has_function_privilege('anon', 'public.can_upload_evidence(uuid)', 'execute'), 'anon cannot call can_upload_evidence');

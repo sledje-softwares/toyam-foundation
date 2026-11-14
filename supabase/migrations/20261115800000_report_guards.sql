@@ -47,8 +47,9 @@ grant execute on function private.report_editable_status(public.case_status) to 
 -- ---------------------------------------------------------------------
 -- A. Field values: staff read; writes only through functions
 -- ---------------------------------------------------------------------
+-- Starts from the D44 policy (20261115500000_office_case_scope: for all using can_manage_case) and keeps its read scope.
 drop policy p_cfv_staff on public.case_field_values;
-create policy p_cfv_staff_r on public.case_field_values for select to authenticated using (public.is_staff());
+create policy p_cfv_staff_r on public.case_field_values for select to authenticated using (private.can_manage_case(case_id));
 revoke insert, update, delete, truncate on public.case_field_values from authenticated, anon;
 
 -- p_values:   {"<field key>": "<value>" | null, ...}   (null or blank clears the value)
@@ -290,7 +291,8 @@ alter table public.submissions
     add column reopen_reason   text check (char_length(reopen_reason) <= 500);
 
 drop policy p_subs_staff on public.submissions;
-create policy p_subs_staff_r on public.submissions for select to authenticated using (public.is_staff());
+-- Starts from the D44 policy (for all using can_manage_case): read keeps that scope; insert only as oneself; no update / delete.
+create policy p_subs_staff_r on public.submissions for select to authenticated using (private.can_manage_case(case_id));
 create policy p_subs_staff_i on public.submissions for insert to authenticated
     with check (public.is_staff() and submitted_by = (select auth.uid()) and private.can_manage_case(case_id));
 revoke update, delete, truncate on public.submissions from authenticated, anon;

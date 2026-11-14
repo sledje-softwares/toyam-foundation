@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { formatDate } from "@/lib/format";
-import { INSTRUCTIONS_MAX, LOCATION_MAX, TITLE_MAX, type TaskFormValues, type TaskMode } from "@/lib/tasks-form";
+import { INSTRUCTIONS_MAX, LOCATION_MAX, REASON_MAX, TITLE_MAX, type TaskFormValues, type TaskMode } from "@/lib/tasks-form";
 import { plural, TASK_KIND_LABELS, type ChecklistOption } from "@/lib/tasks";
 import { Badge, ButtonLink, FormField, InlineAlert, Select, STATUS_MAPS, SubmitButton, Textarea, TextInput } from "@/components/ui";
 import { createFieldTaskAction, type TaskFormState } from "./actions";
@@ -203,6 +203,14 @@ export function TaskForm({
           {(p) => <TextInput {...p} name="location" defaultValue={v.location} maxLength={LOCATION_MAX} autoComplete="off" />}
         </FormField>
       </div>
+
+      <FormField
+        label="Reason"
+        hint="Optional. Why this field work is needed (e.g. what the insurer asked for). Stored on the task; the operator can read it."
+        error={e.reason}
+      >
+        {(p) => <Textarea {...p} name="reason" defaultValue={v.reason} rows={2} maxLength={REASON_MAX} />}
+      </FormField>
 
       <div className="flex justify-end gap-2 border-t border-border pt-4">
         <ButtonLink href={`/cases/${encodeURIComponent(caseRef)}`} variant="secondary">

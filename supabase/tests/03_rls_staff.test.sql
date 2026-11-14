@@ -2,7 +2,7 @@
 -- Self-contained: fixture below is rolled back at the end.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(48);
+select plan(49);
 
 -- ---------------------------------------------------------------------
 -- Fixture (rolled back at the end of the file). IDs:
@@ -24,10 +24,11 @@ values
 insert into public.insurers (id, name, code, tat_days)
 values ('20000000-0000-4000-8000-000000000001', 'Fixture Insurer', 'FIX', 7);
 
-insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status)
-values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned'),
-       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress'),
-       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned');
+-- c1, c2 are owned by the office user (D44: office sees only its own cases); c3 is unassigned
+insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status, office_owner_id)
+values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned', '10000000-0000-4000-8000-0000000000a3'),
+       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress', '10000000-0000-4000-8000-0000000000a3'),
+       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned', null);
 
 insert into public.parties (id, case_id, role, name)
 values ('31000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'insured', 'P1'),
@@ -84,13 +85,14 @@ reset role;
 -- =====================================================================
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"10000000-0000-4000-8000-0000000000a3","role":"authenticated"}';
-select ok((select count(*) from public.cases where insurer_id = '20000000-0000-4000-8000-000000000001') = 3, 'office sees all cases');
+select ok((select count(*) from public.cases where insurer_id = '20000000-0000-4000-8000-000000000001') = 2, 'office sees only its own cases (D44)');
 select isnt_empty($$select 1 from public.emails$$,             'office reads emails');
 select isnt_empty($$select 1 from public.intake_extractions$$, 'office reads extractions');
 select isnt_empty($$select 1 from public.reports$$,            'office reads reports');
 select ok((select count(*) from public.evidence where case_id = '30000000-0000-4000-8000-000000000001') = 2, 'office reads all evidence');
 select is_empty($$select 1 from public.audit_log$$, 'office cannot read the audit log');
-select lives_ok($$update public.tasks set title = 'T1 renamed' where id = '40000000-0000-4000-8000-000000000001'$$, 'office can edit tasks');
+-- D44: no staff UPDATE policy on tasks (changes go through the task RPCs): a direct update is a no-op
+select lives_ok($$update public.tasks set title = 'T1 renamed' where id = '40000000-0000-4000-8000-000000000001'$$, 'office direct task update runs');
 select throws_ok($$insert into public.insurers (name, code) values ('Rogue', 'RGE')$$, '42501', null::text, 'office cannot create insurers');
 update public.insurers set tat_days = 99 where id = '20000000-0000-4000-8000-000000000001';
 select throws_ok($$insert into public.checklist_templates (name, claim_type) values ('x', 'other')$$, '42501', null::text, 'office cannot create checklist templates');
@@ -149,6 +151,7 @@ select is((select count(*)::int from public.checklist_template_items where is_ma
           (select count(*)::int from public.checklist_template_items where is_mandatory = false and template_id = 'c0000000-0000-4000-8000-000000000001'),
           'orchestrator update of template items had no effect') ;
 select ok((select is_flagged from public.evidence where id = '80000000-0000-4000-8000-000000000001'), 'flag update persisted');
+select is((select title from public.tasks where id = '40000000-0000-4000-8000-000000000001'), 'T1', 'office direct task update had no effect');
 select throws_ok($$delete from public.evidence where id = '80000000-0000-4000-8000-000000000002'$$,
     '42501', null::text, 'even the database owner cannot delete evidence');
 select throws_ok($$update public.evidence set storage_path = 'x' where id = '80000000-0000-4000-8000-000000000002'$$,

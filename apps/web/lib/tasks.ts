@@ -62,14 +62,23 @@ export function parseStatusFilter(raw: string | string[] | undefined): { value: 
 
 export type Scope = "mine" | "all";
 
-/** `scope`: office staff default to their own cases, orchestrators and admins to all cases (RLS lets all staff read all tasks). */
+/**
+ * `scope`: orchestrators and admins default to all cases and may narrow to their own.
+ * Office staff only ever see tasks of the cases assigned to them (D44, enforced by RLS), so their scope is always "mine".
+ */
 export function defaultScope(role: UserRole): Scope {
   return role === "office" ? "mine" : "all";
 }
 
 export function parseScope(raw: string | string[] | undefined, role: UserRole): Scope {
+  if (role === "office") return "mine";
   const v = first(raw);
   return v === "mine" || v === "all" ? v : defaultScope(role);
+}
+
+/** Office staff have no case-scope choice (D44); orchestrators and admins switch between all cases and their own. */
+export function hasScopeChoice(role: UserRole): boolean {
+  return role !== "office";
 }
 
 export const DUE_FILTERS = {

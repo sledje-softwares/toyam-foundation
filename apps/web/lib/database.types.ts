@@ -1561,6 +1561,9 @@ isOneToOne: false
 "can_upload_evidence_at":
 { Args: { "p_device_captured_at": string,"p_task_id": string }; Returns: boolean
                            },
+"cancel_field_task":
+{ Args: { "p_reason": string,"p_task_id": string }; Returns: undefined
+                           },
 "case_field_history":
 { Args: { "p_case_id": string }; Returns: {
               "action": string,"actor_id": string,"actor_name": string,"changed_at": string,"field_key": string,"new_value": string,"old_value": string,"source": string
@@ -1611,7 +1614,7 @@ isOneToOne: false
 { Args: { "p_extraction_id": string,"p_template_id": string,"p_values": Json }; Returns: string
                            },
 "create_field_task":
-{ Args: { "p_assignee_id": string,"p_case_id": string,"p_checklist_template_id"?: string,"p_due_at"?: string,"p_instructions"?: string,"p_kind"?: Database["public"]['Enums']["task_kind"],"p_location_text"?: string,"p_parent_task_id"?: string,"p_title": string }; Returns: string
+{ Args: { "p_assignee_id": string,"p_case_id": string,"p_checklist_template_id"?: string,"p_due_at"?: string,"p_instructions"?: string,"p_kind"?: Database["public"]['Enums']["task_kind"],"p_location_text"?: string,"p_parent_task_id"?: string,"p_reason"?: string,"p_title": string }; Returns: string
                            },
 "drain_authorize_upload":
 { Args: { "p_device_captured_at": string,"p_device_id": string,"p_secret": string,"p_sha256": string,"p_task_id": string }; Returns: string
@@ -1664,6 +1667,9 @@ isOneToOne: false
 "intake_config":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"intake_confirmed_case_ref":
+{ Args: { "p_extraction_id": string }; Returns: string
+                           },
 "intake_ingest":
 { Args: { "p": Json }; Returns: Json
                            },
@@ -1708,6 +1714,9 @@ isOneToOne: false
 "reassign_case":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_reason": string }; Returns: undefined
                            },
+"reassign_field_task":
+{ Args: { "p_assignee_id": string,"p_reason": string,"p_task_id": string }; Returns: undefined
+                           },
 "record_manual_submission":
 { Args: { "p_case_id": string,"p_channel": Database["public"]['Enums']["submission_channel"],"p_formats": (string)[],"p_insurer_reference": string,"p_note": string,"p_report_id"?: string,"p_submitted_at"?: string }; Returns: string
                            },
@@ -1745,6 +1754,9 @@ isOneToOne: false
                            },
 "set_evidence_labels":
 { Args: { "p_category_ids": (string)[],"p_evidence_id": string }; Returns: undefined
+                           },
+"update_field_task":
+{ Args: { "p_due_at"?: string,"p_instructions"?: string,"p_location_text"?: string,"p_task_id": string,"p_title": string }; Returns: boolean
                            },
 "withdraw_message":
 { Args: { "p_message_id": string }; Returns: undefined
