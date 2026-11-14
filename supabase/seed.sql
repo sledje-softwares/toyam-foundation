@@ -675,7 +675,7 @@ select pg_temp.fvs('d0000000-0000-4000-8000-000000000108',
 
 insert into public.reports (id, case_id, version, status, storage_path, uploaded_by, notes, origin, template_id, template_version)
 select r.id, r.case_id, 1, r.status::public.report_status,
-       'reports/seed/' || c.case_ref || '-v1.pdf', r.uploaded_by, 'Seed data: no file in storage', 'generated', c.template_id,
+       'cases/' || c.id || '/' || c.case_ref || '-v1.pdf', r.uploaded_by, 'Seed data: no file in storage', 'generated', c.template_id,
        (select t.version from public.case_templates t where t.id = c.template_id)
   from (values
     ('91000000-0000-4000-8000-000000000106'::uuid, 'd0000000-0000-4000-8000-000000000106'::uuid, 'draft', 'a0000000-0000-4000-8000-000000000004'::uuid),
