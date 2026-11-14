@@ -3,13 +3,16 @@ import {
   approvalModel,
   bestMatchScores,
   buildWorkspace,
+  canManageCase,
   comparable,
+  conflictMessage,
   dueLabel,
   editLock,
   focusSection,
   latestApproval,
   normaliseValue,
   parseMulti,
+  parseSaveResult,
   planSectionSave,
   readSectionForm,
   rendersNatively,
@@ -123,53 +126,81 @@ describe("planSectionSave", () => {
         ["p:driver_name", ""], ["o:driver_name", "Ramesh"], ["f:driver_name", "Ramesh"],
         ["p:dl_valid_till", ""], ["o:dl_valid_till", ""], ["f:dl_valid_till", "01/12/2027"],
       ]),
-      new Map([["driver_name", "Ramesh"]]),
     );
-    expect(plan).toEqual({ writes: [{ field_id: "F2", key: "dl_valid_till", value: "2027-12-01" }], errors: {}, conflicts: {} });
+    expect(plan).toEqual({ writes: [{ field_id: "F2", key: "dl_valid_till", value: "2027-12-01", expected: "" }], errors: {} });
   });
 
   it("allows clearing a value (including a required one)", () => {
-    const plan = planSectionSave(fields, form([["p:driver_name", ""], ["o:driver_name", "Ramesh"], ["f:driver_name", ""]]), new Map([["driver_name", "Ramesh"]]));
-    expect(plan.writes).toEqual([{ field_id: "F1", key: "driver_name", value: null }]);
+    const plan = planSectionSave(fields, form([["p:driver_name", ""], ["o:driver_name", "Ramesh"], ["f:driver_name", ""]]));
+    expect(plan.writes).toEqual([{ field_id: "F1", key: "driver_name", value: null, expected: "Ramesh" }]);
   });
 
-  it("reports a conflict when the stored value changed since loading", () => {
-    const plan = planSectionSave(fields, form([["p:driver_name", ""], ["o:driver_name", "Ramesh"], ["f:driver_name", "Suresh"]]), new Map([["driver_name", "Mahesh"]]));
+  it("sends the value as loaded, so the database can detect a change underneath", () => {
+    const plan = planSectionSave(fields, form([["p:driver_name", ""], ["o:driver_name", "Ramesh"], ["f:driver_name", "Suresh"]]));
+    expect(plan.writes).toEqual([{ field_id: "F1", key: "driver_name", value: "Suresh", expected: "Ramesh" }]);
+  });
+
+  it("does not rewrite a value that only differs in line endings or spaces", () => {
+    const plan = planSectionSave(fields, form([["p:driver_name", ""], ["o:driver_name", "a\nb"], ["f:driver_name", " a\r\nb "]]));
     expect(plan.writes).toEqual([]);
-    expect(plan.conflicts).toEqual({ driver_name: "Mahesh" });
   });
 
   it("reports invalid values and keeps going", () => {
     const plan = planSectionSave(
       fields,
       form([["p:dl_valid_till", ""], ["o:dl_valid_till", ""], ["f:dl_valid_till", "soon"], ["p:negative_area", ""], ["o:negative_area", ""], ["f:negative_area", "No"]]),
-      new Map(),
     );
     expect(Object.keys(plan.errors)).toEqual(["dl_valid_till"]);
-    expect(plan.writes).toEqual([{ field_id: "F3", key: "negative_area", value: "No" }]);
+    expect(plan.writes).toEqual([{ field_id: "F3", key: "negative_area", value: "No", expected: "" }]);
   });
 
   it("keeps a stored choice outside the options selectable", () => {
     const plan = planSectionSave(
       fields,
       form([["p:negative_area", ""], ["o:negative_area", "Partly"], ["f:negative_area", "Partly"], ["p:driver_name", ""], ["o:driver_name", ""], ["f:driver_name", "A"]]),
-      new Map([["negative_area", "Partly"]]),
     );
     expect(plan.errors).toEqual({});
   });
 
-  it("ignores read-only, unknown and unrendered fields", () => {
+  it("writes the mirrored claim no. (the database copies it onto the case, G6) and ignores unknown and unrendered fields", () => {
     const plan = planSectionSave(
       fields,
       form([["p:insurer_claim_no", ""], ["o:insurer_claim_no", "MOT1"], ["f:insurer_claim_no", "MOT2"], ["p:other", ""], ["f:other", "x"], ["f:driver_name", "Z"]]),
-      new Map(),
     );
-    expect(plan).toEqual({ writes: [], errors: {}, conflicts: {} });
+    expect(plan).toEqual({ writes: [{ field_id: "F4", key: "insurer_claim_no", value: "MOT2", expected: "MOT1" }], errors: {} });
+  });
+
+  it("refuses to clear the claim no.", () => {
+    const plan = planSectionSave(fields, form([["p:insurer_claim_no", ""], ["o:insurer_claim_no", "MOT1"], ["f:insurer_claim_no", " "]]));
+    expect(plan.writes).toEqual([]);
+    expect(plan.errors.insurer_claim_no).toMatch(/cannot be empty/);
   });
 
   it("treats a multi_choice with every box cleared as a change", () => {
-    const plan = planSectionSave(fields, form([["p:tags", ""], ["o:tags", '["a"]']]), new Map([["tags", '["a"]']]));
-    expect(plan.writes).toEqual([{ field_id: "F5", key: "tags", value: null }]);
+    const plan = planSectionSave(fields, form([["p:tags", ""], ["o:tags", '["a"]']]));
+    expect(plan.writes).toEqual([{ field_id: "F5", key: "tags", value: null, expected: '["a"]' }]);
+  });
+});
+
+describe("parseSaveResult / conflictMessage", () => {
+  it("reads saved keys and conflicts with who and when", () => {
+    expect(
+      parseSaveResult({
+        saved: ["a"],
+        conflicts: { b: { value: "X", source: "office", updated_at: "2026-11-15T10:00:00Z", updated_by: "U", updated_by_name: "N Office" }, c: { value: null } },
+      }),
+    ).toEqual({ saved: ["a"], conflicts: { b: { value: "X", by: "N Office", at: "2026-11-15T10:00:00Z" }, c: { value: "", by: null, at: null } } });
+  });
+
+  it("rejects anything else", () => {
+    expect(parseSaveResult(null)).toBeNull();
+    expect(parseSaveResult({ saved: "a", conflicts: {} })).toBeNull();
+    expect(parseSaveResult({ saved: [], conflicts: { a: "x" } })).toBeNull();
+  });
+
+  it("says what was saved and what was not", () => {
+    expect(conflictMessage(2, 1)).toMatch(/^Saved 2 fields\. A field was changed/);
+    expect(conflictMessage(0, 3)).toMatch(/^3 fields were changed/);
   });
 });
 
@@ -202,7 +233,7 @@ describe("buildWorkspace / focusSection", () => {
   });
 
   it("marks mirrored and non-native values", () => {
-    expect(ws[0].fields[1]).toMatchObject({ key: "insurer_claim_no", readOnly: true, source: "email_parser", fromIntake: true });
+    expect(ws[0].fields[1]).toMatchObject({ key: "insurer_claim_no", mirrored: true, source: "email_parser", fromIntake: true });
     expect(ws[1].fields[0]).toMatchObject({ key: "dl_valid_till", asText: true });
     expect(ws[1].fields[1]).toMatchObject({ value: "", source: null });
   });
@@ -220,14 +251,29 @@ describe("buildWorkspace / focusSection", () => {
   });
 });
 
-describe("editLock", () => {
-  it("lets office and admin edit active cases only", () => {
-    expect(editLock("office", "office_review").editable).toBe(true);
-    expect(editLock("admin", "field_in_progress").editable).toBe(true);
-    expect(editLock("orchestrator", "office_review").editable).toBe(false);
-    expect(editLock("office", "orchestrator_review").editable).toBe(false);
-    expect(editLock("office", "submitted").editable).toBe(false);
-    expect(editLock("office", "cancelled").editable).toBe(false);
+describe("editLock / canManageCase", () => {
+  it("lets the owner, orchestrators (D45) and admins edit active cases only", () => {
+    expect(editLock("office", "office_review", true).editable).toBe(true);
+    expect(editLock("admin", "field_in_progress", false).editable).toBe(true);
+    expect(editLock("orchestrator", "office_review", false).editable).toBe(true);
+    expect(editLock("office", "orchestrator_review", true).editable).toBe(false);
+    expect(editLock("orchestrator", "orchestrator_review", false).editable).toBe(false);
+    expect(editLock("office", "submitted", true)).toMatchObject({ editable: false, reason: expect.stringMatching(/Reopen/) });
+    expect(editLock("office", "cancelled", true).editable).toBe(false);
+    expect(editLock("field", "office_review", true).editable).toBe(false);
+  });
+
+  it("keeps the report read-only for office staff who do not own the case (D44)", () => {
+    expect(editLock("office", "office_review", false)).toMatchObject({ editable: false, reason: expect.stringMatching(/another employee/) });
+  });
+
+  it("mirrors private.can_manage_case", () => {
+    expect(canManageCase("admin", null, "me")).toBe(true);
+    expect(canManageCase("orchestrator", "other", "me")).toBe(true);
+    expect(canManageCase("office", "me", "me")).toBe(true);
+    expect(canManageCase("office", "other", "me")).toBe(false);
+    expect(canManageCase("office", null, "me")).toBe(false);
+    expect(canManageCase("field", "me", "me")).toBe(false);
   });
 });
 
@@ -269,7 +315,7 @@ describe("approvalModel", () => {
     version,
     approval: decision ? { id: `A${version}`, decision, requested_by: "U", requested_at: `2026-11-1${version}T00:00:00Z` } : null,
   });
-  const base = { role: "office" as const, requiresApproval: true, status: "office_review" as const, versions: [] as VersionLite[], requiredMissing: 0 };
+  const base = { role: "office" as const, ownsCase: true, requiresApproval: true, status: "office_review" as const, versions: [] as VersionLite[], requiredMissing: 0 };
 
   it("needs a version before approval can be requested", () => {
     const m = approvalModel(base);
@@ -289,6 +335,12 @@ describe("approvalModel", () => {
     expect(approvalModel({ ...base, versions: [v(1, null)], status: "field_in_progress" }).requestBlocked).toMatch(/Field work/);
     expect(approvalModel({ ...base, versions: [v(1, "changes_requested")] }).requestBlocked).toMatch(/new version/);
     expect(approvalModel({ ...base, role: "orchestrator", versions: [v(1, null)] }).canRequest).toBe(false);
+    expect(approvalModel({ ...base, ownsCase: false, versions: [v(1, null)] }).requestBlocked).toMatch(/case owner/);
+    expect(approvalModel({ ...base, status: "received", versions: [v(1, null)] }).requestBlocked).toMatch(/not in office review/);
+  });
+
+  it("allows a desk-only case (assigned, never sent to the field)", () => {
+    expect(approvalModel({ ...base, status: "assigned", versions: [v(1, null)] }).canRequest).toBe(true);
   });
 
   it("lets orchestrators and admins decide a pending approval", () => {

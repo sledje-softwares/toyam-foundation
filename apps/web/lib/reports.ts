@@ -91,8 +91,13 @@ export const PRESENT_PREFIX = "p:"; // field was rendered (multi_choice sends no
 export const MAX_TEXT = 4000;
 export const MAX_LONG_TEXT = 20000;
 
-/** Fields mirrored on `cases`: editing the value alone would desynchronise them (gap G6). */
-export const READ_ONLY_KEYS: ReadonlySet<string> = new Set(["insurer_claim_no", "policy_no"]);
+/**
+ * Fields mirrored on `cases` (G6): editable here; the database copies them onto the case
+ * (trigger case_field_values_sync_case) and refuses a claim no. used by another case of the insurer.
+ */
+export const MIRRORED_KEYS: ReadonlySet<string> = new Set(["insurer_claim_no", "policy_no"]);
+/** Mirrored fields that cannot be emptied (cases.insurer_claim_no is not null). */
+export const NOT_CLEARABLE_KEYS: ReadonlySet<string> = new Set(["insurer_claim_no"]);
 
 export const BOOLEAN_OPTIONS = ["Yes", "No"] as const;
 
@@ -180,7 +185,7 @@ export function normaliseValue(type: FieldType, raw: string[], options: string[]
     return ok(JSON.stringify(picked));
   }
 
-  const s = (raw[0] ?? "").trim();
+  const s = (raw[0] ?? "").replace(/\r\n/g, "\n").trim();
   if (!s) return required ? fail("This field is required.") : ok(null);
 
   switch (type) {
@@ -232,10 +237,9 @@ export function comparable(type: FieldType, raw: string[] | string | null | unde
 export type SaveFieldDef = { id: string; key: string; field_type: FieldType; is_required: boolean; options?: unknown };
 
 export type SavePlan = {
-  writes: { field_id: string; key: string; value: string | null }[];
+  /** `expected` = the value as loaded; the database writes only while it is still the stored value. */
+  writes: { field_id: string; key: string; value: string | null; expected: string }[];
   errors: Record<string, string>;
-  /** key → the value someone else saved since the form was loaded ("" when cleared). */
-  conflicts: Record<string, string>;
 };
 
 /** Reads `p:` / `f:` / `o:` entries of a submitted form. */
@@ -260,19 +264,18 @@ export function readSectionForm(entries: Iterable<[string, unknown]>): {
 }
 
 /**
- * Plans a section save. Only fields that were rendered (`present`), are editable and whose value differs from the
- * value as loaded are written. A field whose stored value changed since loading is a conflict (not written).
- * Clearing a required field is allowed (a wrong intake value can be removed); required fields are enforced when
- * approval is requested, and progress shows them meanwhile.
+ * Plans a section save. Only fields that were rendered (`present`) and whose value differs from the value as
+ * loaded are sent; save_case_field_values compares each against the stored value atomically and returns the
+ * ones changed underneath as conflicts. Clearing a required field is allowed (a wrong intake value can be
+ * removed); required fields are enforced when approval is requested, and progress shows them meanwhile.
  */
 export function planSectionSave(
   fields: SaveFieldDef[],
   form: { present: Set<string>; values: Map<string, string[]>; originals: Map<string, string> },
-  current: Map<string, string | null>,
 ): SavePlan {
-  const plan: SavePlan = { writes: [], errors: {}, conflicts: {} };
+  const plan: SavePlan = { writes: [], errors: {} };
   for (const f of fields) {
-    if (!form.present.has(f.key) || READ_ONLY_KEYS.has(f.key)) continue;
+    if (!form.present.has(f.key)) continue;
     const submitted = form.values.get(f.key) ?? [];
     const original = form.originals.get(f.key) ?? "";
     if (comparable(f.field_type, submitted) === comparable(f.field_type, original)) continue;
@@ -284,15 +287,41 @@ export function planSectionSave(
       plan.errors[f.key] = norm.error;
       continue;
     }
-    const now = current.get(f.key) ?? "";
-    if (now !== original) {
-      plan.conflicts[f.key] = now;
+    if (norm.value === null && NOT_CLEARABLE_KEYS.has(f.key)) {
+      plan.errors[f.key] = "The claim number cannot be empty.";
       continue;
     }
-    if ((norm.value ?? "") === now) continue; // normalises to what is stored (e.g. spaces only)
-    plan.writes.push({ field_id: f.id, key: f.key, value: norm.value });
+    if ((norm.value ?? "") === original.replace(/\r\n/g, "\n").trim()) continue; // normalises to what is stored (e.g. spaces only)
+    plan.writes.push({ field_id: f.id, key: f.key, value: norm.value, expected: original });
   }
   return plan;
+}
+
+/** A field someone else saved since the form was loaded (from save_case_field_values). */
+export type Conflict = { value: string; by: string | null; at: string | null };
+export type SaveResult = { saved: string[]; conflicts: Record<string, Conflict> };
+
+/** Reads the jsonb result of save_case_field_values; null when it is not in the expected shape. */
+export function parseSaveResult(json: unknown): SaveResult | null {
+  if (!isRecord(json) || !Array.isArray(json.saved) || !isRecord(json.conflicts)) return null;
+  const saved = json.saved.filter((k): k is string => typeof k === "string");
+  const conflicts: Record<string, Conflict> = {};
+  for (const [key, c] of Object.entries(json.conflicts)) {
+    if (!isRecord(c)) return null;
+    conflicts[key] = {
+      value: typeof c.value === "string" ? c.value : "",
+      by: typeof c.updated_by_name === "string" ? c.updated_by_name : null,
+      at: typeof c.updated_at === "string" ? c.updated_at : null,
+    };
+  }
+  return { saved, conflicts };
+}
+
+/** What the form says after a save that met conflicts (the other fields were saved). */
+export function conflictMessage(saved: number, conflicts: number): string {
+  const head = saved ? `Saved ${saved} ${saved === 1 ? "field" : "fields"}. ` : "";
+  const what = conflicts === 1 ? "A field was" : `${conflicts} fields were`;
+  return `${head}${what} changed by someone else while you were editing and not saved. Their value is shown under the field; save again to replace it.`;
 }
 
 /** Result of the saveSection server action (app/(app)/reports/[caseRef]/actions.ts). */
@@ -301,6 +330,8 @@ export type SectionState = {
   fieldErrors: Record<string, string>;
   /** key → value saved by someone else since the form was loaded. */
   conflicts: Record<string, string>;
+  /** key → who saved it and when (same keys as `conflicts`). */
+  conflictInfo: Record<string, { by: string | null; at: string | null }>;
   /** What was submitted, so the form keeps it after a failed attempt (React resets forms after an action). */
   values: Record<string, string[]>;
   /** Set on success; the form shows a toast and remounts with the stored values. */
@@ -308,7 +339,7 @@ export type SectionState = {
   saved: number;
 };
 
-export const INITIAL_SECTION_STATE: SectionState = { error: null, fieldErrors: {}, conflicts: {}, values: {}, savedAt: null, saved: 0 };
+export const INITIAL_SECTION_STATE: SectionState = { error: null, fieldErrors: {}, conflicts: {}, conflictInfo: {}, values: {}, savedAt: null, saved: 0 };
 
 export type ActionResult = { error: string | null };
 export type LinkResult = { error: string | null; url: string | null };
@@ -344,7 +375,8 @@ export type WorkspaceField = {
   options: string[];
   value: string;
   source: FieldSource | null;
-  readOnly: boolean;
+  /** Copied onto the case record when saved (claim / policy no., G6). */
+  mirrored: boolean;
   /** Stored value would not survive the native input: render as text. */
   asText: boolean;
 };
@@ -387,7 +419,7 @@ export function buildWorkspace(sections: SectionDef[], fields: FieldDef[], value
             options,
             value,
             source: row && filled(value) ? row.source : null,
-            readOnly: READ_ONLY_KEYS.has(f.key),
+            mirrored: MIRRORED_KEYS.has(f.key),
             asText: !rendersNatively(f.field_type, value),
           };
         });
@@ -429,22 +461,36 @@ export function focusSection(sections: WorkspaceSection[], requested: string | n
 }
 
 // ---------------------------------------------------------------------
-// Who may edit
+// Who may edit (D44: office staff act on the cases they own; D45: orchestrators edit reports too)
 // ---------------------------------------------------------------------
+/** Same list as private.report_editable_status() in the database. */
 export const EDITABLE_STATUSES: CaseStatus[] = STAGE_STATUSES.in_progress;
-export const EDITOR_ROLES: UserRole[] = ["admin", "office"];
+export const EDITOR_ROLES: UserRole[] = ["admin", "orchestrator", "office"];
+
+/** Mirrors private.can_manage_case(): admin and orchestrator on every case, office on the cases they own. */
+export function canManageCase(role: UserRole, ownerId: string | null | undefined, userId: string): boolean {
+  if (role === "admin" || role === "orchestrator") return true;
+  return role === "office" && !!ownerId && ownerId === userId;
+}
 
 export type EditLock = { editable: true } | { editable: false; reason: string };
 
-export function editLock(role: UserRole, status: CaseStatus): EditLock {
-  if (!EDITOR_ROLES.includes(role)) {
-    return { editable: false, reason: "Orchestrators see the report read-only while it is filled. Use a staff note to ask for changes." };
+export function editLock(role: UserRole, status: CaseStatus, ownsCase: boolean): EditLock {
+  if (!EDITOR_ROLES.includes(role)) return { editable: false, reason: "Only office staff edit reports." };
+  if (role === "office" && !ownsCase) {
+    return {
+      editable: false,
+      reason: "This case belongs to another employee, so the report is read-only for you. Ask an orchestrator to reassign it if you should work on it.",
+    };
   }
   if (status === "orchestrator_review") {
     return { editable: false, reason: "A version is waiting for approval or approved, so the values are locked. The orchestrator can request changes to unlock them." };
   }
   if (status === "submitted" || status === "closed") {
-    return { editable: false, reason: "The report has been sent to the insurer. Reopening a sent case is not built yet (8.5)." };
+    return {
+      editable: false,
+      reason: status === "closed" ? "The case is closed." : "The report has been sent to the insurer. Reopen the case from Submissions to change it.",
+    };
   }
   if (status === "cancelled") return { editable: false, reason: "The case is cancelled." };
   return { editable: true };
@@ -548,8 +594,13 @@ export type ApprovalModel = {
 export const APPROVER_ROLES: UserRole[] = ["orchestrator", "admin"];
 export const REQUESTER_ROLES: UserRole[] = ["office", "admin"];
 
+/** Statuses in which approval can be requested (report_approvals_guard also refuses open field work). */
+export const REQUEST_STATUSES: CaseStatus[] = ["assigned", "office_review"];
+
 export function approvalModel(input: {
   role: UserRole;
+  /** Office staff request approval only on cases they own (D44). */
+  ownsCase: boolean;
   requiresApproval: boolean;
   status: CaseStatus;
   versions: VersionLite[];
@@ -568,11 +619,12 @@ export function approvalModel(input: {
   let requestBlocked: string | null = null;
   if (state === "no_version" || state === "not_requested" || state === "changes_requested") {
     if (!REQUESTER_ROLES.includes(input.role)) requestBlocked = "Office staff request approval.";
+    else if (input.role === "office" && !input.ownsCase) requestBlocked = "Only the case owner requests approval.";
     else if (state === "no_version") requestBlocked = "Generate a report version first (7.7, not built yet).";
     else if (state === "changes_requested") requestBlocked = "Changes were requested on the latest version. Generate a new version first.";
     else if (input.requiredMissing > 0)
       requestBlocked = `${input.requiredMissing} required ${input.requiredMissing === 1 ? "field is" : "fields are"} empty.`;
-    else if (input.status !== "office_review")
+    else if (!REQUEST_STATUSES.includes(input.status))
       requestBlocked = input.status === "field_in_progress" ? "Field work is still open." : "The case is not in office review.";
   }
   return {

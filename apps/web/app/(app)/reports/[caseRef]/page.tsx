@@ -4,7 +4,7 @@ import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import type { SearchParams } from "@/lib/list-params";
-import { approvalModel, dueLabel, editLock, REPORT_STAGES, reportStage, workspaceTotals } from "@/lib/reports";
+import { approvalModel, canManageCase, dueLabel, editLock, REPORT_STAGES, reportStage, workspaceTotals } from "@/lib/reports";
 import { Badge, ErrorState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 import { ApprovalCard } from "@/components/reports/approval-card";
 import { EvidencePanel } from "@/components/reports/evidence-panel";
@@ -45,7 +45,10 @@ export default async function ReportWorkspacePage({
 
   const c = ws.case;
   const href = `/reports/${encodeURIComponent(c.case_ref)}`;
-  const lock = editLock(me.role, c.status);
+  const ownsCase = c.office_owner_id === me.id;
+  const lock = editLock(me.role, c.status, ownsCase);
+  // Relevance and labels stay open after approval (they do not change the values); ownership as D44.
+  const filesEditable = canManageCase(me.role, c.office_owner_id, me.id);
   const totals = workspaceTotals(ws.sections);
   const stage = reportStage(
     c.status,
@@ -53,6 +56,7 @@ export default async function ReportWorkspacePage({
   );
   const approval = approvalModel({
     role: me.role,
+    ownsCase,
     requiresApproval: ws.template?.requires_approval ?? true,
     status: c.status,
     versions: ws.versions,
@@ -107,9 +111,11 @@ export default async function ReportWorkspacePage({
           <InlineAlert title="Read only">{lock.reason}</InlineAlert>
         </div>
       )}
-      {lock.editable && me.role === "office" && c.office_owner_id && c.office_owner_id !== me.id && (
+      {lock.editable && me.role !== "office" && !ownsCase && (
         <div className="mb-4">
-          <InlineAlert tone="warning">This case belongs to {c.owner ?? "another employee"}. Your changes are recorded under your name.</InlineAlert>
+          <InlineAlert tone="info">
+            This case belongs to {c.owner ?? "nobody yet"}. You can edit the report; your changes are recorded under your name.
+          </InlineAlert>
         </div>
       )}
 
@@ -207,7 +213,7 @@ export default async function ReportWorkspacePage({
                   categories={ws.focusedCategories}
                   panel={ws.panel}
                   caseRef={c.case_ref}
-                  editable={me.role === "office" || me.role === "admin"}
+                  editable={filesEditable}
                   labelOptions={ws.labelOptions}
                   actions={{ setRelevance, correctLabels, evidenceLink }}
                 />

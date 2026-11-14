@@ -1,5 +1,68 @@
 import { describe, expect, it } from "vitest";
-import { formatsLabel, isAckFilter, isChannel, latestPerCase, recipientsSummary, submissionState } from "./submissions";
+import {
+  AckInput,
+  formatsLabel,
+  isAckFilter,
+  isChannel,
+  latestPerCase,
+  ManualInput,
+  recipientsSummary,
+  ReopenInput,
+  rowActions,
+  safeBack,
+  submissionState,
+} from "./submissions";
+
+describe("reopened mark", () => {
+  it("is reopened when reopen_case() marked the submission, even after the case is closed again", () => {
+    expect(submissionState({ id: "a", submitted_at: "2026-11-10T10:00:00Z", reopened_at: "2026-11-12T10:00:00Z" }, "closed", "a")).toBe("reopened");
+  });
+});
+
+describe("rowActions", () => {
+  const base = { canManage: true, acknowledged: false, state: "sent" as const, caseStatus: "submitted" as const };
+  it("offers acknowledgement once and reopen on the latest submission of a submitted case", () => {
+    expect(rowActions(base)).toEqual({ ack: true, reopen: true });
+    expect(rowActions({ ...base, acknowledged: true })).toEqual({ ack: false, reopen: true });
+    expect(rowActions({ ...base, state: "resent" }).reopen).toBe(false);
+    expect(rowActions({ ...base, caseStatus: "office_review", state: "reopened" }).reopen).toBe(false);
+  });
+  it("offers nothing to office staff who do not own the case", () => {
+    expect(rowActions({ ...base, canManage: false })).toEqual({ ack: false, reopen: false });
+  });
+});
+
+describe("action inputs", () => {
+  const id = "3d000000-0000-4000-8000-000000000001";
+  it("reads acknowledgement time as India time; empty = now", () => {
+    expect(AckInput.parse({ submission_id: id, ack_at: "2026-11-15T10:30", insurer_reference: "", note: " ok " })).toEqual({
+      submission_id: id,
+      ack_at: "2026-11-15T05:00:00.000Z",
+      insurer_reference: null,
+      note: "ok",
+    });
+    expect(AckInput.parse({ submission_id: id, ack_at: "", insurer_reference: "R1", note: "" }).ack_at).toBeNull();
+    expect(AckInput.safeParse({ submission_id: id, ack_at: "2026-02-31T10:00", insurer_reference: "", note: "" }).success).toBe(false);
+  });
+  it("needs a portal reference for portal and a note for other", () => {
+    const m = { case_ref: "INV-2026-000123", channel: "portal", formats: ["pdf"], submitted_at: "", insurer_reference: "", note: "" };
+    expect(ManualInput.safeParse(m).error?.issues[0]?.message).toMatch(/portal reference/);
+    expect(ManualInput.safeParse({ ...m, insurer_reference: "P-1" }).success).toBe(true);
+    expect(ManualInput.safeParse({ ...m, channel: "other" }).error?.issues[0]?.message).toMatch(/how the report was delivered/);
+    expect(ManualInput.safeParse({ ...m, channel: "email", insurer_reference: "P-1" }).success).toBe(false);
+    expect(ManualInput.safeParse({ ...m, formats: [], insurer_reference: "P-1" }).success).toBe(false);
+  });
+  it("needs a reopen reason", () => {
+    expect(ReopenInput.safeParse({ case_id: id, reason: " a " }).success).toBe(false);
+    expect(ReopenInput.parse({ case_id: id, reason: " Insurer query " }).reason).toBe("Insurer query");
+  });
+  it("redirects back only to the submissions list", () => {
+    expect(safeBack("/submissions?ack=awaiting&page=2")).toBe("/submissions?ack=awaiting&page=2");
+    expect(safeBack("https://evil.example/")).toBe("/submissions");
+    expect(safeBack("/submissions//evil")).toBe("/submissions");
+    expect(safeBack(null)).toBe("/submissions");
+  });
+});
 
 describe("latestPerCase / submissionState", () => {
   const rows = [

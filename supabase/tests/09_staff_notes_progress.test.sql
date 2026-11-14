@@ -84,6 +84,7 @@ select throws_ok($$insert into public.case_messages (case_id, sender_id, kind, b
 -- B. Report progress and field history
 -- =====================================================================
 set local request.jwt.claims to '{"sub":"19000000-0000-4000-8000-0000000000b1","role":"authenticated"}';
+reset role;  -- values are written by intake / save_case_field_values (19_report_guards); here as the system, as N Office
 insert into public.case_field_values (case_id, field_id, value, source)
 select '39000000-0000-4000-8000-000000000001', f.id, v.val, v.src::public.field_value_source
   from public.case_template_fields f
@@ -94,6 +95,7 @@ update public.case_field_values set value = '3,267 km', source = 'office'
  where case_id = '39000000-0000-4000-8000-000000000001'
    and field_id = (select f.id from public.case_template_fields f join public.cases c on c.template_id = f.template_id
                     where c.id = '39000000-0000-4000-8000-000000000001' and f.key = 'odometer');
+set local role authenticated;
 
 set local request.jwt.claims to '{"sub":"19000000-0000-4000-8000-0000000000c1","role":"authenticated"}';
 select results_eq($$select section_key, fields_total::int, required_total::int, fields_filled::int, required_filled::int

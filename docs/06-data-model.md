@@ -15,6 +15,7 @@ Source of truth: all files in `supabase/migrations/` applied in order. Tests: `s
 | `20261113000200_intake` | Email intake: `intake_config()`, `intake_ingest()`, review queue actions, failure / retry (below) |
 | `20261114000000_staff_notes_progress` | Staff-only messages, report progress view, field history, LLM label descriptions, field matches, realtime (below) |
 | `20261114100000_label_first` | Stage order label → OCR, `needs_ocr` categories, label `needs_detail` / `model`, `ocr_wanted()` (D34, below) |
+| `20261115800000_report_guards` | `save_case_field_values()`, claim / policy no. sync, approval request rules, submission records, acknowledgement, manual submission, reopen (D44/D45, below) |
 
 ## Core entities
 
@@ -144,6 +145,20 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 | `device_outbox_status` | Files waiting on each phone: `pending_count`, `pending_bytes`, `oldest_pending_at` (phone clock), `reported_at` (server clock). Written only by `report_outbox_status()` / `drain_report_outbox()`; staff read all rows, field users their own |
 | `case_outbox_status(case)` | Thread header: operators who held a task on the case and what waits on their phones (staff; field users only their own) |
 
+### Report guards (`20261115800000_report_guards.sql`, D44, D45)
+
+| Object | Purpose |
+|---|---|
+| `private.can_manage_case(case)` | Admin / orchestrator on every case, office on the cases they own (D44; created here only if missing) |
+| `private.report_editable_status(status)` | Report values change only in `received`, `intake_confirmed`, `assigned`, `field_in_progress`, `office_review` |
+| `save_case_field_values(case, values, expected)` | The only staff write path for values: `can_manage_case`, editable status, case row locked, compare-and-set per field against `expected`; conflicting fields returned with value, source, who and when, not written; source `office`. Direct staff insert / update / delete on `case_field_values` revoked (intake writes through definer functions) |
+| `case_field_values_sync_case` trigger | Fields `insurer_claim_no` / `policy_no` are copied onto `cases`; a claim no. used by another case of the insurer is refused (`23505`), the claim no. cannot be cleared. `cases_mirror_guard`: clients cannot change those case columns directly when the template has the field |
+| `report_approvals_guard` (changed) | Request needs `can_manage_case` (system jobs exempt), status `assigned` / `office_review` with no open task, and every required template field filled |
+| `submissions` additions | `acknowledged_by`, `ack_note`, `reopened_at`, `reopened_by`, `reopen_reason`. Staff read; insert only as themselves on cases they manage; no update / delete for API roles except set-once acknowledgement, insurer reference, sender ids and reopen marks (`submissions_record_guard`) |
+| `record_submission_ack(submission, at, note, insurer_reference)` | Once; not in the future; staff-only thread event |
+| `record_manual_submission(case, channel, formats, insurer_reference, note, submitted_at, report)` | Portal (reference required) or other (note required); latest version; approval and formats checked by the submission guard |
+| `reopen_case(case, reason)` | `submitted` → `office_review`; reason in the status history note; latest submission marked reopened; staff-only thread event; owner (else orchestrators) notified `case_reopened` |
+
 ## Case status automation
 
 | Event | Status change |
@@ -152,9 +167,10 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 | Office employee assigned | `received` → `assigned` |
 | Field task / request created | `assigned`, `office_review`, `orchestrator_review` → `field_in_progress` |
 | Last open task completed or cancelled | `field_in_progress` → `office_review` |
-| Approval requested | → `orchestrator_review` |
+| Approval requested (no open task, required fields filled) | `assigned`, `office_review` → `orchestrator_review` |
 | Changes requested | `orchestrator_review` → `office_review` |
 | Submission recorded | → `submitted` |
+| Case reopened on an insurer query (`reopen_case`) | `submitted` → `office_review` |
 
 Every change is written to `case_status_history` and shown in the thread as a system message where relevant.
 

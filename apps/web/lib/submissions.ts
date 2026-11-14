@@ -3,8 +3,10 @@
  * Design: docs/12-office-pages/reports.md.
  */
 
+import { z } from "zod";
 import type { Tone } from "@/components/ui/badge";
 import type { Enums } from "@/lib/database.types";
+import { parseIstDateTime } from "./tasks-form";
 
 type CaseStatus = Enums<"case_status">;
 type Channel = Enums<"submission_channel">;
@@ -34,12 +36,92 @@ export const SUBMISSION_STATES: Record<SubmissionState, { label: string; tone: T
 const ACTIVE: CaseStatus[] = ["received", "intake_confirmed", "assigned", "field_in_progress", "office_review", "orchestrator_review"];
 
 /**
- * A submission is superseded when its case has a later one; the latest is "reopened" when the case went back to
- * an active status after sending (needs reopen, gap G8), else "sent".
+ * A submission is superseded when its case has a later one; the latest is "reopened" when reopen_case() marked it
+ * (or the case is active again after sending), else "sent".
  */
-export function submissionState(row: { id: string; submitted_at: string }, caseStatus: CaseStatus, latestByCase: string | undefined): SubmissionState {
+export function submissionState(
+  row: { id: string; submitted_at: string; reopened_at?: string | null },
+  caseStatus: CaseStatus,
+  latestByCase: string | undefined,
+): SubmissionState {
   if (latestByCase && latestByCase !== row.id) return "resent";
-  return ACTIVE.includes(caseStatus) ? "reopened" : "sent";
+  return row.reopened_at || ACTIVE.includes(caseStatus) ? "reopened" : "sent";
+}
+
+// ---------------------------------------------------------------------
+// Actions (app/(app)/submissions/actions.ts): acknowledgement, portal / other submission, reopen
+// ---------------------------------------------------------------------
+/** Channels recorded by hand; email submissions are recorded by the sender (8.2). */
+export const MANUAL_CHANNELS = ["portal", "other"] as const satisfies readonly Channel[];
+export const FORMATS = ["pdf", "docx"] as const;
+
+/** Actions on a row: acknowledgement while none is recorded; reopen on the latest submission of a submitted case. */
+export function rowActions(input: { canManage: boolean; acknowledged: boolean; state: SubmissionState; caseStatus: CaseStatus }): {
+  ack: boolean;
+  reopen: boolean;
+} {
+  return {
+    ack: input.canManage && !input.acknowledged,
+    reopen: input.canManage && input.state === "sent" && input.caseStatus === "submitted",
+  };
+}
+
+const optionalText = (max: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, { message: `Keep the ${label} under ${max} characters.` })
+    .transform((v) => (v ? v : null));
+
+/** "" = now; else a datetime-local value read as India time. */
+const istTime = z
+  .string()
+  .trim()
+  .transform((v, ctx) => {
+    if (!v) return null;
+    const d = parseIstDateTime(v);
+    if (!d) {
+      ctx.addIssue({ code: "custom", message: "Enter a date and time." });
+      return z.NEVER;
+    }
+    return d.toISOString();
+  });
+
+const Guid = z.guid();
+
+export const AckInput = z.object({
+  submission_id: Guid,
+  ack_at: istTime,
+  insurer_reference: optionalText(200, "reference"),
+  note: optionalText(1000, "note"),
+});
+
+export const ManualInput = z
+  .object({
+    case_ref: z.string().trim().regex(/^[A-Za-z0-9_\-/]{3,40}$/, { message: "Enter the case reference, e.g. INV-2026-000123." }),
+    channel: z.enum(MANUAL_CHANNELS, { message: "Choose portal or other." }),
+    formats: z.array(z.enum(FORMATS)).min(1, { message: "Choose the formats that were delivered." }),
+    submitted_at: istTime,
+    insurer_reference: optionalText(200, "reference"),
+    note: optionalText(1000, "note"),
+  })
+  .refine((v) => v.channel !== "portal" || v.insurer_reference, { message: "Enter the portal reference number.", path: ["insurer_reference"] })
+  .refine((v) => v.channel !== "other" || v.note, { message: "Say how the report was delivered.", path: ["note"] });
+
+export const ReopenInput = z.object({
+  case_id: Guid,
+  reason: z.string().trim().min(3, { message: "Say why the case is reopened (at least 3 characters)." }).max(500, { message: "Keep the reason under 500 characters." }),
+});
+
+/** First validation message of a failed parse. */
+export function firstIssue(error: z.ZodError): string {
+  return error.issues[0]?.message ?? "Check the form and try again.";
+}
+
+/** Only redirect back to the submissions list (keeps its filters). */
+export function safeBack(raw: unknown): string {
+  const s = typeof raw === "string" ? raw : "";
+  return /^\/submissions(\?[^\s]*)?$/.test(s) && !s.includes("//") ? s : "/submissions";
 }
 
 /** Latest submission id per case among rows of the same cases. */
