@@ -130,6 +130,20 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 | `evidence_labels.needs_detail`, `detail_reason`, `model` | Labeller says the file must be read at full resolution, and why; model that produced the label |
 | `ocr_wanted(evidence)` | Service role only: documents, unlabelled files, and files with an active label whose category needs OCR or that needs detail; never withdrawn files |
 
+### Offline, late uploads and remote sign-out (`20261114400000_offline_drain.sql`, D43)
+
+| Object | Purpose |
+|---|---|
+| `profiles.deactivated_at` | Server time of the last deactivation (trigger on `is_active`; cleared on reactivation; only the service role / owner may set it directly) |
+| `task_holds` | Who held which task from when to when (server clock): opened on assignment, closed when the task is completed, cancelled or reassigned. Staff read; no client writes |
+| `private.field_upload_allowed(task, profile, captured_at)` | The D43 window: device capture time within the hold, not in the future, before deactivation; server time within 72 h of the hold ending (`late_upload_grace_hours`) and within 7 days of deactivation (`drain_window_days`) |
+| `post_thread_message()` (changed) | A field operator's files go through the late path when they hold no open task on the case; each late file is audited `LATE_UPLOAD` (duplicates skipped, `LATE_UPLOAD_DUPLICATE`) |
+| `can_upload_evidence_at(task, device_captured_at)` | Presigner check incl. late uploads |
+| `field_devices` | Per-phone drain secret, SHA-256 only, registered while active (`register_field_device()`); no client access |
+| `drain_status / drain_authorize_upload / drain_post_message / drain_report_outbox / drain_finish` | Service role only (edge function `field-drain`): deactivated operator's phone sends files captured before deactivation, then finishes; audited `DRAIN_PRESIGN`, `DRAIN_UPLOAD`, `DRAIN_FINISHED` |
+| `device_outbox_status` | Files waiting on each phone: `pending_count`, `pending_bytes`, `oldest_pending_at` (phone clock), `reported_at` (server clock). Written only by `report_outbox_status()` / `drain_report_outbox()`; staff read all rows, field users their own |
+| `case_outbox_status(case)` | Thread header: operators who held a task on the case and what waits on their phones (staff; field users only their own) |
+
 ## Case status automation
 
 | Event | Status change |
@@ -158,6 +172,7 @@ Every change is written to `case_status_history` and shown in the thread as a sy
 | Annexures | Only non-withdrawn, not-irrelevant evidence of the same case |
 | Approval before sending | Submission guard |
 | Audit trail | `private.audit_row` on core and new tables |
+| Late / drained files (D43) | Accepted only inside the server-clock window of `field_upload_allowed()`; every file audited with the hold and deactivation times |
 
 ## Access model (row-level security)
 
@@ -166,7 +181,7 @@ Every change is written to `case_status_history` and shown in the thread as a sy
 | Admin | Everything, incl. templates, categories, settings, audit log |
 | Orchestrator | Operational read/write; assignment rules; reassign; approve |
 | Office | Operational read/write; request approval; cannot change the case owner or decide approvals |
-| Field | Cases where they hold a task; intake fields of those cases; thread messages except staff-only ones; own files plus files posted into those threads (not withdrawn, not staff-only); categories; own notifications. Never emails, extractions, reports, approvals, submissions, OCR, field matches or templates |
+| Field | Cases where they hold a task; intake fields of those cases; thread messages except staff-only ones; own files plus files posted into those threads (not withdrawn, not staff-only); categories; own notifications; own outbox rows. Never emails, extractions, reports, approvals, submissions, OCR, field matches or templates |
 | Service role | Intake, pipeline, sender, archive and escalation jobs |
 
 ## Deliberate omissions

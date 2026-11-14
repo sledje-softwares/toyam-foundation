@@ -581,6 +581,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"device_outbox_status": {
+                  Row: {
+                    "device_id": string,"oldest_pending_at": string | null,"pending_bytes": number,"pending_count": number,"profile_id": string,"reported_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "device_id": string,"oldest_pending_at"?: string | null,"pending_bytes": number,"pending_count": number,"profile_id": string,"reported_at"?: string
+                  }
+                  Update: {
+                    "device_id"?: string,"oldest_pending_at"?: string | null,"pending_bytes"?: number,"pending_count"?: number,"profile_id"?: string,"reported_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "device_outbox_status_device_id_fkey"
+      columns: ["device_id"]
+isOneToOne: true
+      referencedRelation: "field_devices"
+      referencedColumns: ["device_id"]
+    },{
+      foreignKeyName: "device_outbox_status_profile_id_fkey"
+      columns: ["profile_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"device_tokens": {
                   Row: {
                     "platform": string,"token": string,"updated_at": string,"user_id": string
@@ -881,6 +907,26 @@ isOneToOne: false
       referencedColumns: ["evidence_id"]
     }
                   ]
+                },"field_devices": {
+                  Row: {
+                    "device_id": string,"finished_at": string | null,"platform": string,"profile_id": string,"registered_at": string,"rotated_at": string | null,"secret_sha256": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "device_id": string,"finished_at"?: string | null,"platform"?: string,"profile_id": string,"registered_at"?: string,"rotated_at"?: string | null,"secret_sha256": string
+                  }
+                  Update: {
+                    "device_id"?: string,"finished_at"?: string | null,"platform"?: string,"profile_id"?: string,"registered_at"?: string,"rotated_at"?: string | null,"secret_sha256"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "field_devices_profile_id_fkey"
+      columns: ["profile_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"field_suggestions": {
                   Row: {
                     "block_index": number | null,"confidence": number | null,"created_at": string,"decided_at": string | null,"decided_by": string | null,"evidence_id": string,"field_id": string,"id": string,"ocr_id": string | null,"source": Database["public"]['Enums']["label_source"],"status": Database["public"]['Enums']["suggestion_status"],"value": string
@@ -1087,14 +1133,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "availability": Database["public"]['Enums']["staff_availability"],"availability_until": string | null,"created_at": string,"full_name": string,"id": string,"is_active": boolean,"max_open_cases": number | null,"phone": string | null,"region": string | null,"role": Database["public"]['Enums']["user_role"],"updated_at": string
+                    "availability": Database["public"]['Enums']["staff_availability"],"availability_until": string | null,"created_at": string,"deactivated_at": string | null,"full_name": string,"id": string,"is_active": boolean,"max_open_cases": number | null,"phone": string | null,"region": string | null,"role": Database["public"]['Enums']["user_role"],"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "availability"?: Database["public"]['Enums']["staff_availability"],"availability_until"?: string | null,"created_at"?: string,"full_name": string,"id": string,"is_active"?: boolean,"max_open_cases"?: number | null,"phone"?: string | null,"region"?: string | null,"role": Database["public"]['Enums']["user_role"],"updated_at"?: string
+                    "availability"?: Database["public"]['Enums']["staff_availability"],"availability_until"?: string | null,"created_at"?: string,"deactivated_at"?: string | null,"full_name": string,"id": string,"is_active"?: boolean,"max_open_cases"?: number | null,"phone"?: string | null,"region"?: string | null,"role": Database["public"]['Enums']["user_role"],"updated_at"?: string
                   }
                   Update: {
-                    "availability"?: Database["public"]['Enums']["staff_availability"],"availability_until"?: string | null,"created_at"?: string,"full_name"?: string,"id"?: string,"is_active"?: boolean,"max_open_cases"?: number | null,"phone"?: string | null,"region"?: string | null,"role"?: Database["public"]['Enums']["user_role"],"updated_at"?: string
+                    "availability"?: Database["public"]['Enums']["staff_availability"],"availability_until"?: string | null,"created_at"?: string,"deactivated_at"?: string | null,"full_name"?: string,"id"?: string,"is_active"?: boolean,"max_open_cases"?: number | null,"phone"?: string | null,"region"?: string | null,"role"?: Database["public"]['Enums']["user_role"],"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -1321,6 +1367,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"task_holds": {
+                  Row: {
+                    "held_from": string,"held_until": string | null,"id": number,"profile_id": string,"task_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "held_from"?: string,"held_until"?: string | null,"id"?: never,"profile_id": string,"task_id": string
+                  }
+                  Update: {
+                    "held_from"?: string,"held_until"?: string | null,"id"?: never,"profile_id"?: string,"task_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "task_holds_profile_id_fkey"
+      columns: ["profile_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "task_holds_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"tasks": {
                   Row: {
                     "assignee_id": string | null,"case_id": string,"completed_at": string | null,"created_at": string,"created_by": string | null,"due_at": string | null,"id": string,"instructions": string | null,"kind": Database["public"]['Enums']["task_kind"],"location_lat": number | null,"location_lng": number | null,"location_text": string | null,"parent_task_id": string | null,"reason": string | null,"started_at": string | null,"status": Database["public"]['Enums']["task_status"],"title": string,"updated_at": string
@@ -1474,9 +1546,17 @@ isOneToOne: false
 "can_upload_evidence":
 { Args: { "p_task_id": string }; Returns: boolean
                            },
+"can_upload_evidence_at":
+{ Args: { "p_device_captured_at": string,"p_task_id": string }; Returns: boolean
+                           },
 "case_field_history":
 { Args: { "p_case_id": string }; Returns: {
               "action": string,"actor_id": string,"actor_name": string,"changed_at": string,"field_key": string,"new_value": string,"old_value": string,"source": string
+            }[]
+                           },
+"case_outbox_status":
+{ Args: { "p_case_id": string }; Returns: {
+              "device_id": string,"full_name": string,"is_active": boolean,"oldest_pending_at": string,"pending_bytes": number,"pending_count": number,"profile_id": string,"reported_at": string
             }[]
                            },
 "case_thread_state":
@@ -1520,6 +1600,23 @@ isOneToOne: false
                            },
 "create_field_task":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_checklist_template_id"?: string,"p_due_at"?: string,"p_instructions"?: string,"p_kind"?: Database["public"]['Enums']["task_kind"],"p_location_text"?: string,"p_parent_task_id"?: string,"p_title": string }; Returns: string
+                           },
+"drain_authorize_upload":
+{ Args: { "p_device_captured_at": string,"p_device_id": string,"p_secret": string,"p_sha256": string,"p_task_id": string }; Returns: string
+                           },
+"drain_finish":
+{ Args: { "p_device_id": string,"p_discarded_count"?: number,"p_secret": string }; Returns: undefined
+                           },
+"drain_post_message":
+{ Args: { "p_body"?: string,"p_case_id": string,"p_client_message_id": string,"p_device_id": string,"p_items"?: Json,"p_kind": Database["public"]['Enums']["message_kind"],"p_reply_to"?: string,"p_secret": string,"p_task_id"?: string }; Returns: string
+                           },
+"drain_report_outbox":
+{ Args: { "p_device_id": string,"p_oldest_pending_at"?: string,"p_pending_bytes": number,"p_pending_count": number,"p_secret": string }; Returns: undefined
+                           },
+"drain_status":
+{ Args: { "p_device_id": string,"p_secret": string }; Returns: {
+              "deactivated_at": string,"drain_until": string,"state": string
+            }[]
                            },
 "enqueue_reprocessing":
 { Args: { "p_evidence_ids": (string)[],"p_pipeline_version": string,"p_stages": (Database["public"]['Enums']["processing_stage"])[] }; Returns: number
@@ -1589,8 +1686,14 @@ isOneToOne: false
 "reassign_case":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_reason": string }; Returns: undefined
                            },
+"register_field_device":
+{ Args: { "p_device_id": string,"p_platform"?: string,"p_secret_sha256": string }; Returns: undefined
+                           },
 "reject_intake":
 { Args: { "p_extraction_id": string,"p_reason": string }; Returns: undefined
+                           },
+"report_outbox_status":
+{ Args: { "p_device_id": string,"p_oldest_pending_at"?: string,"p_pending_bytes": number,"p_pending_count": number }; Returns: undefined
                            },
 "request_intake_retry":
 { Args: { "p_email_id": string }; Returns: string

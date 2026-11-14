@@ -98,18 +98,18 @@ Detailed UX: `docs/11-field-app.md`.
 
 | # | Piece | Output | Status |
 |---|---|---|---|
-| 5.1 | Sign-in & session | Mobile + password; persistent; remote sign-out | ⬜ |
+| 5.1 | Sign-in & session | Mobile + password; persistent; remote sign-out = send what was captured before deactivation, then wipe (D43: `register_field_device()`, edge function `field-drain`); sign-out blocked while files wait | 🗄 / ⬜ |
 | 5.2 | Case list | Open / Completed tabs, last message, unread badge (`field_case_list()`) | 🗄 / ⬜ |
 | 5.3 | Case thread | Messages, system events, requests, replies; read pointer | 🗄 / ⬜ |
 | 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | ⬜ |
 | 5.5 | Gallery & document picker | Multi-select; EXIF kept | ⬜ |
 | 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build) | ⬜ |
-| 5.7 | Offline queue & ticks | 🕓 queued → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`) | 🗄 / ⬜ |
+| 5.7 | Offline queue & ticks | 🕓 saved on this phone → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`). D43 offline experience (docs/11): amber offline bar, Outbox screen, WorkManager background upload, freshness labels, hollow pending ticks, "All N files sent ✓", low-storage warning; late uploads after a task closes (72 h); `report_outbox_status()` → office sees files waiting on a phone (`case_outbox_status()`) | 🗄 / ⬜ |
 | 5.8 | Pinned checklist & tags | Progress from `v_case_checklist`; optional one-tap category on send | 🗄 / ⬜ |
 | 5.9 | Voice notes & text | Recorded statements with consent prompt | ⬜ |
 | 5.10 | Withdraw | Within the window (D19) | 🗄 / ⬜ |
 | 5.11 | On-device OCR | ML Kit text recognition sent with the file | 🗄 / ⬜ |
-| 5.12 | Push notifications | FCM; `device_tokens` | 🗄 / ⬜ |
+| 5.12 | Push notifications | FCM; `device_tokens`; local notifications for "All N files sent ✓" and the 6 h gentle prompt (D43) | 🗄 / ⬜ |
 | 5.13 | Build & distribution | Signed APK / Play internal track; low-end device testing | ⬜ |
 
 **Exit:** a full visit works offline; files appear in the office thread within minutes of reconnecting; share-from-gallery works from WhatsApp, Files and Gallery.
