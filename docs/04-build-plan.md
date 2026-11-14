@@ -75,7 +75,7 @@ Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and
 | 3.6 | AI fallback | Only when required fields are missing; output goes to the review queue (D26) | ⬜ deferred until real mails show a need (D25) |
 | 3.7 | Case creation & matching | Create case (`template_id`, `case_field_values`) when complete; attach follow-ups by thread / claim no. | ✅ `intake_ingest()` |
 | 3.8 | Insurer attachments → evidence | `capture_source = email_attachment`; labelled by file-name rules | ✅ (labelling runs in M6) |
-| 3.9 | Intake review screen | Uncertain cases only; highlight missing / low-confidence fields | 🗄 `confirm_intake()` / `reject_intake()`; ⬜ UI |
+| 3.9 | Intake review screen | Uncertain cases only; highlight missing / low-confidence fields | 🗄 `confirm_intake()` / `reject_intake()`; ✅ UI (`/intake`, `/intake/[id]`, nav badge) |
 | 3.10 | Error handling | Failed emails visible with retry | 🗄 `intake_record_failure()` / `intake_retry()` + `?reprocess=`; ⬜ UI |
 
 **Exit:** sample emails of the pilot insurers become complete cases without review; follow-ups attach to the right case.

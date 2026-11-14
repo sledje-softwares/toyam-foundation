@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, STAFF_ROLES } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/format";
+import { createClient } from "@/lib/supabase/server";
 import { NAV_ITEMS, type NavBadge } from "@/lib/nav";
 import { NavLinks } from "@/components/nav-links";
 import { Toaster } from "@/components/ui/toaster";
@@ -14,8 +15,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!STAFF_ROLES.includes(profile.role)) redirect("/login?error=field");
 
   const items = NAV_ITEMS.filter((i) => i.roles.includes(profile.role));
-  // Counts for nav badges. Empty until 3.9 (intake) supplies its count; { intake: n } shows next to "Intake".
+  // Counts for nav badges, only for items this role sees. { intake: n } shows next to "Intake".
   const badges: Partial<Record<NavBadge, number>> = {};
+  if (items.some((i) => i.badge === "intake")) {
+    const supabase = await createClient();
+    const { count } = await supabase
+      .from("intake_extractions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending_review");
+    if (count) badges.intake = count;
+  }
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">

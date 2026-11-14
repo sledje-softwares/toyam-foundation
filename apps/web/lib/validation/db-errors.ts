@@ -46,6 +46,13 @@ export function mapDbError(error: DbErrorLike): MappedError {
       if (msg && !looksTechnical(msg)) return { message: msg };
       return { message: "You don't have permission to do this." };
     }
+    // Raised by our own functions with a message for people (e.g. confirm_intake: "Claim number is required",
+    // "Nothing to confirm"); anything technical falls back to the generic text.
+    case "22023":
+    case "P0002": {
+      if (msg && !looksTechnical(msg)) return { message: msg };
+      return { message: GENERIC_MESSAGE };
+    }
     case "40001":
       return { message: "This was changed by someone else. Reload to see their changes." };
     default:
