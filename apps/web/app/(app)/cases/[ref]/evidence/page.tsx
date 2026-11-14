@@ -6,6 +6,8 @@ import { formatDateTime } from "@/lib/format";
 import { applyListParams, parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import { CAPTURE_SOURCE_LABELS, caseHref, fileSize, parseEvidenceSource, PROCESSING_LABELS } from "@/lib/cases";
 import { Badge, DataTable, EmptyState, ErrorState, FilterBar, Pagination, type Column } from "@/components/ui";
+import { fileHref, getFileLinks, hasThumbnail, linkKey } from "@/lib/evidence-view";
+import { FileThumb } from "@/components/evidence/file-thumb";
 import { loadCase, refParam } from "../load";
 
 const LIST: ListConfig = {
@@ -55,18 +57,52 @@ export default async function CaseEvidencePage({
   const rows = data ?? [];
   type Row = (typeof rows)[number];
 
+  // Thumbnails for this page's images, in one batch (links live 5 minutes; FileThumb falls back to /files/...).
+  const thumbIds = rows.filter((r) => r.evidence_type !== "note" && hasThumbnail(r.mime_type)).map((r) => r.id);
+  const thumbs = thumbIds.length ? await getFileLinks({ evidenceIds: thumbIds }) : null;
+  const thumbUrl = (id: string) => (thumbs?.ok ? (thumbs.links.get(linkKey("evidence", id))?.url ?? null) : null);
+
   const columns: Column<Row>[] = [
     {
       key: "file",
       header: "File",
-      cell: (r) => (
-        <span className="block max-w-72">
-          <span className="block truncate" title={r.original_filename ?? undefined}>
-            {r.original_filename || `${r.evidence_type} file`}
+      cell: (r) => {
+        const name = r.original_filename || `${r.evidence_type} file`;
+        const placeholder = (
+          <span aria-hidden="true" className="text-[10px] uppercase text-text-muted">
+            {r.mime_type?.split("/")[1]?.slice(0, 4) ?? r.evidence_type}
           </span>
-          <span className="block text-xs text-text-muted">{[r.mime_type, fileSize(r.size_bytes)].filter(Boolean).join(" · ")}</span>
-        </span>
-      ),
+        );
+        return (
+          <span className="flex max-w-80 items-start gap-2">
+            {r.evidence_type !== "note" && (
+              <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100">
+                {hasThumbnail(r.mime_type) ? (
+                  <FileThumb src={thumbUrl(r.id)} fallbackHref={fileHref("evidence", r.id)} alt={name} placeholder={placeholder} />
+                ) : (
+                  placeholder
+                )}
+              </span>
+            )}
+            <span className="min-w-0">
+              <span className="block truncate" title={r.original_filename ?? undefined}>
+                {name}
+              </span>
+              <span className="block text-xs text-text-muted">{[r.mime_type, fileSize(r.size_bytes)].filter(Boolean).join(" · ")}</span>
+              {r.evidence_type !== "note" && (
+                <span className="flex gap-3 text-xs">
+                  <a href={fileHref("evidence", r.id)} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">
+                    Open<span className="sr-only"> {name} in a new tab</span>
+                  </a>
+                  <a href={fileHref("evidence", r.id, { download: true })} className="text-primary underline hover:no-underline">
+                    Download<span className="sr-only"> {name}</span>
+                  </a>
+                </span>
+              )}
+            </span>
+          </span>
+        );
+      },
     },
     {
       key: "source",
@@ -168,7 +204,7 @@ export default async function CaseEvidencePage({
             }
           />
           <Pagination page={list.page} pageSize={list.pageSize} total={count ?? 0} basePath={base} searchParams={sp} />
-          <p className="mt-2 text-xs text-text-muted">Opening files from this list comes with the evidence workspace.</p>
+          {thumbs && !thumbs.ok && <p className="mt-2 text-xs text-text-muted">Previews could not be loaded: {thumbs.message}</p>}
         </>
       )}
     </>

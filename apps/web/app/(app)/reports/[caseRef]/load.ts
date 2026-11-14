@@ -11,11 +11,9 @@ import {
   type WorkspaceSection,
 } from "@/lib/reports";
 import type { Enums } from "@/lib/database.types";
+import { getFileLinks, hasThumbnail, linkKey } from "@/lib/evidence-view";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
-
-/** Signed thumbnail links for insurer attachments live this long (the page is re-rendered on every save). */
-const THUMB_SECONDS = 600;
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -159,18 +157,17 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
   });
   const groups = sectionEvidence(files, focusedCatIds, scores);
 
-  // Thumbnails: only insurer attachments (bucket email-raw) can be signed from here; R2 files need gap G3.
-  const paths = new Map<string, string>();
-  for (const e of evidenceRes.data ?? []) {
-    if (e.storage_backend === "supabase" && e.storage_path && (e.mime_type ?? "").startsWith("image/")) paths.set(e.id, e.storage_path);
-  }
-  const shown = [...groups.matched, ...groups.unlabelled, ...groups.notRelevant].filter((f) => paths.has(f.id));
+  // Thumbnails for the images the panel shows (R2 and insurer attachments), one batch per render via evidence-view.
+  // Links live 5 minutes and are not cached; FileThumb falls back to /files/evidence/{id} once one has expired.
+  const images = new Set((evidenceRes.data ?? []).filter((e) => e.storage_path && hasThumbnail(e.mime_type)).map((e) => e.id));
+  const shown = [...groups.matched, ...groups.unlabelled, ...groups.notRelevant].filter((f) => images.has(f.id));
+  const thumbs = shown.length ? await getFileLinks({ evidenceIds: shown.map((f) => f.id) }) : null;
   const urls = new Map<string, string>();
-  if (shown.length) {
-    const { data } = await supabase.storage.from("email-raw").createSignedUrls(shown.map((f) => paths.get(f.id)!), THUMB_SECONDS);
-    for (const s of data ?? []) if (s.path && s.signedUrl && !s.error) urls.set(s.path, s.signedUrl);
+  if (thumbs?.ok) for (const f of shown) {
+    const u = thumbs.links.get(linkKey("evidence", f.id))?.url;
+    if (u) urls.set(f.id, u);
   }
-  const withThumb = (f: Omit<PanelFile, "thumbUrl">): PanelFile => ({ ...f, thumbUrl: urls.get(paths.get(f.id) ?? "") ?? null });
+  const withThumb = (f: Omit<PanelFile, "thumbUrl">): PanelFile => ({ ...f, thumbUrl: urls.get(f.id) ?? null });
 
   // Label choices: the template's categories first (section order), then whatever is already applied.
   const optionIds = [...new Set([...sectionCats.map((r) => r.category_id), ...files.flatMap((f) => f.categoryIds)])];

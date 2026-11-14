@@ -12,6 +12,7 @@ import {
   templateLabel,
 } from "@/lib/intake-review";
 import { Badge, Button, ErrorState, InlineAlert, PageHeader, Select, StatusBadge } from "@/components/ui";
+import { fileHref } from "@/lib/evidence-view-core";
 import { RejectDialog, ReviewForm } from "./review-form";
 
 export const metadata = { title: "Intake review" };
@@ -148,7 +149,18 @@ export default async function IntakeReviewPage({
             <ul className="mt-2 space-y-1 text-sm">
               {attachments.map((a) => (
                 <li key={a.id} className="flex flex-wrap items-center gap-2">
-                  <span className="break-all">{a.filename}</span>
+                  <a
+                    href={fileHref("attachment", a.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="break-all text-primary underline hover:no-underline"
+                  >
+                    {a.filename}
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                  <a href={fileHref("attachment", a.id, { download: true })} className="text-xs text-primary underline hover:no-underline">
+                    Download<span className="sr-only"> {a.filename}</span>
+                  </a>
                   <span className="text-xs text-text-muted">
                     {[a.mime_type, fileSize(a.size_bytes)].filter(Boolean).join(" · ")}
                   </span>
