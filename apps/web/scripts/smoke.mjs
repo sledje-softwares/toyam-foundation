@@ -10,7 +10,7 @@ if (!anon || !password) {
   console.error("Set SUPABASE_ANON_KEY and SMOKE_PASSWORD (and optionally SMOKE_FIELD_PHONE / SMOKE_FIELD_OTP).");
   process.exit(2);
 }
-const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/users/new", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks"];
+const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/users/new", "/admin/checklists", "/admin/checklists/new", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks"];
 const adminOnly = (r) => r.startsWith("/admin") || r === "/dev/ui";
 const ok = { status: 200 };
 const to = (p) => ({ status: [307, 308, 302, 303], loc: p });
