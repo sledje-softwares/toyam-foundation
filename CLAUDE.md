@@ -23,6 +23,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Field app: `docs/11-field-app.md`
 - Schema: all files in `supabase/migrations/` (latest `20261114200100_intake_retry.sql`)
 - Email intake (M3) runbook: `services/intake/README.md`
+- User admin function (M2 T5) contract: `supabase/functions/admin-users/README.md`
 - Vision labeller and model bake-off (D34): `services/labeller/README.md`
 
 ## Non-negotiable design rules
