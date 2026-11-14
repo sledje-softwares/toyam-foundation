@@ -6,12 +6,36 @@ import { secretStore } from '../lib/secretStore';
 
 const ASKED_KEY = 'toyam.field.notif_asked';
 const CHANNEL = 'outbox';
+const PROGRESS_CHANNEL = 'sending-progress';
+const PROGRESS_ID = 'sending-progress';
 
 export function setupNotifications(): void {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false }),
   });
   void Notifications.setNotificationChannelAsync(CHANNEL, { name: 'Sending files', importance: AndroidImportance.DEFAULT });
+  // silent, low importance: no sound, no heads-up
+  void Notifications.setNotificationChannelAsync(PROGRESS_CHANNEL, {
+    name: 'Sending progress', importance: AndroidImportance.LOW, vibrationPattern: [0], enableVibrate: false, showBadge: false,
+  });
+}
+
+/** Ongoing "Sending k of n files" notification; the same identifier replaces it on each update. Null removes it. */
+export async function showSendingProgress(text: string | null): Promise<void> {
+  try {
+    if (text === null) {
+      await Notifications.cancelScheduledNotificationAsync(PROGRESS_ID);
+      await Notifications.dismissNotificationAsync(PROGRESS_ID);
+      return;
+    }
+    await Notifications.scheduleNotificationAsync({
+      identifier: PROGRESS_ID,
+      content: { title: 'Toyam', body: text, sticky: true, autoDismiss: false, sound: false, priority: Notifications.AndroidNotificationPriority.LOW },
+      trigger: { channelId: PROGRESS_CHANNEL },
+    });
+  } catch {
+    // progress display is a convenience
+  }
 }
 
 /** Explains first, then asks the system once. Never asks again, whatever the answer. */

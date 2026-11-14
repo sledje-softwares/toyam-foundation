@@ -6,6 +6,9 @@ import {
 } from 'react';
 import { Alert, AppState } from 'react-native';
 import { useAuth } from '../auth';
+import type { CaseCache } from '../cache/caseCache';
+import { newTasksForHeld, type OpenTask } from '../cache/logic';
+import { getCache } from '../cache/runtime';
 import { secretStore } from '../lib/secretStore';
 import { supabase } from '../lib/supabase';
 import { registerOutboxBackgroundTask, unregisterOutboxBackgroundTask } from '../outbox/background';
@@ -18,9 +21,10 @@ import { useOutbox } from '../outbox/useOutbox';
 import { outboxTotals } from '../outbox';
 import { drainView, promptView, signOutView, storageView, type CaseName, type DrainPhase } from '../ui-logic/offline';
 import {
-  askNotificationPermissionOnce, notifyLocal, onNotificationTap, setupNotifications,
+  askNotificationPermissionOnce, notifyLocal, onNotificationTap, setupNotifications, showSendingProgress,
 } from './notifications';
 import { allSentContent } from '../ui-logic/offline';
+import { sendingNotificationText } from '../ui-logic/threadMenu';
 
 interface DrainState {
   phase: DrainPhase;
@@ -40,6 +44,10 @@ interface Ctx {
   syncedAt: Record<string, string>;
   markSynced: (key: string) => void;
   setActiveThread: (caseId: string | null) => void;
+  /** Read cache (null until opened). Survives restarts; cleared with the outbox on wipe. */
+  cache: CaseCache | null;
+  /** After a case refresh: re-sends held files once per new open task (retryHeld). */
+  applyOpenTasks: (open: OpenTask[]) => Promise<void>;
   /** Camera guard: shows the low-storage dialog and returns false when capture should not start. */
   guardCapture: () => boolean;
   requestSignOut: () => Promise<void>;
@@ -68,6 +76,9 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   const [names, setNames] = useState<Record<string, CaseName | undefined>>({});
   const [syncedAt, setSynced] = useState<Record<string, string>>({});
   const [drainState, setDrain] = useState<DrainState | null>(null);
+  const [cache, setCache] = useState<CaseCache | null>(null);
+  const cacheRef = useRef<CaseCache | null>(null);
+  useEffect(() => { cacheRef.current = cache; }, [cache]);
   const activeThread = useRef<string | null>(null);
   const snapRef = useRef(snapshot);
   useEffect(() => { snapRef.current = snapshot; }, [snapshot]);
@@ -84,6 +95,22 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { setupNotifications(); }, []);
+
+  // open the read cache; freshness labels start from the stored synced_at
+  useEffect(() => {
+    let live = true;
+    void getCache().then(async (c) => {
+      const stored = await c.syncedAt();
+      if (!live) return;
+      setCache(c);
+      setSynced((p) => ({ ...stored, ...p }));
+    }, () => {});
+    return () => { live = false; };
+  }, []);
+
+  // "Sending k of n files": one silent ongoing notification, removed when nothing is sending (all_sent shows its own)
+  const sendingText = sendingNotificationText(snapshot.sending);
+  useEffect(() => { void showSendingProgress(sendingText); }, [sendingText]);
   useEffect(() => onNotificationTap((id) => router.push({ pathname: '/case/[id]', params: { id } })), [router]);
 
   // after sign-in: register the device, start background sending, ask for notifications once
@@ -161,6 +188,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     const sent = Math.max(0, drainStartRef.current - left);
     try { await (await drainClient())?.finish(left); } catch { /* wipe anyway */ }
     await o.wipe();
+    await cacheRef.current?.clear().catch(() => {});
     await forgetDevice(secretStore);
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
@@ -212,21 +240,29 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (outbox) await outbox.wipe();
+    await cache?.clear().catch(() => {});
     await forgetDevice(secretStore).catch(() => {});
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut();
-  }, [outbox, router]);
+  }, [outbox, router, cache]);
 
   const rememberNames = useCallback((n: Record<string, CaseName>) => setNames((p) => ({ ...p, ...n })), []);
   const markSynced = useCallback((k: string) => setSynced((p) => ({ ...p, [k]: new Date().toISOString() })), []);
   const setActiveThread = useCallback((id: string | null) => { activeThread.current = id; }, []);
   const finishDrain = useCallback(() => { closing.current = false; setDrain(null); }, []);
+  const applyOpenTasks = useCallback(async (open: OpenTask[]) => {
+    if (!outbox || !cache) return;
+    const held = new Set(snapRef.current.items.filter((i) => i.state === 'held').map((i) => i.case_id));
+    const known = await cache.getKnownTasks();
+    for (const r of newTasksForHeld(open, known, held)) await outbox.retryHeld(r.caseId, r.taskId);
+    await cache.putKnownTasks(open.map((t) => t.task_id));
+  }, [outbox, cache]);
   const dismissPrompt = useCallback(() => setBanner(null), []);
 
   const value: Ctx = {
     outbox, snapshot, now, storage, prompt: snapshot.items.length === 0 ? null : banner,
     dismissPrompt, names,
-    rememberNames, syncedAt, markSynced, setActiveThread, guardCapture, requestSignOut, drain, finishDrain,
+    rememberNames, syncedAt, markSynced, setActiveThread, cache, applyOpenTasks, guardCapture, requestSignOut, drain, finishDrain,
   };
   return <C.Provider value={value}>{children}</C.Provider>;
 }

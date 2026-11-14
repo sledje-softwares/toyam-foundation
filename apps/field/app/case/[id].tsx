@@ -2,24 +2,18 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../../src/lib/supabase';
+import type { CaseHeader, Msg } from '../../src/cache/caseCache';
+import { fetchCaseList, fetchChecklist, fetchHeader, fetchMessages } from '../../src/cache/fetch';
+import { trimMessages } from '../../src/cache/logic';
 import { relativeTime } from '../../src/lib/time';
 import { colors, s } from '../../src/theme';
 import { checklistView, clockSheetView, freshnessView, type ChecklistRow } from '../../src/ui-logic/offline';
-import { Btn, ChecklistSheet, ClockSheet, Fresh } from '../../src/ui/components';
+import { checklistMenuLabel } from '../../src/ui-logic/threadMenu';
+import { ChecklistSheet, ClockSheet, Fresh, Sheet } from '../../src/ui/components';
 import { useOffline } from '../../src/ui/OutboxProvider';
 import { StatusStack } from '../../src/ui/StatusStack';
 
-type Msg = {
-  id: string;
-  kind: 'text' | 'media' | 'voice' | 'system' | 'request';
-  body: string | null;
-  sender_id: string | null;
-  created_at: string;
-  withdrawn_at: string | null;
-};
-
-type Header = { case_ref: string; title: string | null; insurer_name: string };
+type Header = Pick<CaseHeader, 'case_ref' | 'title' | 'insurer_name'>;
 
 // There is no dedicated thread-read function yet (docs/11 lists case_messages as the source), so this reads
 // the table directly; RLS (p_msg_field_r) limits it to cases on which this operator holds a task and to
@@ -30,9 +24,10 @@ export default function Thread() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { outbox, snapshot, now, syncedAt, markSynced, setActiveThread } = useOffline();
+  const { outbox, snapshot, now, syncedAt, markSynced, setActiveThread, cache } = useOffline();
   const [clockId, setClockId] = useState<string | null>(null);
   const [checkOpen, setCheckOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [rows, setRows] = useState<ChecklistRow[]>([]);
 
   // the thread is open: no "all sent" notification for it
@@ -41,35 +36,46 @@ export default function Thread() {
     return () => setActiveThread(null);
   }, [id, setActiveThread]);
 
-  // Checklist (D41): read-only, RLS limits it to this operator's tasks.
+  // cache first (works offline and after a restart), then refresh when online
   const loadChecklist = useCallback(async () => {
     if (!id) return;
-    const [list, cats] = await Promise.all([
-      supabase.from('v_case_checklist').select('checklist_item_id, description, category_id, status, evidence_count, position').eq('case_id', id).order('position'),
-      supabase.from('evidence_categories').select('id, code'),
-    ]);
-    if (list.error) return;
-    const code = new Map((cats.data ?? []).map((c: { id: string; code: string }) => [c.id, c.code]));
-    setRows((list.data ?? []).map((r) => ({
-      checklist_item_id: String(r.checklist_item_id), description: r.description ?? '', status: String(r.status),
-      evidence_count: Number(r.evidence_count ?? 0), category_code: r.category_id ? code.get(r.category_id) ?? null : null,
-    })));
+    const fresh = await fetchChecklist(id);
+    if (!fresh) return;
+    setRows(fresh);
+    void cache?.putChecklist(id, fresh);
     markSynced(`checklist:${id}`);
-  }, [id, markSynced]);
+  }, [id, cache, markSynced]);
+
+  useEffect(() => {
+    if (!id || !cache) return;
+    void (async () => {
+      const [h, m, c] = await Promise.all([cache.getHeader(id), cache.getMessages(id), cache.getChecklist(id)]);
+      if (h) setHeader((cur) => cur ?? h.data);
+      if (m) setMsgs((cur) => (cur.length > 0 ? cur : m.data));
+      if (c) setRows((cur) => (cur.length > 0 ? cur : c.data));
+    })();
+  }, [id, cache]);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const list = await supabase.rpc('field_case_list');
-    const row = (list.data ?? []).find((r: { case_id: string }) => r.case_id === id);
-    if (row) setHeader({ case_ref: row.case_ref, title: row.title, insurer_name: row.insurer_name });
-    const { data, error: e } = await supabase
-      .from('case_messages')
-      .select('id, kind, body, sender_id, created_at, withdrawn_at')
-      .eq('case_id', id)
-      .order('created_at', { ascending: true });
-    if (e) setError('Could not load the messages.');
-    else { setMsgs((data ?? []) as Msg[]); markSynced(id); }
-  }, [id, markSynced]);
+    const list = await fetchCaseList();
+    const row = list?.find((r) => r.case_id === id);
+    if (row) {
+      const base = { case_ref: row.case_ref, title: row.title, insurer_name: row.insurer_name };
+      const h = await fetchHeader(id, base);
+      setHeader(h ?? base);
+      if (h) { void cache?.putHeader(id, h); markSynced(id); }
+    }
+    const fresh = await fetchMessages(id);
+    if (!fresh) setError('Could not load the messages.');
+    else {
+      setError(null);
+      const kept = trimMessages(fresh);
+      setMsgs(kept);
+      void cache?.putMessages(id, kept);
+    }
+    void loadChecklist();
+  }, [id, cache, markSynced, loadChecklist]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount
   useEffect(() => { void load(); }, [load]);
@@ -81,14 +87,18 @@ export default function Thread() {
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
       <StatusStack />
-      <Stack.Screen options={{ title: header?.case_ref ?? 'Case' }} />
+      <Stack.Screen options={{
+        title: header?.case_ref ?? 'Case',
+        headerRight: () => (
+          <Pressable onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Menu" style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 28, color: colors.text }}>⋮</Text>
+          </Pressable>
+        ),
+      }} />
       <View style={{ padding: 16 }}>
         <Text style={s.title}>{header?.title ?? header?.case_ref ?? ''}</Text>
         {header ? <Text style={s.muted}>{header.insurer_name}</Text> : null}
         <Fresh {...freshnessView(syncedAt[id ?? ''], now)} />
-        <View style={{ flexDirection: 'row', marginTop: 12 }}>
-          <Btn label="Checklist" secondary onPress={() => { setCheckOpen(true); void loadChecklist(); }} />
-        </View>
         <Text style={[s.muted, { marginTop: 8 }]}>Messages are read-only in this version.</Text>
       </View>
       {error ? <Text style={[s.error, { marginHorizontal: 16 }]}>{error}</Text> : null}
@@ -122,6 +132,14 @@ export default function Thread() {
         onOutbox={() => { setClockId(null); router.push('/outbox'); }}
         onClose={() => setClockId(null)}
       />
+      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
+        <Pressable
+          onPress={() => { setMenuOpen(false); setCheckOpen(true); void loadChecklist(); }}
+          accessibilityRole="button" style={{ minHeight: 56, justifyContent: 'center' }}
+        >
+          <Text style={[s.text, { fontWeight: '600' }]}>{checklistMenuLabel(rows)}</Text>
+        </Pressable>
+      </Sheet>
       <ChecklistSheet view={checkOpen ? check : null} loading={false} onClose={() => setCheckOpen(false)} />
     </SafeAreaView>
   );
