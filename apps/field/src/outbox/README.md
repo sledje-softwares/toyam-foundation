@@ -14,7 +14,7 @@ by itself: files to R2, then `post_thread_message()` with the same `client_messa
 | `server.ts` | pure | `Server`, `DrainServer`, `Transport`, `ServerError`, error mapping |
 | `store.ts` | pure | `Store` interface + `MemoryStore` (tests) |
 | `backoff.ts`, `stateMachine.ts`, `sha256.ts` | pure | 30 s → 30 min with jitter; allowed transitions; SHA-256 / uuid v4 |
-| `signedInServer.ts` | adapter | `post_thread_message`, `report_outbox_status` (JWT) |
+| `signedInServer.ts` | adapter | `post_thread_message`, `report_outbox_status`, `evidence-upload` presign (JWT) |
 | `drainServer.ts` | adapter | `field-drain` edge function (status / presign / post / outbox / finish) |
 | `device.ts` | adapter | `ensureRegisteredDevice()` → `register_field_device(id, sha256(secret))` |
 | `sqliteStore.ts`, `transport.ts`, `netinfo.ts` | native | expo-sqlite, expo-file-system (sandbox + PUT), NetInfo |
@@ -74,10 +74,12 @@ last_success_at, last_prompt_at, next_retry_at }`. It is stable between changes.
   send and at most once a minute on changes, only while online and registered.
 - `register_field_device(p_device_id, p_secret_sha256, 'android')` — secret stays in secure storage.
 - `field-drain` (no JWT): `status`, `presign`, `post`, `outbox`, `finish` — see docs/11.
-- **TODO: signed-in R2 presigner does not exist yet.** `signedInServer(client, presign?)` takes it as a
-  parameter; the default `missingPresigner` throws a transient error, so files wait quietly with
-  backoff. Expected reply (same as field-drain `presign`): `{storage_path, url, headers}`; it must check
-  `can_upload_evidence_at(task_id, device_captured_at)` and refuse with hint `upload_window_closed`.
+- `evidence-upload` (JWT, `supabase/functions/evidence-upload/README.md`): the default presigner of
+  `signedInServer(client, presign?)` (`evidenceUploadPresigner`), one file per call with `sha256`, `size`,
+  `mime`, `device_captured_at`. Reply `upload` → PUT to `url` with `headers` (hash and size are signed);
+  `already_stored` → the case already holds that hash, so the PUT is skipped and the file is still posted.
+  Errors: 401 → auth, 403 `upload_window_closed` → window_closed, other 400 / 403 / 413 → rejected (held),
+  5xx / network → transient.
 
 ## Behaviour notes
 

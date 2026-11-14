@@ -25,10 +25,19 @@ describe('error classification', () => {
   });
 });
 
+const noFunctions = { functions: { invoke: async () => ({ data: null, error: new Error('unused') }) } };
+const REQ = {
+  case_id: 'c', task_id: 't', sha256: 'a'.repeat(64), ext: 'jpg', device_captured_at: '2026-11-14T00:00:00Z',
+  size_bytes: 812_000, mime_type: 'image/jpeg',
+};
+/** FunctionsHttpError-like: `context` is the Response. */
+const httpError = (status: number, body: unknown) => ({ name: 'FunctionsHttpError', context: { status, json: async () => body } });
+
 describe('signedInServer', () => {
   it('calls post_thread_message and report_outbox_status with p_ arguments', async () => {
     const calls: [string, Record<string, unknown>][] = [];
     const s = signedInServer({
+      ...noFunctions,
       rpc: async (fn, args) => {
         calls.push([fn, args]);
         return { data: fn === 'post_thread_message' ? 'm-1' : null, error: null };
@@ -41,15 +50,80 @@ describe('signedInServer', () => {
       p_case_id: 'c', p_client_message_id: 'u', p_kind: 'media', p_body: null, p_task_id: 't', p_reply_to: null, p_items: [],
     }]);
     expect(calls[1]).toEqual(['report_outbox_status', { p_device_id: 'd', p_pending_count: 2, p_pending_bytes: 9, p_oldest_pending_at: null }]);
-    await expect(s.presign({ case_id: 'c', task_id: 't', sha256: 'a', ext: 'jpg', device_captured_at: '' })).rejects.toMatchObject({
-      kind: 'transient', code: 'presigner_missing',
-    });
   });
   it('turns thrown network errors and rpc errors into ServerError', async () => {
-    const s = signedInServer({ rpc: async () => ({ data: null, error: { code: '42501', hint: 'upload_window_closed' } }) });
+    const s = signedInServer({ ...noFunctions, rpc: async () => ({ data: null, error: { code: '42501', hint: 'upload_window_closed' } }) });
     await expect(s.reportOutbox({ device_id: 'd', pending_count: 0, pending_bytes: 0, oldest_pending_at: null })).rejects.toMatchObject({ kind: 'window_closed' });
-    const t = signedInServer({ rpc: () => Promise.reject(new Error('offline')) });
+    const t = signedInServer({ ...noFunctions, rpc: () => Promise.reject(new Error('offline')) });
     await expect(t.reportOutbox({ device_id: 'd', pending_count: 0, pending_bytes: 0, oldest_pending_at: null })).rejects.toMatchObject({ kind: 'transient' });
+  });
+});
+
+describe('evidence-upload presigner', () => {
+  const rpc = async () => ({ data: null, error: null });
+  const withReply = (reply: () => Promise<{ data: unknown; error: unknown }>) => {
+    const sent: [string, Record<string, unknown>][] = [];
+    const server = signedInServer({
+      rpc,
+      functions: { invoke: (fn, opts) => (sent.push([fn, opts.body]), reply()) },
+    });
+    return { server, sent };
+  };
+
+  it('invokes evidence-upload with one file and returns the signed PUT', async () => {
+    const { server, sent } = withReply(async () => ({
+      data: {
+        ok: true, case_id: 'c',
+        files: [{ sha256: REQ.sha256, status: 'upload', storage_path: `cases/c/tasks/t/${REQ.sha256}.jpg`, method: 'PUT',
+                  url: 'https://acct.r2.cloudflarestorage.com/x', headers: { 'x-amz-content-sha256': REQ.sha256 }, expires_in: 600 }],
+      },
+      error: null,
+    }));
+    const p = await server.presign(REQ);
+    expect(sent).toEqual([['evidence-upload', {
+      task_id: 't', case_id: 'c',
+      files: [{ sha256: REQ.sha256, size: 812_000, mime: 'image/jpeg', device_captured_at: '2026-11-14T00:00:00Z' }],
+    }]]);
+    expect(p).toEqual({
+      storage_path: `cases/c/tasks/t/${REQ.sha256}.jpg`, url: 'https://acct.r2.cloudflarestorage.com/x',
+      headers: { 'x-amz-content-sha256': REQ.sha256 },
+    });
+  });
+  it('already_stored: no URL, the outbox skips the PUT', async () => {
+    const { server } = withReply(async () => ({
+      data: { ok: true, case_id: 'c', files: [{ sha256: REQ.sha256, status: 'already_stored', storage_path: 'cases/c/tasks/t/x.jpg' }] },
+      error: null,
+    }));
+    expect(await server.presign(REQ)).toEqual({ storage_path: 'cases/c/tasks/t/x.jpg', url: '', headers: {}, already_stored: true });
+  });
+  it('maps HTTP errors to the outbox classes', async () => {
+    const cases: [unknown, string, string][] = [
+      [httpError(403, { ok: false, error: { code: 'upload_window_closed' } }), 'window_closed', 'upload_window_closed'],
+      [httpError(401, { ok: false, error: { code: 'unauthorized' } }), 'auth', 'unauthorized'],
+      [httpError(401, 'not json'), 'auth', 'unauthorized'],
+      [httpError(403, { ok: false, error: { code: 'forbidden' } }), 'rejected', 'forbidden'],
+      [httpError(400, { ok: false, error: { code: 'unsupported_type' } }), 'rejected', 'unsupported_type'],
+      [httpError(413, { ok: false, error: { code: 'file_too_large' } }), 'rejected', 'file_too_large'],
+      [httpError(502, { ok: false, error: { code: 'upstream_error' } }), 'transient', 'upstream_error'],
+      [httpError(503, { ok: false, error: { code: 'storage_not_configured' } }), 'transient', 'storage_not_configured'],
+      [{ name: 'FunctionsHttpError', context: { status: 500, json: () => Promise.reject(new Error('x')) } }, 'transient', 'http_500'],
+      [{ name: 'FunctionsFetchError', context: new Error('offline') }, 'transient', 'network'],
+    ];
+    for (const [error, kind, code] of cases) {
+      const { server } = withReply(async () => ({ data: null, error }));
+      await expect(server.presign(REQ)).rejects.toMatchObject({ kind, code });
+    }
+  });
+  it('a thrown invoke or a malformed reply is transient', async () => {
+    await expect(withReply(() => Promise.reject(new Error('socket'))).server.presign(REQ)).rejects.toMatchObject({ kind: 'transient', code: 'network' });
+    await expect(withReply(async () => ({ data: { ok: true, files: [] }, error: null })).server.presign(REQ))
+      .rejects.toMatchObject({ kind: 'transient', code: 'bad_reply' });
+    await expect(withReply(async () => ({ data: { ok: true, files: [{ sha256: REQ.sha256, status: 'upload', storage_path: 'p' }] }, error: null })).server.presign(REQ))
+      .rejects.toMatchObject({ kind: 'transient', code: 'bad_reply' });
+  });
+  it('an explicit presigner still wins', async () => {
+    const s = signedInServer({ ...noFunctions, rpc }, async () => ({ storage_path: 'p', url: 'u', headers: {} }));
+    expect((await s.presign(REQ)).url).toBe('u');
   });
 });
 
@@ -68,7 +142,7 @@ describe('drainServer', () => {
     };
     const s = drainServer({ baseUrl: 'https://x.supabase.co', anonKey: 'anon', deviceId: 'd', secret: 'f'.repeat(64), fetch });
     expect(await s.status()).toEqual({ state: 'drain', deactivated_at: 'x', drain_until: 'y' });
-    const p = await s.presign({ case_id: 'c', task_id: 't', sha256: 'a', ext: 'jpg', device_captured_at: '2026-11-14T00:00:00Z' });
+    const p = await s.presign({ case_id: 'c', task_id: 't', sha256: 'a', ext: 'jpg', device_captured_at: '2026-11-14T00:00:00Z', size_bytes: 1, mime_type: 'image/jpeg' });
     expect(p.storage_path).toBe('cases/c/tasks/t/a.jpg');
     await expect(s.postMessage({ case_id: 'c', client_message_id: 'u', kind: 'media', body: null, task_id: 't', reply_to: null, items: [] }))
       .rejects.toMatchObject({ kind: 'window_closed' });

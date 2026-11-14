@@ -11,17 +11,69 @@ export interface RpcClient {
 }
 
 /**
- * TODO(5.x presigner): the R2 presigner for signed-in users does not exist yet. It must check
- * public.can_upload_evidence_at(task_id, device_captured_at) with the caller's JWT and answer like
- * field-drain `presign`: { storage_path: cases/{case_id}/tasks/{task_id}/{sha256}.{ext}, url,
- * headers: { 'x-amz-content-sha256': sha256 } }, refusing with hint upload_window_closed.
- * Until then uploads wait quietly (transient → backoff); nothing is lost.
+ * supabase-js `functions`: invoke() sends the signed-in session's access token. A non-2xx reply comes
+ * back as an error whose `context` is the Response (FunctionsHttpError); a network failure has no
+ * status (FunctionsFetchError).
  */
-export const missingPresigner = async (_req: PresignRequest): Promise<Presigned> => {
-  throw new ServerError('transient', 'presigner_missing', 'signed-in R2 presigner not deployed yet');
-};
+export interface FunctionsClient {
+  functions: {
+    invoke(fn: string, opts: { body: Record<string, unknown> }): PromiseLike<{ data: unknown; error: unknown }>;
+  };
+}
 
-export function signedInServer(client: RpcClient, presign: (req: PresignRequest) => Promise<Presigned> = missingPresigner): Server {
+type ErrorContext = { status?: unknown; json?: () => Promise<unknown> };
+
+/** Map an evidence-upload failure (supabase/functions/evidence-upload/README.md) to the outbox classes. */
+export async function classifyUploadError(error: unknown): Promise<ServerError> {
+  const ctx = (error as { context?: ErrorContext } | null)?.context;
+  if (!ctx || typeof ctx.status !== 'number') {
+    return new ServerError('transient', 'network', error instanceof Error ? error.message : String(error));
+  }
+  const status = ctx.status;
+  let code: string | undefined;
+  try {
+    const body = (await ctx.json?.()) as { error?: { code?: unknown } } | undefined;
+    if (typeof body?.error?.code === 'string') code = body.error.code;
+  } catch {
+    // body unreadable: classify by status
+  }
+  if (status === 401) return new ServerError('auth', code ?? 'unauthorized');
+  if (code === 'upload_window_closed') return new ServerError('window_closed', code);
+  if (status === 400 || status === 403 || status === 413) return new ServerError('rejected', code ?? `http_${status}`);
+  return new ServerError('transient', code ?? `http_${status}`);
+}
+
+/** Default presigner: the `evidence-upload` edge function, one file per call. */
+export function evidenceUploadPresigner(client: FunctionsClient): (req: PresignRequest) => Promise<Presigned> {
+  return async (req) => {
+    let res;
+    try {
+      res = await client.functions.invoke('evidence-upload', {
+        body: {
+          task_id: req.task_id,
+          case_id: req.case_id,
+          files: [{ sha256: req.sha256, size: req.size_bytes, mime: req.mime_type, device_captured_at: req.device_captured_at }],
+        },
+      });
+    } catch (e) {
+      throw new ServerError('transient', 'network', e instanceof Error ? e.message : String(e));
+    }
+    if (res.error) throw await classifyUploadError(res.error);
+    const files = (res.data as { files?: unknown } | null)?.files;
+    const f = Array.isArray(files)
+      ? (files as Record<string, unknown>[]).find((x) => x && x.sha256 === req.sha256)
+      : undefined;
+    if (!f || typeof f.storage_path !== 'string') throw new ServerError('transient', 'bad_reply');
+    if (f.status === 'already_stored') return { storage_path: f.storage_path, url: '', headers: {}, already_stored: true };
+    if (f.status !== 'upload' || typeof f.url !== 'string') throw new ServerError('transient', 'bad_reply');
+    return { storage_path: f.storage_path, url: f.url, headers: (f.headers ?? {}) as Record<string, string> };
+  };
+}
+
+export function signedInServer(
+  client: RpcClient & FunctionsClient,
+  presign: (req: PresignRequest) => Promise<Presigned> = evidenceUploadPresigner(client),
+): Server {
   const call = async (fn: string, args: Record<string, unknown>): Promise<unknown> => {
     let res;
     try {

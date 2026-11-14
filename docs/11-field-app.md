@@ -34,7 +34,7 @@ Android app for field operators. It should feel like the chat app they already u
 1. Operator captures or selects files; optional caption; optional one-tap category chip (from the checklist's categories).
 2. App compresses photos (~0.5–1 MB), computes SHA-256, reads GPS (camera only), keeps EXIF, runs ML Kit OCR on document-like photos.
 3. Message is stored locally (app sandbox) with a new `client_message_id` → shown with 🕓.
-4. When online (WorkManager job): presigned upload to R2 for each file (presigner checks `can_upload_evidence_at(task, device_captured_at)`; PUT with header `x-amz-content-sha256`), then `post_thread_message()` with the items. Retries reuse the same `client_message_id`, so nothing is duplicated; a file already stored is skipped.
+4. When online (WorkManager job): presigned upload to R2 for each file (edge function `evidence-upload`, contract in its README: checks `can_upload_evidence_at(task, device_captured_at)` with the operator's JWT; PUT bound to `x-amz-content-sha256` and the file size; `already_stored` skips the PUT), then `post_thread_message()` with the items. Retries reuse the same `client_message_id`, so nothing is duplicated; a file already stored is skipped.
 
 Gallery and shared files are accepted exactly like camera captures — no mark, no block (D18). The origin is kept internally in `capture_source`.
 

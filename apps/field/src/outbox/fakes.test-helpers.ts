@@ -15,6 +15,8 @@ export class FakeServer implements Server {
   postErrors: (ServerError | undefined)[] = [];
   /** Refuse posts containing any of these sha256 with upload_window_closed. */
   refuseSha = new Set<string>();
+  /** Files the case already stores: presign answers already_stored. */
+  storedSha = new Set<string>();
   /** Store the message but throw afterwards (reply lost). */
   loseNextReply = false;
 
@@ -22,6 +24,9 @@ export class FakeServer implements Server {
     this.presignCalls.push(req);
     const e = this.presignErrors.shift();
     if (e) throw e;
+    if (this.storedSha.has(req.sha256)) {
+      return { storage_path: `cases/${req.case_id}/tasks/${req.task_id}/${req.sha256}.${req.ext}`, url: '', headers: {}, already_stored: true };
+    }
     return {
       storage_path: `cases/${req.case_id}/tasks/${req.task_id}/${req.sha256}.${req.ext}`,
       url: `https://r2.example/${req.sha256}`,

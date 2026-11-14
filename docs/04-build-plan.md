@@ -46,7 +46,7 @@ Status legend: ✅ done · 🟡 in progress · 🗄 database layer done (migrati
 | 1.1 | Database | Schema + migrations workflow ✅ |
 | 1.2 | Authentication | Email login for staff; mobile + password for field (K4) ✅ |
 | 1.3 | Roles & access | RLS verified for all four roles ✅ |
-| 1.4 | File storage | R2 for evidence (presigned via server function); Supabase buckets for raw emails, reports, report templates ✅ |
+| 1.4 | File storage | R2 for evidence (presigned via server function: `evidence-upload` for signed-in users, `field-drain` after remote sign-out; hash- and size-bound PUTs, live bucket test pending); Supabase buckets for raw emails, reports, report templates ✅ |
 | 1.5 | Web app shell | Layout, navigation, role menus ✅ |
 | 1.6 | Deployment | Cloudflare Workers (OpenNext) ✅; error monitoring ⬜ |
 
@@ -104,7 +104,7 @@ Detailed UX: `docs/11-field-app.md`.
 | 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | ⬜ |
 | 5.5 | Gallery & document picker | Multi-select; EXIF kept | ⬜ |
 | 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build) | ⬜ |
-| 5.7 | Offline queue & ticks | 🕓 saved on this phone → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`). D43 offline experience (docs/11): amber offline bar, Outbox screen, WorkManager background upload, freshness labels, hollow pending ticks, "All N files sent ✓", low-storage warning; late uploads after a task closes (72 h); `report_outbox_status()` → office sees files waiting on a phone (`case_outbox_status()`) | 🗄 / ⬜ |
+| 5.7 | Offline queue & ticks | 🕓 saved on this phone → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`). D43 offline experience (docs/11): amber offline bar, Outbox screen, WorkManager background upload, freshness labels, hollow pending ticks, "All N files sent ✓", low-storage warning; late uploads after a task closes (72 h); `report_outbox_status()` → office sees files waiting on a phone (`case_outbox_status()`). Outbox core + signed-in presigner wired (`apps/field/src/outbox`) | 🗄 / 🟡 app |
 | 5.8 | Pinned checklist & tags | Progress from `v_case_checklist`; optional one-tap category on send | 🗄 / ⬜ |
 | 5.9 | Voice notes & text | Recorded statements with consent prompt | ⬜ |
 | 5.10 | Withdraw | Within the window (D19) | 🗄 / ⬜ |

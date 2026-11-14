@@ -60,6 +60,21 @@ describe('Outbox sending', () => {
     expect(removed).toHaveLength(2);
   });
 
+  it('skips the PUT for a file the case already stores and still posts it', async () => {
+    const { outbox, server, transport } = setup();
+    await outbox.init();
+    outbox.setOnline(true);
+    const dup = newFile();
+    server.storedSha.add(dup.sha256);
+    await outbox.enqueue(item([dup, newFile()]));
+    await flush(outbox);
+    expect(server.presignCalls[0]).toMatchObject({ sha256: dup.sha256, size_bytes: dup.size_bytes, mime_type: dup.mime_type });
+    expect(transport.puts).toHaveLength(1);
+    expect(server.postCalls).toHaveLength(1);
+    expect(server.postCalls[0]!.items.map((i) => i.sha256)).toContain(dup.sha256);
+    expect(outbox.snapshot().items).toHaveLength(0);
+  });
+
   it('never sends one client_message_id as two messages across retries (lost reply)', async () => {
     const { outbox, server, transport, clock } = setup();
     await outbox.init();

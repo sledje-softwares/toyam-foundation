@@ -360,11 +360,15 @@ export class Outbox {
       sha256: f.sha256,
       ext: f.ext,
       device_captured_at: f.device_captured_at,
+      size_bytes: f.size_bytes,
+      mime_type: f.mime_type,
     });
-    await this.d.transport.put(p.url, p.headers, f.local_path, (n) => {
-      f.bytes_sent = n;
-      this.changed();
-    });
+    if (!p.already_stored) {
+      await this.d.transport.put(p.url, p.headers, f.local_path, (n) => {
+        f.bytes_sent = n;
+        this.changed();
+      });
+    }
     f.storage_path = p.storage_path;
     f.bytes_sent = f.size_bytes;
     await this.save(it);

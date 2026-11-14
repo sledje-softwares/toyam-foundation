@@ -28,6 +28,9 @@ export interface PresignRequest {
   sha256: string;
   ext: string;
   device_captured_at: string;
+  /** The signed-in presigner binds the PUT to this size and checks the type (evidence-upload). */
+  size_bytes: number;
+  mime_type: string;
 }
 
 export interface Presigned {
@@ -35,6 +38,8 @@ export interface Presigned {
   url: string;
   /** Must be sent with the PUT (x-amz-content-sha256). */
   headers: Record<string, string>;
+  /** The case already stores this file (same sha256, rule 6): skip the PUT, still post it. */
+  already_stored?: boolean;
 }
 
 /** One file as post_thread_message / field-drain `post` expect it in p_items. */
