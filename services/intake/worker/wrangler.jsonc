@@ -4,8 +4,9 @@
   "name": "toyam-intake-relay",
   "main": "index.ts",
   "compatibility_date": "2026-11-01",
-  // safety net only: once an hour (minute chosen off the hour)
-  "triggers": { "crons": ["17 * * * *"] },
+  // "17 * * * *": IMAP safety net, once an hour (minute chosen off the hour)
+  // "*/10 * * * *": queued intake retries + stuck-retry alerts (D39); index.ts tells them apart by cron
+  "triggers": { "crons": ["17 * * * *", "*/10 * * * *"] },
   "kv_namespaces": [
     // create with: npx wrangler kv namespace create STATE   and paste the id here
     { "binding": "STATE", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
@@ -17,7 +18,13 @@
     // IMAP-side filter for the safety net: same senders as the Gmail forwarding filter
     "ONLY_FROM": "indusindinsurance.com,icicilombard.com",
     // envelope senders accepted by email(); the shared Gmail (GMAIL_USER secret) is always allowed
-    "ALLOWED_SENDERS": ""
+    "ALLOWED_SENDERS": "",
+    // D39 retry queue: claimed per run; alert email "smtp" = Gmail SMTP with GMAIL_USER / GMAIL_APP_PASSWORD
+    // (no DNS needed), "off" = in-app alerts only (skipped emails are logged). ALERT_TO defaults to GMAIL_USER.
+    "RETRY_BATCH": "10",
+    "ALERT_EMAIL": "smtp",
+    "ALERT_TO": "",
+    "APP_URL": ""
   },
   "observability": { "enabled": true }
   // secrets: npx wrangler secret put GMAIL_USER | GMAIL_APP_PASSWORD | INTAKE_SECRET

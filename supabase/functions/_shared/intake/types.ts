@@ -135,4 +135,6 @@ export interface IntakeDecision {
   missing_required: string[];
   attachments: AttachmentDecision[];
   notes: string[];
+  /** D39: set by the intake function when it reprocesses a queued retry; the email row is re-used */
+  retry_email_id?: string | null;
 }

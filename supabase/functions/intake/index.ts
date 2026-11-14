@@ -3,7 +3,13 @@
 //   POST /functions/v1/intake                 body: raw RFC 822 message (message/rfc822)
 //     headers: x-intake-secret (required), x-gmail-thread-id, x-gmail-msgid (optional, from IMAP)
 //     senders: the Worker's email() handler (push, D33) and its hourly IMAP safety net
-//   POST /functions/v1/intake?reprocess=<path>  re-reads a stored raw message (after intake_retry)
+//   POST /functions/v1/intake?retry=<email id>   reprocess a queued retry (D39): re-reads the stored raw
+//                                                message into the same email row; on any failure the row
+//                                                goes back to `failed` with retry_attempts + 1
+//   POST /functions/v1/intake?op=claim-retries&limit=N   claim_intake_retries() for the Worker's 10-min cron
+//   POST /functions/v1/intake?op=escalate-retries        escalate_stuck_intake_retries() (in-app alerts; returns
+//                                                        the emails the Worker mails one alert about)
+//   The Worker reaches the database only through these, so it holds no service-role key.
 //
 // Steps: store raw + attachments in `email-raw` → decode → rule-based parser
 // (../_shared/intake) against intake_config() → intake_ingest(decision) in one transaction.
@@ -64,19 +70,48 @@ Deno.serve(async (req) => {
   if (!safeEqual(req.headers.get('x-intake-secret') ?? '', SECRET)) return json(401, { error: 'unauthorised' });
 
   const url = new URL(req.url);
-  const reprocess = url.searchParams.get('reprocess');
+  const op = url.searchParams.get('op');
+  if (op === 'claim-retries') {
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') ?? '10', 10) || 10, 1), 100);
+    const { data, error } = await db.rpc('claim_intake_retries', { p_limit: limit });
+    if (error) return json(500, { error: `claim_intake_retries: ${error.message}` });
+    return json(200, { items: data ?? [] });
+  }
+  if (op === 'escalate-retries') {
+    const { data, error } = await db.rpc('escalate_stuck_intake_retries');
+    if (error) return json(500, { error: `escalate_stuck_intake_retries: ${error.message}` });
+    return json(200, { alerts: data ?? [] });
+  }
+  if (op) return json(400, { error: `unknown op: ${op}` });
+
+  const retryId = url.searchParams.get('retry');
+  const reprocess = retryId !== null;
   let raw: Uint8Array;
   let rawPath: string | null = null;
+  let retryGmailId: string | null = null;
+  // A queued retry never stays half-done: any failure puts the row back to `failed` (attempts + 1).
+  const failRetry = async (message: string): Promise<Response> => {
+    const { error } = await db.rpc('intake_retry_failed', { p_email_id: retryId, p_error: message });
+    if (error) return json(500, { error: message, retry_failed: error.message });   // lease expires; claimed again
+    return json(200, { result: 'failed', email_id: retryId, error: message });
+  };
   if (reprocess) {
-    const { data, error } = await db.storage.from(BUCKET).download(reprocess);
-    if (error || !data) return json(404, { error: `raw message not found: ${reprocess}` });
+    const { data: row, error: rowError } = await db.from('emails').select('id, status, raw_storage_path, gmail_message_id')
+      .eq('id', retryId).maybeSingle();
+    if (rowError) return json(500, { error: rowError.message });
+    if (!row || row.status !== 'retry_requested') return json(409, { error: 'email is not queued for retry' });
+    if (!row.raw_storage_path) return failRetry('raw message was not stored');
+    const { data, error } = await db.storage.from(BUCKET).download(row.raw_storage_path);
+    if (error || !data) return failRetry(`raw message not found: ${row.raw_storage_path}`);
     raw = new Uint8Array(await data.arrayBuffer());
-    rawPath = reprocess;
+    rawPath = row.raw_storage_path;
+    // a message without a Message-ID header was first recorded under gmail-<X-GM-MSGID>
+    retryGmailId = /^gmail-(.+)$/.exec(row.gmail_message_id ?? '')?.[1] ?? null;
   } else {
     raw = new Uint8Array(await req.arrayBuffer());
   }
-  if (raw.byteLength === 0) return json(400, { error: 'empty message' });
-  if (raw.byteLength > MAX_BYTES) return json(413, { error: 'message too large' });
+  if (raw.byteLength === 0) return reprocess ? failRetry('empty message') : json(400, { error: 'empty message' });
+  if (raw.byteLength > MAX_BYTES) return reprocess ? failRetry('message too large') : json(413, { error: 'message too large' });
 
   const rawSha = await sha256Hex(raw);
   const now = new Date();
@@ -98,12 +133,13 @@ Deno.serve(async (req) => {
     parts = pm.attachments ?? [];
     email = await fromPostalMime(pm, {
       threadId: req.headers.get('x-gmail-thread-id'),
-      gmailMessageId: req.headers.get('x-gmail-msgid'),
+      gmailMessageId: req.headers.get('x-gmail-msgid') ?? retryGmailId,
     });
     messageId = email.messageId;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error('intake: undecodable message', messageId, message);
+    if (reprocess) return failRetry(message);
     try {
       await storeRaw();
     } catch (se) {
@@ -141,6 +177,7 @@ Deno.serve(async (req) => {
     } catch (e) {
       // parser bug: deterministic, so record instead of retrying forever
       const message = `parser: ${e instanceof Error ? e.message : String(e)}`;
+      if (reprocess) return failRetry(message);
       const { error } = await db.rpc('intake_record_failure', {
         p_message_id: messageId, p_raw_storage_path: rawPath, p_error: message,
         p_subject: email.subject, p_from: email.from.address,
@@ -148,12 +185,14 @@ Deno.serve(async (req) => {
       if (error) throw new Error(`intake_record_failure: ${error.message}`);
       return json(200, { result: 'failed', error: message });
     }
+    if (reprocess) decision.retry_email_id = retryId;
     const { data, error } = await db.rpc('intake_ingest', { p: decision });
     if (error) throw new Error(`intake_ingest: ${error.message}`);
     return json(200, { ...(data as Record<string, unknown>), action: decision.action, notes: decision.notes });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error('intake: temporary failure', messageId, message);
+    if (reprocess) return failRetry(message);
     return json(500, { error: message });
   }
 });
