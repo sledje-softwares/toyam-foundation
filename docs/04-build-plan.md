@@ -11,15 +11,15 @@ Status legend: ✅ done · 🟡 in progress · 🗄 database layer done (migrati
 | ID | Module | Purpose | Days | Status |
 |---|---|---|---|---|
 | M0 | Discovery & Template Definition | Client inputs; templates and categories per insurer | 5 | 🟡 samples for 2 insurers received |
-| M1 | Platform Foundation | Database, auth, roles, storage, deployment | 4 | ✅ (hosted `toyam-dev` partially migrated) |
-| M2 | Administration & Template Configuration | Users, availability, insurers, checklists, template loader | 4 | 🟡 DB done; UI pending |
+| M1 | Platform Foundation | Database, auth, roles, storage, deployment | 4 | ✅ (hosted `toyam-foudations` fully migrated) |
+| M2 | Administration & Template Configuration | Users, availability, insurers, checklists, template loader | 4 | 🟡 users, insurers, checklists, loader ✅; 2.6 availability / rules pending |
 | M3 | Email Intake & Auto-fill | Gmail relay → template detection → rule-based field fill | 8 | 🟡 built and tested; review screen and live Gmail test pending |
-| M4 | Routing & Assignment | Auto-assign to office, reassign, office → field tasks, escalation | 4 | 🗄 / ⬜ UI |
-| M5 | Field App (chat style, Android) | Threads, camera, gallery, share target, offline, ticks | 16 | 🗄 / ⬜ app |
+| M4 | Routing & Assignment | Auto-assign to office, reassign, office → field tasks, escalation | 4 | 🟡 case + task pages ✅ (docs/12); escalation schedule pending |
+| M5 | Field App (chat style, Android) | Threads, camera, gallery, share target, offline, ticks | 16 | 🟡 core screens built, not yet run on a device |
 | M6 | Processing Pipeline | Queue, OCR, labelling, suggestions, corrections | 6 | 🗄 / ⬜ workers |
-| M7 | Report Workspace | Sections, relevant images, tap-to-fill, generation (PDF/Word) | 10 | 🗄 / ⬜ UI + generator |
-| M8 | Approval, Sending & Tracking | Approval, reply on thread, portal pack, submission records | 4 | 🗄 / ⬜ sender |
-| M9 | Dashboard & Alerts | Workload, ageing, turnaround, escalations | 3 | ⬜ |
+| M7 | Report Workspace | Sections, relevant images, tap-to-fill, generation (PDF/Word) | 10 | 🟡 workspace structure ✅ (docs/12); tap-to-fill, suggestions, annexures, generator pending |
+| M8 | Approval, Sending & Tracking | Approval, reply on thread, portal pack, submission records | 4 | 🟡 approval UI + submissions list ✅; sender pending |
+| M9 | Dashboard & Alerts | Workload, ageing, turnaround, escalations | 3 | 🟡 dashboard structure ✅; cost tile after 6.10 |
 | M10 | Security, Audit & Compliance | Access tests, devices, backups, archive, retention | 2 | 🟡 RLS tested; archive jobs pending |
 | M11 | Testing, Pilot & Rollout | UAT, training, two-week pilot, go-live | 10 | ⬜ |
 | | **Total** | | **≈ 76 working days (≈ 15 weeks)** | |
@@ -56,9 +56,9 @@ Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and
 
 | # | Piece | Output | Status |
 |---|---|---|---|
-| 2.1 | User management | Per `08-m2-admin-design.md` | 🗄 / ⬜ UI |
-| 2.2 | Insurer configuration | Domains, TAT, submission channel, report template | 🗄 / ⬜ UI |
-| 2.3 | Checklist editor | Items gain an evidence category | 🗄 / ⬜ UI |
+| 2.1 | User management | Per `08-m2-admin-design.md` | ✅ |
+| 2.2 | Insurer configuration | Domains, TAT, submission channel, report template | ✅ |
+| 2.3 | Checklist editor | Items gain an evidence category | ✅ |
 | 2.4 | Seed / master data session | Real insurers, staff, checklists | ⬜ |
 | 2.5 | Template loader | Script: YAML → JSON → `load_evidence_categories()` / `load_case_template()`; validation report; run in CI against the local stack | ✅ `services/intake/scripts/load-templates.ts` |
 | 2.6 | Availability & assignment rules screens | Staff availability, leave-until, case cap; rules and pools | 🗄 / ⬜ UI |
@@ -85,12 +85,12 @@ Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and
 | # | Piece | Output | Status |
 |---|---|---|---|
 | 4.1 | Automatic office assignment | Rules, least-loaded / round-robin, availability, caps; on case creation | 🗄 |
-| 4.2 | Reassignment | Orchestrator action with reason; history; notification | 🗄 / ⬜ UI |
-| 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | 🗄 / ⬜ UI |
-| 4.4 | Re-investigation request | Request in the thread → linked task; case back to field work | 🗄 / ⬜ UI |
+| 4.2 | Reassignment | Orchestrator action with reason; history; notification | ✅ `/cases/[ref]` (`reassign_case`) |
+| 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | ✅ `/tasks/new`, `/tasks/[id]`; cancel / reassign / edit RPCs missing (docs/12 tasks) |
+| 4.4 | Re-investigation request | Request in the thread → linked task; case back to field work | ✅ `/tasks/new?kind=reinvestigation` |
 | 4.5 | Escalation | `escalate_unattended_cases()` every 10–15 min (pg_cron or Worker cron) | 🗄 / ⬜ schedule |
-| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ⬜ |
-| 4.7 | Staff notes | Staff-only messages in the case thread (D32) | 🗄 / ⬜ UI |
+| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ✅ `/cases`, `/cases/[ref]`; evidence downloads pending |
+| 4.7 | Staff notes | Staff-only messages in the case thread (D32) | ✅ |
 
 ### M5 — Field App, chat style (16 days)
 
@@ -101,8 +101,8 @@ Detailed UX: `docs/11-field-app.md`.
 | 5.1 | Sign-in & session | Mobile + password; persistent; remote sign-out = send what was captured before deactivation, then wipe (D43: `register_field_device()`, edge function `field-drain`); sign-out blocked while files wait | 🗄 / ⬜ |
 | 5.2 | Case list | Open / Completed tabs, last message, unread badge (`field_case_list()`) | 🗄 / ⬜ |
 | 5.3 | Case thread | Messages, system events, requests, replies; read pointer | 🗄 / ⬜ |
-| 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | ⬜ |
-| 5.5 | Gallery & document picker | Multi-select; EXIF kept | ⬜ |
+| 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | 🟡 built, not run on a device |
+| 5.5 | Gallery & document picker | Multi-select; EXIF kept | 🟡 built, not run on a device |
 | 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build) | ⬜ |
 | 5.7 | Offline queue & ticks | 🕓 saved on this phone → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`). D43 offline experience (docs/11): amber offline bar, Outbox screen, WorkManager background upload, freshness labels, hollow pending ticks, "All N files sent ✓", low-storage warning; late uploads after a task closes (72 h); `report_outbox_status()` → office sees files waiting on a phone (`case_outbox_status()`). Outbox core + signed-in presigner wired (`apps/field/src/outbox`) | 🗄 / 🟡 app |
 | 5.8 | Pinned checklist & tags | Progress from `v_case_checklist`; optional one-tap category on send | 🗄 / ⬜ |
@@ -134,11 +134,11 @@ Contract: `docs/10-processing-pipeline.md`.
 
 | # | Piece | Output | Status |
 |---|---|---|---|
-| 7.1 | Section form | Template sections and fields; intake values pre-filled | 🗄 / ⬜ |
-| 7.2 | Relevant images panel | Images whose active label is in the section's categories; plus unlabelled | 🗄 / ⬜ |
+| 7.1 | Section form | Template sections and fields; intake values pre-filled | ✅ `/reports/[caseRef]` |
+| 7.2 | Relevant images panel | Images whose active label is in the section's categories; plus unlabelled | ✅ (R2 previews need a view function) |
 | 7.3 | OCR viewer & tap-to-fill | Highlighted blocks; tap to copy into the focused field | 🗄 / ⬜ |
 | 7.4 | Suggestions | Accept / reject suggested values with source reference | 🗄 / ⬜ |
-| 7.5 | Relevance & labels | Mark not relevant; correct labels | 🗄 / ⬜ |
+| 7.5 | Relevance & labels | Mark not relevant; correct labels | ✅ |
 | 7.6 | Annexures | Choose and order images per section | 🗄 / ⬜ |
 | 7.7 | Generation | Word from the insurer layout (`docx_template_path`) and/or PDF; versioned `reports` + `report_files` | 🗄 / ⬜ |
 | 7.8 | Orchestrator live view | Read-only report in progress: section progress, value sources, change history, live updates; staff notes alongside (D31) | 🗄 / ⬜ UI |
@@ -147,13 +147,13 @@ Contract: `docs/10-processing-pipeline.md`.
 
 | # | Piece | Output | Status |
 |---|---|---|---|
-| 8.1 | Approval | Request, approve / request changes (per template) | 🗄 / ⬜ UI |
+| 8.1 | Approval | Request, approve / request changes (per template) | ✅ UI (request disabled until 7.7 creates versions) |
 | 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | 🗄 / ⬜ sender |
 | 8.3 | Size handling | Compressed annexures; secure link when over the limit | ⬜ |
 | 8.4 | Portal pack | Files named and ordered for the portal insurer | ⬜ |
-| 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | 🗄 / ⬜ |
+| 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | 🟡 `/submissions` list; acknowledgement + reopen RPCs missing |
 
-### M9 — Dashboard & Alerts (3 days) ⬜
+### M9 — Dashboard & Alerts (3 days) 🟡 structure pass at `/dashboard` (docs/12)
 
 Workload per office employee and operator; ageing vs. TAT; turnaround per stage (`case_status_history`); escalations; daily summary; model cost against the monthly budget (6.10).
 

@@ -9,10 +9,10 @@
   "triggers": { "crons": ["17 * * * *", "*/10 * * * *"] },
   "kv_namespaces": [
     // create with: npx wrangler kv namespace create STATE   and paste the id here
-    { "binding": "STATE", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+    { "binding": "STATE", "id": "42cdaba1adfa42e3a7e15b8d6e586b40" }
   ],
   "vars": {
-    "INTAKE_URL": "https://REPLACE_WITH_PROJECT_REF.supabase.co/functions/v1/intake",
+    "INTAKE_URL": "https://tsephhjfppmyccufmewb.supabase.co/functions/v1/intake",
     "MAILBOX": "INBOX",
     "MAX_PER_RUN": "25",
     // IMAP-side filter for the safety net: same senders as the Gmail forwarding filter
