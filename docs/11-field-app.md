@@ -6,7 +6,7 @@ Android app for field operators. It should feel like the chat app they already u
 
 ```
 ┌ Cases ───────────────────────┐   ┌ ← INV-2026-000123 · Ravi S ────┐
-│ [ Open (3) ]  Completed      │   │ Checklist 5/9  ▸                │  pinned, expandable
+│ [ Open (3) ]  Completed      │   │ ⋮ menu ▸ Checklist (5/9)        │  menu option (D41)
 │                              │   │ ─────────────────────────────── │
 │ ● INV-…123  Ravi S      2:14 │   │ ⚙ Field work assigned to you:   │  system event
 │   Please collect the DL …  ②│   │   Visit garage and spot          │
@@ -26,7 +26,7 @@ Android app for field operators. It should feel like the chat app they already u
 | Camera | In-app camera, burst, document mode (edge crop) | local |
 | Picker | Gallery and documents, multi-select | local |
 | Share target | "Share → Toyam" from any app → choose case (Open first) → optional caption and tag → send | Android intent `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for `image/*`, `video/*`, `application/pdf`, `audio/*` |
-| Checklist | Items with progress; **ticks itself** as the LLM labels each file (D30); tap an item to capture directly into it | `task_checklist_items`, `v_case_checklist`, `evidence_labels` (realtime) |
+| Checklist | Opened from the thread's menu (D41); items with progress; **ticks itself once a file is labelled and matched** (D30, D35); tap an item to capture directly into it | `task_checklist_items`, `v_case_checklist`, `evidence_labels` (realtime) |
 
 ## Sending
 
