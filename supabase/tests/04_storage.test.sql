@@ -24,10 +24,11 @@ values
 insert into public.insurers (id, name, code, tat_days)
 values ('20000000-0000-4000-8000-000000000001', 'Fixture Insurer', 'FIX', 7);
 
-insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status)
-values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned'),
-       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress'),
-       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned');
+-- D44: the office user owns c1 (its email and report objects); c2, c3 are unassigned
+insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, status, office_owner_id)
+values ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'FIX-1', 'health', 'assigned', '10000000-0000-4000-8000-0000000000a3'),
+       ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'FIX-2', 'motor',  'field_in_progress', null),
+       ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', 'FIX-3', 'health', 'assigned', null);
 
 insert into public.parties (id, case_id, role, name)
 values ('31000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'insured', 'P1'),
@@ -45,8 +46,9 @@ values ('50000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-0000000
        ('50000000-0000-4000-8000-000000000002', '40000000-0000-4000-8000-000000000001', 2, 'Bill',        false),
        ('50000000-0000-4000-8000-000000000003', '40000000-0000-4000-8000-000000000003', 1, 'Front photo', true);
 
-insert into public.emails (id, gmail_message_id, from_address, received_at, case_id)
-values ('60000000-0000-4000-8000-000000000001', 'fixture-msg-1', 'a@fixture.example', now(), '30000000-0000-4000-8000-000000000001');
+insert into public.emails (id, gmail_message_id, from_address, received_at, case_id, raw_storage_path)
+values ('60000000-0000-4000-8000-000000000001', 'fixture-msg-1', 'a@fixture.example', now(), '30000000-0000-4000-8000-000000000001',
+        'emails/60000000-0000-4000-8000-000000000001/message.eml');
 insert into public.email_attachments (email_id, filename, storage_path, sha256)
 values ('60000000-0000-4000-8000-000000000001', 'claim.pdf', 'emails/60000000-0000-4000-8000-000000000001/claim.pdf', repeat('ab', 32));
 insert into public.intake_extractions (email_id, case_id, model, extracted)

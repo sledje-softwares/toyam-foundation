@@ -29,7 +29,7 @@ select public.intake_record_failure(m, 'emails/2026/11/r/' || m || '.eml', 'Malf
 select public.intake_ingest(pg_temp.decision('r-ok@x', null) - 'retry_email_id');   -- a processed email
 select public.intake_ingest(pg_temp.decision('r-dup@x', null) - 'retry_email_id');  -- already received once
 reset role;
-create temp table t_n as select count(*)::int as n from public.emails;
+create temp table t_n as select count(*)::int as n from public.emails where from_address = 'rcu@retry.example';
 grant select on t_n to authenticated, service_role;
 
 -- =====================================================================
@@ -56,7 +56,7 @@ select is(public.intake_retry(pg_temp.eid('r-2@x')), 'emails/2026/11/r/r-2@x.eml
 select is((select status::text from public.emails where gmail_message_id = 'r-2@x'), 'retry_requested', 'intake_retry() queues instead of deleting');
 select lives_ok($$select public.request_intake_retry(pg_temp.eid('r-3@x')); select public.request_intake_retry(pg_temp.eid('sha-r4'))$$,
                 'staff queue two more');
-select is((select count(*)::int from public.emails), (select n from t_n), 'requesting deletes nothing');
+select is((select count(*)::int from public.emails where from_address = 'rcu@retry.example'), (select n from t_n), 'requesting deletes nothing');
 
 -- =====================================================================
 -- Claim (service role)
@@ -98,7 +98,7 @@ select is((select public.intake_ingest(pg_temp.decision('r-dup@x', pg_temp.eid('
           'a retry of a message received meanwhile is a duplicate');
 select is((select status::text || '/' || retry_attempts from public.emails where gmail_message_id = 'sha-r4'), 'ignored/1',
           'the duplicate retried row is kept and closed');
-select is((select count(*)::int from public.emails), (select n from t_n), 'reprocessing deletes nothing');
+select is((select count(*)::int from public.emails where from_address = 'rcu@retry.example'), (select n from t_n), 'reprocessing deletes nothing');
 
 -- =====================================================================
 -- Escalation
