@@ -101,4 +101,11 @@ describe("task form", () => {
     expect(input?.p_parent_task_id).toBe(PARENT);
     expect(input?.p_instructions).toMatch(/towing bill/);
   });
+
+  it("passes an optional reason of 3-500 characters", () => {
+    expect(validateTaskForm(form({}), ctx).input).not.toHaveProperty("p_reason");
+    expect(validateTaskForm(form({ reason: "Insurer asked for a spot visit" }), ctx).input?.p_reason).toBe("Insurer asked for a spot visit");
+    expect(validateTaskForm(form({ reason: "ab" }), ctx).errors.reason).toMatch(/3 to 500/);
+    expect(validateTaskForm(form({ reason: "r".repeat(501) }), ctx).errors.reason).toMatch(/3 to 500/);
+  });
 });

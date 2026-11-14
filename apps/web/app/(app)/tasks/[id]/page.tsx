@@ -15,13 +15,17 @@ import {
   settingInt,
 } from "@/lib/tasks";
 import { DueText, TaskKindBadge } from "@/components/tasks/task-badges";
+import { CancelTaskButton, EditTaskForm, ReassignTaskForm } from "@/components/tasks/task-actions";
+import { canManageTask, canReassignOnCase, editDefaults } from "@/lib/tasks-actions";
+import { cancelTaskAction, reassignTaskAction, updateTaskAction } from "./actions";
+import { loadOperators } from "../new/load";
 import { Badge, ButtonLink, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
 
 export const metadata = { title: "Task" };
 
 // One literal (not concatenated) so the client can infer the row type.
 const TASK_SELECT =
-  "id, title, kind, status, instructions, due_at, location_text, created_at, started_at, completed_at, parent_task_id, case_id, cases!inner(id, case_ref, status, insurer_claim_no, insurers(name, code), owner:profiles!cases_office_owner_id_fkey(full_name)), assignee:profiles!tasks_assignee_id_fkey(id, full_name, phone, region, is_active), creator:profiles!tasks_created_by_fkey(full_name)";
+  "id, title, kind, status, instructions, due_at, location_text, created_at, started_at, completed_at, parent_task_id, case_id, cases!inner(id, case_ref, status, insurer_claim_no, office_owner_id, insurers(name, code), owner:profiles!cases_office_owner_id_fkey(full_name)), assignee:profiles!tasks_assignee_id_fkey(id, full_name, phone, region, is_active), creator:profiles!tasks_created_by_fkey(full_name)";
 
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -51,7 +55,7 @@ const taskLink = (t: { id: string; title: string }) => (
 );
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireRole(STAFF_ROLES);
+  const me = await requireRole(STAFF_ROLES);
   const { id } = await params;
   if (!isGuid(id)) notFound();
 
@@ -99,6 +103,17 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const holders = new Set(holds.map((h) => h.profile_id));
   const outbox = (outboxRes.data ?? []).filter((o) => holders.has(o.profile_id) && o.pending_count > 0);
 
+  // D44: office staff change tasks only on their own cases; the database enforces it too.
+  const manage = canManageTask({ role: me.role, userId: me.id, caseOwnerId: c.office_owner_id, taskStatus: t.status });
+  const canReassign = manage && canReassignOnCase(c.status);
+  const operators = canReassign ? await loadOperators(supabase, now) : null;
+  const operatorOptions = (operators ?? [])
+    .filter((o) => o.id !== t.assignee?.id)
+    .map((o) => ({
+      value: o.id,
+      label: [o.full_name, o.region, plural(o.open_tasks, "open task"), o.availability].filter(Boolean).join(" · "),
+    }));
+
   const reinvHref = `/tasks/new?case=${encodeURIComponent(c.case_ref)}&kind=reinvestigation&parent=${t.id}`;
 
   return (
@@ -127,6 +142,25 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-5">
+          {manage && (
+            <Section title="Manage task">
+              <div className="flex flex-wrap items-start gap-3">
+                <EditTaskForm
+                  taskId={t.id}
+                  defaults={editDefaults(t)}
+                  isRequest={t.kind === "re_investigation"}
+                  action={updateTaskAction}
+                />
+                {canReassign &&
+                  (operators ? (
+                    <ReassignTaskForm taskId={t.id} options={operatorOptions} action={reassignTaskAction} />
+                  ) : (
+                    <p className="text-sm text-danger">The operators could not be loaded.</p>
+                  ))}
+                <CancelTaskButton taskId={t.id} title={t.title} action={cancelTaskAction} />
+              </div>
+            </Section>
+          )}
           <Section title="Summary">
             <dl className="text-sm">
               <Row label="Case">

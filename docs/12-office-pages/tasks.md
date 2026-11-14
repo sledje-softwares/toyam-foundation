@@ -15,7 +15,7 @@ Routes (this page set; docs/08 §1.3 listed nested `/cases/[caseRef]/tasks/...` 
 
 All staff (admin, orchestrator, office). Field operators never use the web app (layout redirect).
 
-**RLS reality:** `p_tasks_staff` is `for all using (is_staff())`, so every staff member can read every task. "Office employees see tasks on their cases" is therefore a **default filter**, not a security boundary: for `office` the list opens on *My cases* (`cases.office_owner_id = me`), for orchestrator/admin on *All cases*; both can switch (`scope=all|mine`). Assigning field work: `create_field_task()` allows any staff (D16: the assigned office employee, orchestrator or admin); the UI does the same.
+**RLS reality:** `p_tasks_staff` is `for all using (is_staff())`, so every staff member can read every task. "Office employees see tasks on their cases" is therefore a **default filter**, not a security boundary: for `office` the list opens on *My cases* (`cases.office_owner_id = me`), for orchestrator/admin on *All cases*; both can switch (`scope=all|mine`). Changing field work (D44, `20261115600000_field_task_rpcs.sql`): `create_field_task()`, `cancel_field_task()`, `reassign_field_task()` and `update_field_task()` require `private.can_manage_case()` — orchestrator / admin on every case, office staff only on cases they own (`cases.office_owner_id`). The task detail page shows the actions only when the same rule passes (`canManageTask` in `lib/tasks-actions.ts`).
 
 ## /tasks — list
 
@@ -69,7 +69,7 @@ Location            [Garage address / area           ]
 | Operators | `profiles` `role = 'field' and is_active`, with `region`, `availability`, `availability_until`; open-task load = count of `tasks` in pending / in progress per assignee |
 | Checklists | `case_template_checklists` for `cases.template_id` joined to active `checklist_templates` (+ item count), default first (D20, D42). Fallback when the case has no template or no active link: active checklists of the case's claim type and insurer (or all insurers) |
 | Earlier tasks | `tasks` of the case, newest first (parent for re-investigation; also decides the default kind) |
-| Submit | `rpc create_field_task(p_case_id, p_assignee_id, p_title, p_instructions, p_checklist_template_id, p_kind, p_due_at, p_location_text, p_parent_task_id)` |
+| Submit | `rpc create_field_task(p_case_id, p_assignee_id, p_title, p_instructions, p_checklist_template_id, p_kind, p_due_at, p_location_text, p_parent_task_id, p_reason)` |
 
 What the database does on insert (`private.tasks_after_change`, `tasks_track_holds`): posts "Field work assigned to X: title" as a system message — or, for `re_investigation`, the **request text as a `request` message** in the thread (visible to the operator); notifies the operator (`task_assigned` / `field_request`); moves the case from received / assigned / office review / awaiting approval to **In the field**; opens a `task_holds` row. Success → flash + redirect to `/cases/[caseRef]` (thread).
 
@@ -80,7 +80,9 @@ Validation (server action, pure helpers in `lib/tasks-form.ts`; the database re-
 - title 3–120 characters; instructions ≤ 4000 (a thread message is ≤ 4000); request required in re-investigation mode (10–4000);
 - checklist: empty or one of the offered checklists; parent: empty or a task of the same case;
 - due: optional `datetime-local` read as IST (+05:30), must be in the future and within 1 year;
-- location ≤ 300; case must exist and not be Closed or Cancelled.
+- location ≤ 300; reason optional, 3–500 (stored in `tasks.reason`, readable by the operator); case must exist and not be Closed or Cancelled.
+
+The database re-checks (since `20261115600000`): caller manages the case (D44), case exists and is not Closed / Cancelled, active field assignee, title, parent task on the same case, checklist in use and offered for the case (linked to its template, or the claim-type fallback above), reason 3–500.
 
 Errors: field messages inline, others in an `InlineAlert` via `mapDbError`. Unknown case → 404. No active operators → empty state "No active field operators. An admin adds them in Users."
 
@@ -110,15 +112,30 @@ Visit the garage  [In progress] [First visit]            [Request re-investigati
 | Late-upload holds (D43) | `task_holds` for the task + `profiles.deactivated_at` + `app_settings.late_upload_grace_hours` (72) / `drain_window_days` (7): same deadline as `private.field_upload_allowed()` — `held_until + grace` for a hold that ended before deactivation, `deactivated_at + drain` for a deactivated operator, the earlier wins |
 | Files waiting on a phone | `rpc case_outbox_status(case_id)`, limited to operators who held this task and have files waiting |
 
-Actions: **Request re-investigation** (link to the form with `parent`) on a completed task of a case that is not Closed or Cancelled (open work is discussed in the thread); **Open case**. Nothing else: see DB gaps.
+Actions: **Request re-investigation** (link to the form with `parent`) on a completed task of a case that is not Closed or Cancelled (open work is discussed in the thread); **Open case**. On an open task, for whoever manages the case (D44), a **Manage task** panel:
+
+| Action | Form | RPC | What the database does |
+|---|---|---|---|
+| Edit… | title (3–120), instructions / request (≤ 4000; a request ≥ 10), due (IST; a changed due must be in the future and within a year, an unchanged past due is kept), location (≤ 300) | `update_field_task(p_task_id, p_title, p_instructions, p_due_at, p_location_text)` — replaces all four, blank clears; returns false when nothing changed | system message "Field work updated (due time, location): title" (visible to the operators); notifies the operator (`task_updated`); audit `TASK_UPDATED` with the changed fields |
+| Reassign operator… | new operator (active field, not the current one), reason 3–500 | `reassign_field_task(p_task_id, p_assignee_id, p_reason)` (case not Closed / Cancelled) | assignee changes and the task restarts as Pending; `tasks_track_holds` closes the old hold and opens a new one, so the old operator keeps the D43 late-upload window; visible "Field work reassigned from A to B: title" + staff-only reason; notifies the new operator (`task_assigned` / `field_request`), the old one (`task_unassigned`) and the case owner if someone else acted (`task_reassigned`); audit `TASK_REASSIGNED` |
+| Cancel task | confirm dialog with reason 3–500 | `cancel_field_task(p_task_id, p_reason)` | status Cancelled (case to Office review when no field work is left; hold ends); visible "Field work cancelled: title" + staff-only reason; notifies the operator and, if someone else acted, the case owner (`task_cancelled`); audit `TASK_CANCELLED` |
+
+Success redirects back to the task with a flash; errors show inline (`mapDbError`). Server actions in `app/(app)/tasks/[id]/actions.ts`, forms in `components/tasks/task-actions.tsx`, pure helpers in `lib/tasks-actions.ts`.
 
 Empty states: no checklist → "No checklist on this task."; no device report → "No files waiting on the operator's phone." Unknown id → 404.
 
-## DB gaps (no migration in this piece)
+## DB gaps
 
-1. **No task lifecycle RPCs.** Cancel, complete-by-office, reassign operator and edit due / instructions have no functions, so the pages offer none of them. RLS (`p_tasks_staff for all`) would allow plain `update tasks …`, but that posts no thread message, sends no notification to the new / old operator and validates nothing (e.g. reassigning to an office user). Proposed: `cancel_field_task(task, reason)`, `reassign_field_task(task, assignee, reason)` (system message + notify both; `task_holds` already handles the late-upload window), `update_field_task(task, due_at, instructions, location)`.
-2. **`create_field_task()` validates little:** the parent task may belong to another case, the case may be closed / cancelled, the checklist may be out of use or not linked to the case template. The web action checks these; a direct RPC call does not.
-3. `tasks.reason` cannot be set through `create_field_task()` (the re-investigation request is stored as `instructions` and posted to the thread).
+Resolved by `20261115600000_field_task_rpcs.sql` (pgTAP `17_field_task_rpcs`):
+
+1. ~~No task lifecycle RPCs~~ — `cancel_field_task`, `reassign_field_task`, `update_field_task` (above). Still open: **complete-by-office** (no RPC; the operator completes). RLS `p_tasks_staff for all` still allows a plain `update tasks …` by staff that bypasses these functions (no message, no notification); closing that needs the policy split in item 5.
+2. ~~`create_field_task()` validates little~~ — parent, case status, checklist and D44 ownership are checked in the database.
+3. ~~`tasks.reason` cannot be set~~ — `p_reason` (optional, last parameter).
+
+`reassign_case()` is hardened in the same migration: reason 3–500, the current owner and Submitted / Closed / Cancelled cases are refused.
+
+Still open:
+
 4. A task raised on a **Submitted** case leaves the case Submitted (`tasks_after_change` only moves received … awaiting approval). Confirm whether re-investigation after submission should reopen the case.
 5. **Office scope is not enforced by RLS** (all staff read all tasks). If office staff must only see their cases' tasks, `p_tasks_staff` needs splitting (read: owner or orchestrator/admin).
 6. No way to add **ad-hoc checklist items** to a re-investigation task through a function (staff could insert `task_checklist_items` directly; not offered).
