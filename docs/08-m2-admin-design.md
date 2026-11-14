@@ -19,6 +19,12 @@ Inputs: `03-phase1-scope.md`, `04-build-plan.md`, `06-data-model.md`, `07-decisi
 | K9 | No UI component library. Small set of hand-built components on native elements (`<table>`, `<dialog>`, `<select>`) + Tailwind tokens. `zod` for validation shared by server actions. |
 | K10 | Filters, search, sort and page live in **URL search params** on every list (shareable, back button works). |
 
+### Session 5 decisions (2026-11-14)
+
+- **Build order** (replaces the order in section 5): foundation first (T2 UI components, T3 DataTable / FilterBar / Pagination, T4 shell: admin layout, audit log under `/admin`, nav badge slot); then 3.9 intake review and 3.10 failed mail on top of it; then users (T5-T10), insurers (T11-T12), checklists (T13-T15), then 2.6 (section 2.6 below, to be reviewed before it is built). T16 stays last.
+- **Resolved open points**: O3 region is free text with suggestions; O9 no forced password change; O10 orchestrators get no insurer screens. K9 stands (no UI library). The 2.6 screens are admin-only.
+- **Checklist editor (T13-T15)** is kept as designed, plus an **evidence-category select per item** (`checklist_template_items.category_id` -> `evidence_categories`, build plan 2.3; `save_checklist_template()` already accepts an optional item `category_id`, and `apply_checklist_template()` copies it to `task_checklist_items`). The editor works on `checklist_templates` through `save_checklist_template()` / `activate_checklist_template()` and never edits loaded `case_template*` rows (CLAUDE.md rule 8). The template YAML's default field checklist stays the source for template-driven cases (D20). **Open point (D20-O1):** `load_case_template()` does not create checklists; it links `case_template_checklists` to existing in-use `checklist_templates` by name (insurer-specific first, else all-insurer). So the items of a YAML "default checklist" live in `checklist_templates` and are maintained in this editor, not in YAML. Which of the two is the source of the items, and who creates the rows the loader links to, is undecided and needs the user's answer before T13.
+
 ---
 
 ## 1. Information architecture (whole staff web app)
@@ -515,6 +521,44 @@ Preparation (M0 deliverable): one spreadsheet with three tabs the developer send
 
 Order on the day: users (admins first) → insurers → templates uploaded → checklists (all-insurer ones, then duplicates for insurer overrides) → put in use → spot-check one checklist preview with an operator.
 
+### 2.6 Availability and assignment rules (build-plan piece 2.6) — proposed, for review
+
+Admin only (decision 2026-11-14). Note: the database also lets orchestrators write `assignment_rules` / `assignment_rule_members` (policies `p_rules_write`, `p_rule_members_write`) and change anyone's availability (`set_availability`); the screens are nonetheless admin-only, so these are a wider permission than the UI uses. Both screens sit under a new `Assignment` item in the Admin group.
+
+Behaviour they configure (from `20261113000100_revised_flow.sql`, no change proposed): `private.pick_office_assignee()` walks active rules (most specific first: insurer set, then claim type set, then `priority`, then `name`), takes the first assignable member of the first rule that has one (`least_loaded` = fewest open cases, `round_robin` = longest since last assignment), and falls back to every assignable `office` user, least loaded. Assignable (`private.is_assignable()`) = active, role office/orchestrator/admin, `availability = 'available'` or `availability_until` already passed, and open cases below `max_open_cases` (null = no cap). If nobody is assignable, orchestrators are notified (`case_unassigned`) and the case waits for `retry_auto_assign()` or `assign_case`-style manual assignment.
+
+#### 2.6.1 Staff availability — `/admin/assignment` (admin)
+
+- **Layout**: page header "Assignment"; tabs "Availability" (this screen) and "Rules and pools". Table of active staff (office, orchestrator, admin). Columns: name, role, availability (badge), "until" date, open cases / cap, assignable now (yes/no with reason). Row action "Edit". Filters in URL params: role, availability, assignable.
+- **Open cases** = count of `cases` with `office_owner_id` = user and `status` not in `submitted`, `closed`, `cancelled` (same definition as `is_assignable`). Read via `cases` (staff RLS).
+- **Edit panel (per user)**:
+  - Availability: select `available` / `on_leave` / `unavailable` (enum `staff_availability`). Required.
+  - Until: date-time, shown only when not `available`; optional (empty = until changed by hand); must be in the future (UI check; the database does not check). Cleared automatically when set to `available`.
+  - Max open cases: whole number 1-500 or empty (no cap). Matches the check on `profiles.max_open_cases`.
+- **Actions**: Save availability and until -> `rpc set_availability(p_user_id, p_availability, p_until)`. Save cap -> `profiles.update({ max_open_cases })` (admin-only write on `profiles`; audited by the existing profiles trigger, to be confirmed in T-review).
+- **Empty state**: "No active staff yet. Add users under Users." **Error state**: standard `ErrorState` with retry; `mapDbError` maps 42501 to "Only an admin can change this" and P0002 to "User not found".
+- **RLS dependency**: `profiles` read for staff; `set_availability` is security definer and checks the caller (self, orchestrator, admin); `profiles` update is admin-only, so cap changes need the admin role.
+- **Needs migration**: (1) nothing for the fields themselves; (2) a validation that `availability_until` is in the future is not enforced by the database (UI-only unless the user wants it); (3) an "assignable now" reason is not exposed by the database (`private.is_assignable` is boolean, in `private`); the screen computes the reason in the browser from the columns above, or a read function is needed (**needs migration** if the user wants it server-side).
+
+#### 2.6.2 Rules and pools — `/admin/assignment/rules` (admin)
+
+- **Layout**: list of rules ordered as the picker orders them (specific first, then `priority`, `name`), each row: name, insurer (or "Any"), claim type (or "Any"), strategy, priority, pool size, active toggle. Row opens the rule form (side panel or `/admin/assignment/rules/[ruleId]`; `/new` for a new rule). A fixed last row, "Fallback: all assignable office users, least loaded", explains the built-in fallback and is not editable.
+- **Rule form fields**:
+  - Name: required, 2-100 characters after trimming (check on `assignment_rules.name`).
+  - Insurer: select of `insurers`, or "Any insurer" (null).
+  - Claim type: select of enum `claim_type`, or "Any claim type" (null).
+  - Strategy: `least_loaded` or `round_robin` (enum `assignment_strategy`), default `least_loaded`.
+  - Priority: integer, default 100; lower runs first among equally specific rules.
+  - Active: boolean (`is_active`).
+  - Pool (members): multi-select of active staff (`profiles` role office/orchestrator/admin) -> `assignment_rule_members (rule_id, profile_id)`. A rule with an empty pool is allowed by the schema but never assigns; the form warns "Empty pool: this rule will be skipped".
+- **Actions**: create / edit -> `assignment_rules` insert / update; pool -> insert / delete rows in `assignment_rule_members` (members are removed with the rule by cascade). Deactivate rather than delete is advised; delete allowed with confirm. Rule writes are audited (`trg_assignment_rules_audit`); no audit trigger on `assignment_rule_members` was found (needs migration if pool changes must be audited). "Preview" (optional): for a chosen insurer and claim type, list which rule would match first, computed in the browser from the rows above.
+- **Validation messages**: duplicate-looking rules (same insurer, claim type, priority) are allowed by the schema; the form shows an informational note only.
+- **Empty state**: "No rules. New cases go to the least-loaded available office user." with a "New rule" button. **Error state**: as 2.6.1.
+- **RLS dependency**: `p_rules_read` and `p_rule_members_read` (any staff); `p_rules_write` and `p_rule_members_write` (admin, orchestrator). A pgTAP test already covering these policies should be confirmed; none is added by this design.
+- **Needs migration**: (1) saving a rule and its pool atomically is not available as a function (two table writes from the browser); a `save_assignment_rule()` function would be needed if atomicity matters; (2) no unique constraint on (insurer, claim type, priority); (3) no validation that pool members are assignable roles (the picker re-checks at assignment time). Nothing else is proposed.
+
+**Open points for review**: 2.6-O1 should orchestrators also see these screens (database permits; decision so far: admin only)? 2.6-O2 do we want the three migrations items above, or accept UI-only handling for Phase 1?
+
 ---
 
 ## 3. Shared components and style guide
@@ -639,11 +683,11 @@ Estimate: T1–T4 ≈ 1 day, T5–T10 ≈ 1 day, T11–T15 ≈ 1 day, T16 ≈ 0.
 |---|---|---|---|
 | O1 | Field sign-in: mobile + password (free), mobile OTP (needs a paid SMS provider), or email + password? Do operators have personal email addresses? | Client / developer (T6) | Mobile + password |
 | O2 | Is the client admin also the orchestrator day to day (one person, one account)? | Client | Yes — admin sees all screens (K1) |
-| O3 | Fixed list of field regions (cities/districts)? | Client | Free text with suggestions |
+| O3 | Fixed list of field regions (cities/districts)? | Client | Free text with suggestions **Resolved 2026-11-14: free text with suggestions.** |
 | O4 | Is turnaround in calendar or working days, and does any insurer have different turnaround per claim type? (Q7) | Client | Calendar days, one value per insurer |
 | O5 | Do any insurers or their third-party administrators send from public mail addresses (e.g. gmail.com) or from a domain shared by several insurers? If yes, M3 needs sender **address** matching (schema change). | Client | No |
 | O6 | Several checklists per claim type (by visit type) — confirm with the M0 checklists (K7 / DB8). | Client (M0 0.3) | Yes |
 | O7 | Do checklist items need a separate guidance text for operators (beyond the 200-character description)? | Orchestrator | No; description only |
 | O8 | One report template per insurer, or per insurer and claim type? (`report_template_path` is per insurer.) | Client (M0 0.2) | Per insurer |
-| O9 | Must users be forced to change a temporary password at first sign-in? (Adds a flag and a forced screen in web and field app.) | Client | No; advised verbally, `/account` available |
-| O10 | Should orchestrators get read-only access to the Insurers screen (e.g. to look up a portal address)? | Client | No; shown in context on the case (M7) |
+| O9 | Must users be forced to change a temporary password at first sign-in? (Adds a flag and a forced screen in web and field app.) | Client | No; advised verbally, `/account` available **Resolved 2026-11-14: no forced password change.** |
+| O10 | Should orchestrators get read-only access to the Insurers screen (e.g. to look up a portal address)? | Client | No; shown in context on the case (M7) **Resolved 2026-11-14: no; orchestrators get no insurer screens.** |

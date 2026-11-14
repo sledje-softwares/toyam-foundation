@@ -52,6 +52,8 @@ Status legend: ✅ done · 🟡 in progress · 🗄 database layer done (migrati
 
 ### M2 — Administration & Template Configuration (4 days)
 
+Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and failed mail, then users (2.1), insurers (2.2), checklists (2.3), then 2.6; see `08-m2-admin-design.md`, Session 5 decisions.
+
 | # | Piece | Output | Status |
 |---|---|---|---|
 | 2.1 | User management | Per `08-m2-admin-design.md` | 🗄 / ⬜ UI |
