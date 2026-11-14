@@ -2,15 +2,18 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '../src/auth';
 import { splitCases, type CaseRow, type CaseTab } from '../src/lib/cases';
 import { supabase } from '../src/lib/supabase';
 import { relativeTime } from '../src/lib/time';
 import { colors, s } from '../src/theme';
+import { outboxMenuLabel } from '../src/ui-logic/offline';
+import { useOffline } from '../src/ui/OutboxProvider';
+import { StatusStack } from '../src/ui/StatusStack';
 
 export default function Cases() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { snapshot, requestSignOut, rememberNames, markSynced } = useOffline();
+  const outboxLabel = outboxMenuLabel(snapshot.items);
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [tab, setTab] = useState<CaseTab>('open');
   const [refreshing, setRefreshing] = useState(false);
@@ -22,10 +25,13 @@ export default function Cases() {
     if (e) setError('Could not load your cases. Pull down to try again.');
     else {
       setError(null);
-      setRows((data ?? []) as CaseRow[]);
+      const list = (data ?? []) as CaseRow[];
+      setRows(list);
+      rememberNames(Object.fromEntries(list.map((r) => [r.case_id, { case_ref: r.case_ref, title: r.title }])));
+      for (const r of list) markSynced(r.case_id);
     }
     setRefreshing(false);
-  }, []);
+  }, [rememberNames, markSynced]);
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
@@ -34,6 +40,12 @@ export default function Cases() {
 
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
+      <StatusStack storage />
+      {outboxLabel ? (
+        <Pressable onPress={() => router.push('/outbox')} accessibilityRole="button" style={{ minHeight: 56, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+          <Text style={[s.text, { fontWeight: '600' }]}>{outboxLabel}</Text>
+        </Pressable>
+      ) : null}
       <View style={{ flexDirection: 'row', padding: 16, gap: 12 }}>
         {(['open', 'completed'] as const).map((t) => (
           <Pressable
@@ -77,7 +89,7 @@ export default function Cases() {
           </Pressable>
         )}
       />
-      <Pressable onPress={() => void signOut()} style={{ minHeight: 56, alignItems: 'center', justifyContent: 'center' }}>
+      <Pressable onPress={() => void requestSignOut()} style={{ minHeight: 56, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={[s.muted, { textDecorationLine: 'underline' }]}>Sign out</Text>
       </Pressable>
     </SafeAreaView>
