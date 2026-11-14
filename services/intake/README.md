@@ -19,7 +19,7 @@ Shared Gmail ──filter: insurer senders──► forward ──► Email Rout
 |---|---|---|
 | Parser (pure, no dependencies) | `supabase/functions/_shared/intake/` | Deno (edge function) and Node (tests) |
 | Edge function | `supabase/functions/intake/index.ts` | Supabase Edge Runtime |
-| Intake Worker | `services/intake/worker/` (`email.ts` push, `relay.ts` + `imap.ts` safety net) | Cloudflare Workers (Email Routing + hourly cron) |
+| Intake Worker | `services/intake/worker/` (`email.ts` push, `relay.ts` + `imap.ts` safety net, `retry.ts` + `smtp.ts` retry queue) | Cloudflare Workers (Email Routing + hourly cron + 10-minute retry cron) |
 | Template loader | `services/intake/scripts/load-templates.ts` | Node 22 |
 | Database side | `supabase/migrations/20261113000200_intake.sql` | Postgres |
 | Tests | `services/intake/test/` (parser, push handler, relay), `supabase/tests/08_intake.test.sql` | Node / pgTAP |
@@ -59,7 +59,24 @@ Insurer attachments become case evidence unless they are signature images (inlin
 
 - The same mail usually arrives twice (push now, safety net within the hour). The function looks the Message-ID up first and answers `duplicate` without storing anything; attachments are content-addressed under `emails/att/`, so even a race stores each file once.
 - Storage or database errors → the function answers 500. Push does **not** bounce the mail (Gmail would warn the account); the hourly safety net delivers it again. The poll keeps its UID and retries next hour. Every step is idempotent.
-- Undecodable message or parser exception → a `failed` email row with the error (visible to staff), answer 200 so one bad message cannot block the inbox. Staff call `intake_retry(email_id)` and re-post `?reprocess=<raw path>`.
+- Undecodable message or parser exception → a `failed` email row with the error (visible to staff), answer 200 so one bad message cannot block the inbox.
+
+## Queued retry (D39)
+
+```
+staff: request_intake_retry(email)   failed → retry_requested (who / when, audited; nothing deleted)
+Worker cron */10 ─► POST intake?op=claim-retries&limit=RETRY_BATCH   claim_intake_retries(): lease 15 min
+                ─► POST intake?retry=<email id>  (each)              reprocess into the same row:
+                                                                     processed / ignored, or failed + attempts
+                ─► POST intake?op=escalate-retries                   escalate_stuck_intake_retries()
+                ─► one alert email per returned email (ALERT_EMAIL)
+```
+
+- All three calls carry `x-intake-secret`; the Worker never holds a service-role key and the web app holds neither.
+- A retry ends `processed` / `ignored` (ingested) or `failed` with `retry_attempts` + 1 and the new error. If the Worker dies mid-run the lease expires and the next run claims it again. If the same Message-ID was ingested meanwhile, the retried row is closed as `ignored` (no duplicate case).
+- **Alerts:** a retry still `retry_requested` after `app_settings.intake_retry_alert_minutes` (60) or `failed` again → one in-app notification (`kind = intake_retry_stuck`) per active orchestrator and admin, once per request (`retry_alerted_at`), then one email to the shared inbox: subject `[Toyam alert] Intake retry stuck`, body sender / subject / received / attempts / `/intake/failed` (prefixed with `APP_URL` if set).
+- **Alert email transport** (`ALERT_EMAIL` in `wrangler.jsonc`): `smtp` = Gmail submission at `smtp.gmail.com:465` with `GMAIL_USER` / `GMAIL_APP_PASSWORD` (the IMAP secrets; no DNS needed, sent from and to the shared inbox, `ALERT_TO` overrides the recipient); `off` = in-app alerts only, each skipped email is logged as `{"mode":"retry-alert","skipped":…}`. A failed send is logged and not repeated (the in-app alert stands). Cloudflare `send_email` could replace SMTP once Email Routing exists (Q14).
+- Manual run: `POST <worker>/retry` with `x-intake-secret`.
 
 ## Deployment
 

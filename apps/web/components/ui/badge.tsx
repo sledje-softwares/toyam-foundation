@@ -51,6 +51,7 @@ export const STATUS_MAPS = {
     processing: { label: "Processing", tone: "info" },
     processed: { label: "Processed", tone: "success" },
     failed: { label: "Failed", tone: "danger" },
+    retry_requested: { label: "Retry queued", tone: "warning" },
     ignored: { label: "Ignored", tone: "neutral" },
   },
   report_status: {

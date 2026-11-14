@@ -623,14 +623,14 @@ isOneToOne: false
                   ]
                 },"emails": {
                   Row: {
-                    "body_text": string | null,"case_id": string | null,"cc_addresses": (string)[],"classification": Database["public"]['Enums']["email_classification"],"created_at": string,"error": string | null,"from_address": string,"from_name": string | null,"gmail_message_id": string,"gmail_thread_id": string | null,"id": string,"in_reply_to": string | null,"insurer_id": string | null,"is_internal": boolean,"parse_notes": (string)[],"parser_version": string | null,"processed_at": string | null,"raw_sha256": string | null,"raw_storage_path": string | null,"received_at": string,"references_ids": (string)[],"status": Database["public"]['Enums']["email_status"],"subject": string | null,"template_id": string | null,"to_addresses": (string)[]
+                    "body_text": string | null,"case_id": string | null,"cc_addresses": (string)[],"classification": Database["public"]['Enums']["email_classification"],"created_at": string,"error": string | null,"from_address": string,"from_name": string | null,"gmail_message_id": string,"gmail_thread_id": string | null,"id": string,"in_reply_to": string | null,"insurer_id": string | null,"is_internal": boolean,"parse_notes": (string)[],"parser_version": string | null,"processed_at": string | null,"raw_sha256": string | null,"raw_storage_path": string | null,"received_at": string,"references_ids": (string)[],"retry_alerted_at": string | null,"retry_attempts": number,"retry_claimed_at": string | null,"retry_requested_at": string | null,"retry_requested_by": string | null,"status": Database["public"]['Enums']["email_status"],"subject": string | null,"template_id": string | null,"to_addresses": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "body_text"?: string | null,"case_id"?: string | null,"cc_addresses"?: (string)[],"classification"?: Database["public"]['Enums']["email_classification"],"created_at"?: string,"error"?: string | null,"from_address": string,"from_name"?: string | null,"gmail_message_id": string,"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"insurer_id"?: string | null,"is_internal"?: boolean,"parse_notes"?: (string)[],"parser_version"?: string | null,"processed_at"?: string | null,"raw_sha256"?: string | null,"raw_storage_path"?: string | null,"received_at": string,"references_ids"?: (string)[],"status"?: Database["public"]['Enums']["email_status"],"subject"?: string | null,"template_id"?: string | null,"to_addresses"?: (string)[]
+                    "body_text"?: string | null,"case_id"?: string | null,"cc_addresses"?: (string)[],"classification"?: Database["public"]['Enums']["email_classification"],"created_at"?: string,"error"?: string | null,"from_address": string,"from_name"?: string | null,"gmail_message_id": string,"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"insurer_id"?: string | null,"is_internal"?: boolean,"parse_notes"?: (string)[],"parser_version"?: string | null,"processed_at"?: string | null,"raw_sha256"?: string | null,"raw_storage_path"?: string | null,"received_at": string,"references_ids"?: (string)[],"retry_alerted_at"?: string | null,"retry_attempts"?: number,"retry_claimed_at"?: string | null,"retry_requested_at"?: string | null,"retry_requested_by"?: string | null,"status"?: Database["public"]['Enums']["email_status"],"subject"?: string | null,"template_id"?: string | null,"to_addresses"?: (string)[]
                   }
                   Update: {
-                    "body_text"?: string | null,"case_id"?: string | null,"cc_addresses"?: (string)[],"classification"?: Database["public"]['Enums']["email_classification"],"created_at"?: string,"error"?: string | null,"from_address"?: string,"from_name"?: string | null,"gmail_message_id"?: string,"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"insurer_id"?: string | null,"is_internal"?: boolean,"parse_notes"?: (string)[],"parser_version"?: string | null,"processed_at"?: string | null,"raw_sha256"?: string | null,"raw_storage_path"?: string | null,"received_at"?: string,"references_ids"?: (string)[],"status"?: Database["public"]['Enums']["email_status"],"subject"?: string | null,"template_id"?: string | null,"to_addresses"?: (string)[]
+                    "body_text"?: string | null,"case_id"?: string | null,"cc_addresses"?: (string)[],"classification"?: Database["public"]['Enums']["email_classification"],"created_at"?: string,"error"?: string | null,"from_address"?: string,"from_name"?: string | null,"gmail_message_id"?: string,"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"insurer_id"?: string | null,"is_internal"?: boolean,"parse_notes"?: (string)[],"parser_version"?: string | null,"processed_at"?: string | null,"raw_sha256"?: string | null,"raw_storage_path"?: string | null,"received_at"?: string,"references_ids"?: (string)[],"retry_alerted_at"?: string | null,"retry_attempts"?: number,"retry_claimed_at"?: string | null,"retry_requested_at"?: string | null,"retry_requested_by"?: string | null,"status"?: Database["public"]['Enums']["email_status"],"subject"?: string | null,"template_id"?: string | null,"to_addresses"?: (string)[]
                   }
                   Relationships: [
                     {
@@ -656,6 +656,12 @@ isOneToOne: false
       columns: ["insurer_id"]
 isOneToOne: false
       referencedRelation: "insurers"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "emails_retry_requested_by_fkey"
+      columns: ["retry_requested_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "emails_template_id_fkey"
@@ -1478,6 +1484,11 @@ isOneToOne: false
               "field_last_read_at": string,"staff_last_read_at": string
             }[]
                            },
+"claim_intake_retries":
+{ Args: { "p_limit"?: number }; Returns: {
+              "id": string,"raw_storage_path": string
+            }[]
+                           },
 "claim_processing_jobs":
 { Args: { "p_limit": number,"p_stages": (Database["public"]['Enums']["processing_stage"])[],"p_worker": string }; Returns: {
               "attempts": number,
@@ -1513,6 +1524,11 @@ isOneToOne: false
 "enqueue_reprocessing":
 { Args: { "p_evidence_ids": (string)[],"p_pipeline_version": string,"p_stages": (Database["public"]['Enums']["processing_stage"])[] }; Returns: number
                            },
+"escalate_stuck_intake_retries":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "email_id": string,"email_status": Database["public"]['Enums']["email_status"],"from_address": string,"received_at": string,"retry_attempts": number,"retry_requested_at": string,"subject": string
+            }[]
+                           },
 "escalate_unattended_cases":
 { Args: Record<PropertyKey, never>; Returns: number
                            },
@@ -1537,6 +1553,9 @@ isOneToOne: false
                            },
 "intake_retry":
 { Args: { "p_email_id": string }; Returns: string
+                           },
+"intake_retry_failed":
+{ Args: { "p_email_id": string,"p_error": string }; Returns: boolean
                            },
 "is_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
@@ -1573,6 +1592,9 @@ isOneToOne: false
 "reject_intake":
 { Args: { "p_extraction_id": string,"p_reason": string }; Returns: undefined
                            },
+"request_intake_retry":
+{ Args: { "p_email_id": string }; Returns: string
+                           },
 "retry_auto_assign":
 { Args: { "p_case_id": string }; Returns: string
                            },
@@ -1592,7 +1614,7 @@ isOneToOne: false
                            }
           }
           Enums: {
-            "approval_decision": "pending"|"approved"|"changes_requested","assignment_strategy": "least_loaded"|"round_robin","capture_source": "camera"|"gallery"|"share"|"web_upload"|"email_attachment","case_status": "received"|"intake_confirmed"|"assigned"|"field_in_progress"|"office_review"|"orchestrator_review"|"submitted"|"closed"|"cancelled","checklist_status": "pending"|"captured"|"not_available"|"waived","claim_type": "health"|"motor"|"death"|"personal_accident"|"property"|"other","email_classification": "unclassified"|"new_case"|"reminder"|"additional_docs"|"query"|"other","email_status": "pending"|"processing"|"processed"|"failed"|"ignored","entity_type": "hospital"|"garage"|"doctor"|"agent"|"police_station"|"other","evidence_relevance": "unreviewed"|"relevant"|"not_relevant","evidence_type": "photo"|"document"|"audio"|"video"|"note","extraction_status": "pending_review"|"confirmed"|"rejected","field_value_source": "email_parser"|"llm"|"office"|"suggestion","job_status": "queued"|"running"|"done"|"failed"|"skipped","label_source": "operator"|"filename_rule"|"text_rule"|"model"|"llm"|"human","message_kind": "text"|"media"|"voice"|"system"|"request","party_role": "insured"|"patient"|"claimant"|"nominee"|"driver"|"witness"|"other","processing_stage": "text_extract"|"ocr"|"label"|"field_suggest","report_status": "draft"|"final","staff_availability": "available"|"on_leave"|"unavailable","submission_channel": "email"|"portal"|"other","suggestion_status": "pending"|"accepted"|"rejected","task_kind": "initial"|"re_investigation"|"office"|"other","task_status": "pending"|"in_progress"|"completed"|"cancelled","template_field_source": "intake"|"office","template_field_type": "text"|"long_text"|"number"|"currency"|"date"|"datetime"|"choice"|"multi_choice"|"boolean","user_role": "admin"|"orchestrator"|"office"|"field"
+            "approval_decision": "pending"|"approved"|"changes_requested","assignment_strategy": "least_loaded"|"round_robin","capture_source": "camera"|"gallery"|"share"|"web_upload"|"email_attachment","case_status": "received"|"intake_confirmed"|"assigned"|"field_in_progress"|"office_review"|"orchestrator_review"|"submitted"|"closed"|"cancelled","checklist_status": "pending"|"captured"|"not_available"|"waived","claim_type": "health"|"motor"|"death"|"personal_accident"|"property"|"other","email_classification": "unclassified"|"new_case"|"reminder"|"additional_docs"|"query"|"other","email_status": "pending"|"processing"|"processed"|"failed"|"retry_requested"|"ignored","entity_type": "hospital"|"garage"|"doctor"|"agent"|"police_station"|"other","evidence_relevance": "unreviewed"|"relevant"|"not_relevant","evidence_type": "photo"|"document"|"audio"|"video"|"note","extraction_status": "pending_review"|"confirmed"|"rejected","field_value_source": "email_parser"|"llm"|"office"|"suggestion","job_status": "queued"|"running"|"done"|"failed"|"skipped","label_source": "operator"|"filename_rule"|"text_rule"|"model"|"llm"|"human","message_kind": "text"|"media"|"voice"|"system"|"request","party_role": "insured"|"patient"|"claimant"|"nominee"|"driver"|"witness"|"other","processing_stage": "text_extract"|"ocr"|"label"|"field_suggest","report_status": "draft"|"final","staff_availability": "available"|"on_leave"|"unavailable","submission_channel": "email"|"portal"|"other","suggestion_status": "pending"|"accepted"|"rejected","task_kind": "initial"|"re_investigation"|"office"|"other","task_status": "pending"|"in_progress"|"completed"|"cancelled","template_field_source": "intake"|"office","template_field_type": "text"|"long_text"|"number"|"currency"|"date"|"datetime"|"choice"|"multi_choice"|"boolean","user_role": "admin"|"orchestrator"|"office"|"field"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -1712,7 +1734,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "approval_decision": ["pending", "approved", "changes_requested"],"assignment_strategy": ["least_loaded", "round_robin"],"capture_source": ["camera", "gallery", "share", "web_upload", "email_attachment"],"case_status": ["received", "intake_confirmed", "assigned", "field_in_progress", "office_review", "orchestrator_review", "submitted", "closed", "cancelled"],"checklist_status": ["pending", "captured", "not_available", "waived"],"claim_type": ["health", "motor", "death", "personal_accident", "property", "other"],"email_classification": ["unclassified", "new_case", "reminder", "additional_docs", "query", "other"],"email_status": ["pending", "processing", "processed", "failed", "ignored"],"entity_type": ["hospital", "garage", "doctor", "agent", "police_station", "other"],"evidence_relevance": ["unreviewed", "relevant", "not_relevant"],"evidence_type": ["photo", "document", "audio", "video", "note"],"extraction_status": ["pending_review", "confirmed", "rejected"],"field_value_source": ["email_parser", "llm", "office", "suggestion"],"job_status": ["queued", "running", "done", "failed", "skipped"],"label_source": ["operator", "filename_rule", "text_rule", "model", "llm", "human"],"message_kind": ["text", "media", "voice", "system", "request"],"party_role": ["insured", "patient", "claimant", "nominee", "driver", "witness", "other"],"processing_stage": ["text_extract", "ocr", "label", "field_suggest"],"report_status": ["draft", "final"],"staff_availability": ["available", "on_leave", "unavailable"],"submission_channel": ["email", "portal", "other"],"suggestion_status": ["pending", "accepted", "rejected"],"task_kind": ["initial", "re_investigation", "office", "other"],"task_status": ["pending", "in_progress", "completed", "cancelled"],"template_field_source": ["intake", "office"],"template_field_type": ["text", "long_text", "number", "currency", "date", "datetime", "choice", "multi_choice", "boolean"],"user_role": ["admin", "orchestrator", "office", "field"]
+            "approval_decision": ["pending", "approved", "changes_requested"],"assignment_strategy": ["least_loaded", "round_robin"],"capture_source": ["camera", "gallery", "share", "web_upload", "email_attachment"],"case_status": ["received", "intake_confirmed", "assigned", "field_in_progress", "office_review", "orchestrator_review", "submitted", "closed", "cancelled"],"checklist_status": ["pending", "captured", "not_available", "waived"],"claim_type": ["health", "motor", "death", "personal_accident", "property", "other"],"email_classification": ["unclassified", "new_case", "reminder", "additional_docs", "query", "other"],"email_status": ["pending", "processing", "processed", "failed", "retry_requested", "ignored"],"entity_type": ["hospital", "garage", "doctor", "agent", "police_station", "other"],"evidence_relevance": ["unreviewed", "relevant", "not_relevant"],"evidence_type": ["photo", "document", "audio", "video", "note"],"extraction_status": ["pending_review", "confirmed", "rejected"],"field_value_source": ["email_parser", "llm", "office", "suggestion"],"job_status": ["queued", "running", "done", "failed", "skipped"],"label_source": ["operator", "filename_rule", "text_rule", "model", "llm", "human"],"message_kind": ["text", "media", "voice", "system", "request"],"party_role": ["insured", "patient", "claimant", "nominee", "driver", "witness", "other"],"processing_stage": ["text_extract", "ocr", "label", "field_suggest"],"report_status": ["draft", "final"],"staff_availability": ["available", "on_leave", "unavailable"],"submission_channel": ["email", "portal", "other"],"suggestion_status": ["pending", "accepted", "rejected"],"task_kind": ["initial", "re_investigation", "office", "other"],"task_status": ["pending", "in_progress", "completed", "cancelled"],"template_field_source": ["intake", "office"],"template_field_type": ["text", "long_text", "number", "currency", "date", "datetime", "choice", "multi_choice", "boolean"],"user_role": ["admin", "orchestrator", "office", "field"]
           }
         }
 } as const

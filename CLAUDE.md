@@ -21,7 +21,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Templates and categories: `docs/09-template-model.md`, `config/templates/`
 - Processing pipeline contract: `docs/10-processing-pipeline.md`
 - Field app: `docs/11-field-app.md`
-- Schema: all files in `supabase/migrations/` (latest `20261114100000_label_first.sql`)
+- Schema: all files in `supabase/migrations/` (latest `20261114200100_intake_retry.sql`)
 - Email intake (M3) runbook: `services/intake/README.md`
 - Vision labeller and model bake-off (D34): `services/labeller/README.md`
 
@@ -50,8 +50,8 @@ A single freelance developer working with Claude. Plan work in small, independen
 ## Current status (2026-11-14, end of session 4)
 
 - Decisions up to D38. New: **D37: Haiku 5.5 labels each file on arrival (one image, cached prompt); low confidence goes straight to Sonnet 5.5 on the standard API (no Batch API), ~$20 a month; fallback Sonnet on 6×6 collages. D38: one always-on container in a Mumbai region runs `services/pipeline` (Dockerfile, provider-neutral, service-role key server-side).** Earlier: labelling and OCR models (D34) — each image labelled on its own at ~384 px by a small vision model (no collages), label **before** OCR, server OCR (dedicated OCR model) only where `ocr_wanted()`, numbers from OCR + rules with the vision model as second opinion, model chosen by bake-off. **D35: one LLM call per image returns labels, matched report fields (→ sections) and a description only where needed; no cross-encoder, no embedding classifier; per-template prompt must be cached.** **D36: the bake-off compares Haiku 5.5 and Sonnet 5.5 on single images and on numbered 6×6 collages; collages adopted only if they meet the same pass marks.** Earlier: D30 LLM labels, D31 orchestrator live view, D32 staff-only messages, D33 push intake.
-- Database: migrations up to `20261114100000_label_first.sql`. pgTAP suite **390 assertions passing** (01–10) on PostgreSQL 16 with a Supabase-compatible stub and seed. **Confirm locally with `npx -y supabase@3.1.0 db reset && npx -y supabase@3.1.0 test db` (PG 17).** `03_rls_staff` test 24 depends on seed data.
-- M3 email intake built: push handler `services/intake/worker/email.ts` (Email Routing → `email()`), hourly IMAP safety net (`relay.ts`, `ONLY_FROM` filter), edge function `supabase/functions/intake`, rule parser `supabase/functions/_shared/intake`. Node tests: 38 passing.
+- Database: migrations up to `20261114200100_intake_retry.sql` (D39 queued intake retry). pgTAP suite **431 assertions passing** (01–11) on PostgreSQL 16 with a Supabase-compatible stub and seed. **Confirm locally with `npx -y supabase@3.1.0 db reset && npx -y supabase@3.1.0 test db` (PG 17).** `03_rls_staff` test 24 depends on seed data.
+- M3 email intake built: push handler `services/intake/worker/email.ts` (Email Routing → `email()`), hourly IMAP safety net (`relay.ts`, `ONLY_FROM` filter), edge function `supabase/functions/intake`, rule parser `supabase/functions/_shared/intake`. Node tests: 48 passing. D39 queued retry: Worker `*/10` cron (`retry.ts`) → `?retry=<email id>`; stuck alerts in-app + one Gmail SMTP email.
 - M6 labeller groundwork: `services/labeller` — per-template prompt (categories + fields) and answer parser (labels, field matches, optional description), adapters (Anthropic, Google, OpenAI, OpenRouter, DeepSeek, self-hosted vLLM), scoring incl. field precision / recall, `npm run bakeoff --template`, collage arm `--layouts single,6x6` (numbered cells, per-cell parsing). 35 Node tests passing; strict `tsc` clean. Categories now carry `description` (for the prompt) and `ocr` flags.
 - Not deployed anywhere. Push needs DNS for `toyaminvestigation.in` (Q14); until then the poll alone works (set the cron back to every few minutes if push is not ready at go-live).
 - Templates: `config/templates/_categories.yaml` (25), `igi-motor-od.yaml`, `icl-motor-od.yaml`.
