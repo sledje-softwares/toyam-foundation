@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ground-truth labelling tool</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1b1f24; --muted:#5b6470; --card:#fff; --line:#d5d9e0; --accent:#1f5fd1; --on:#e3edff; --ok:#1a7f3c; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14171b; --fg:#e8ebef; --muted:#9aa3ae; --card:#1e2227; --line:#383e46; --accent:#6ea0ff; --on:#22334f; --ok:#5fd07f; --warn:#ff8a80; } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; padding:8px 12px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:12px; padding:12px; height:calc(100vh - 52px); }
+  @media (max-width:900px) { main { grid-template-columns:1fr; height:auto; } }
+  #viewer { background:#000; border-radius:6px; display:flex; align-items:center; justify-content:center; min-height:300px; overflow:hidden; }
+  #viewer img { max-width:100%; max-height:calc(100vh - 130px); object-fit:contain; }
+  #panel { overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px; }
+  #info { margin:0 0 8px; color:var(--muted); word-break:break-all; }
+  #info b { color:var(--fg); }
+  h2 { font-size:13px; margin:12px 0 6px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  button, select { font:inherit; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:5px; padding:5px 9px; cursor:pointer; }
+  button.on { background:var(--on); border-color:var(--accent); font-weight:600; }
+  button kbd { display:inline-block; min-width:1.3em; text-align:center; margin-right:5px; padding:0 3px; border:1px solid var(--line); border-radius:3px; font:11px monospace; background:var(--bg); }
+  .order { color:var(--accent); font-weight:700; margin-left:4px; }
+  .sec { margin:6px 0; } .sec > div { font-weight:600; font-size:12px; margin-bottom:2px; }
+  .sec label { display:block; padding:1px 0 1px 8px; cursor:pointer; }
+  #status { color:var(--muted); } #status.warn { color:var(--warn); } #status.ok { color:var(--ok); }
+  .done { color:var(--ok); font-weight:600; }
+  #empty { color:#ddd; text-align:center; padding:20px; }
+  .primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ground-truth labelling</h1>
+  <button id="pick">Open image folder&hellip;</button>
+  <input id="folder" type="file" webkitdirectory multiple hidden>
+  <label>Template <select id="tpl"></select></label>
+  <span id="progress"></span>
+  <button id="export" class="primary">Export truth.csv</button>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="viewer"><div id="empty">Open a folder that holds one sub-folder per case.<br>Images stay on this PC; nothing is uploaded.</div></div>
+  <div id="panel">
+    <p id="info"></p>
+    <h2>Categories (up to 3, in order)</h2>
+    <div class="btns" id="cats"></div>
+    <h2>Needs detail</h2>
+    <div class="btns"><button id="nd"><kbd>D</kbd><span>no</span></button></div>
+    <h2>Report fields this image is evidence for</h2>
+    <div id="fields"></div>
+    <h2>Keys</h2>
+    <div style="color:var(--muted)">&larr; / &rarr; previous / next &middot; Enter save and next &middot; D needs detail &middot; the key on a category button selects it.</div>
+    <div style="margin-top:8px"><button id="save" class="primary">Save and next (Enter)</button></div>
+  </div>
+</main>
+
+<script id="truth-core">
+// Pure logic, no DOM. rows: [{file, codes:[], needs_detail:true|false|null, fields:[]|null}]
+// Matches src/truth.ts: header file,categories,needs_detail,fields; "-" = no field; blank = not marked.
+function csvCell(s) {
+  s = String(s);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function buildTruthCsv(rows) {
+  var out = ['file,categories,needs_detail,fields'];
+  rows.forEach(function (r) {
+    var nd = r.needs_detail === true ? 'yes' : r.needs_detail === false ? 'no' : '';
+    var f = r.fields === null || r.fields === undefined ? '' : r.fields.length ? r.fields.join(';') : '-';
+    out.push([csvCell(r.file), csvCell(r.codes.join(';')), nd, csvCell(f)].join(','));
+  });
+  return out.join('\r\n') + '\r\n';
+}
+</script>
+
+<script id="truth-app">
+var DATA = /*EMBED:DATA*/{"categories":[{"code":"vehicle_photo","name":"Vehicle photo","description":"Exterior or interior of the insured vehicle, including damage close-ups and number plate views"},{"code":"odometer_photo","name":"Odometer photo","description":"Instrument cluster showing the odometer reading"},{"code":"chassis_engine_photo","name":"Chassis / engine number photo","description":"Stamped chassis (VIN) or engine number on the vehicle"},{"code":"spot_photo","name":"Accident / loss spot photo","description":"Place of accident or loss: road, junction, landmark, debris"},{"code":"insured_photo","name":"Photo with insured / rider / witness","description":"A person (insured, rider, driver or witness), usually with the investigator or the vehicle"},{"code":"rc_document","name":"Registration certificate / RC extract","description":"Registration certificate (smart card or paper) or an RC / VAHAN extract"},{"code":"dl_document","name":"Driving licence / DL extract","description":"Driving licence (card or booklet) or a DL / Sarathi extract"},{"code":"policy_document","name":"Policy copy","description":"Insurance policy schedule or certificate of insurance"},{"code":"claim_form","name":"Claim form / intimation","description":"Claim form or claim intimation filled by the insured"},{"code":"estimate","name":"Repair estimate","description":"Garage repair estimate or quotation listing parts and labour"},{"code":"job_card","name":"Garage job card / gate entry","description":"Garage job card, repair order or gate entry slip"},{"code":"towing_bill","name":"Towing bill","description":"Bill or receipt for towing or crane service"},{"code":"id_document","name":"Identity / KYC document","description":"Identity or KYC document of a person (Aadhaar, PAN, voter ID, passport)"},{"code":"fir_police_document","name":"FIR / GD / police document","description":"FIR, general diary entry, panchnama or other police paper"},{"code":"medical_document","name":"Treatment / MLC papers","description":"Hospital or doctor papers: MLC, discharge summary, prescription, bills"},{"code":"written_statement","name":"Written statement","description":"Handwritten or typed statement or declaration signed by a person"},{"code":"avr_recording","name":"Audio / video recording (AVR)","description":"Audio or video recording of a conversation or statement"},{"code":"cctv_footage","name":"CCTV / dashcam footage","description":"CCTV or dashcam footage or a still taken from it"},{"code":"location_timeline","name":"Google timeline / call log screenshot","description":"Screenshot of a location timeline, map history or call log"},{"code":"echallan_check","name":"e-Challan / portal check screenshot","description":"Screenshot of an e-Challan or Parivahan portal check"},{"code":"vehicle_invoice","name":"Vehicle purchase invoice","description":"Purchase invoice or sale certificate of the vehicle"},{"code":"loan_document","name":"Loan statement / non-repossession letter","description":"Loan statement, hypothecation or non-repossession / NOC letter"},{"code":"reminder_letter","name":"Reminder / deficiency letter to insured","description":"Reminder or deficiency letter sent to the insured"},{"code":"proof_of_dispatch","name":"Proof of dispatch (POD)","description":"Postal receipt or courier tracking proving a letter was sent"},{"code":"other","name":"Other","description":"Anything that fits none of the categories above"}],"templates":[{"id":"icl-motor-od","name":"ICICI Lombard — Motor OD investigation","sections":[{"key":"case_reference","title":"Investigator and claim reference","fields":[{"key":"firm_case_ref","label":"Case ref. no (investigator)"},{"key":"insurer_claim_no","label":"Claim no"},{"key":"insurer_internal_claim_no","label":"Insurer claim number"},{"key":"interaction_no","label":"Interaction no."},{"key":"policy_no","label":"Policy no."},{"key":"date_of_loss","label":"Date of loss"},{"key":"time_of_accident","label":"Time of accident"},{"key":"national_holiday","label":"Accident on a national holiday (name)"},{"key":"intimation_date","label":"Date of claim intimated to call centre"},{"key":"late_intimation_reason","label":"Reason for late intimation (>10 days)"},{"key":"investigation_points","label":"Red flags / points to address"}]},{"key":"insured","title":"Insured details","fields":[{"key":"insured_name","label":"Name of insured"},{"key":"insured_registration_no","label":"Registration no (GST / firm)"},{"key":"insured_profession","label":"Insured profession"},{"key":"insured_actual_address","label":"Address — actual"},{"key":"negative_area","label":"Address pertains to negative area"},{"key":"contact_person","label":"Contact person and number"}]},{"key":"vehicle","title":"Vehicle and policy details","fields":[{"key":"vehicle_no","label":"Vehicle registration no."},{"key":"purchase_invoice","label":"New vehicle invoice details"},{"key":"make_model","label":"Make and model"},{"key":"registration_date","label":"Registration date"},{"key":"hypothecation","label":"Hypothecation details"},{"key":"repayment","label":"Repayment details till date"},{"key":"tp_vehicle","label":"TP vehicle details"},{"key":"policy_period","label":"Policy period"},{"key":"policy_type","label":"Policy type"},{"key":"agent_dealer","label":"Name of agent / dealer"},{"key":"previous_insurer","label":"Previous insurer and policy no. (if rollover)"},{"key":"previous_claim","label":"Any claim in previous policy"},{"key":"break_in","label":"Break-in details (date"}]},{"key":"driver","title":"Driver details","fields":[{"key":"driver_name","label":"Driver name"},{"key":"dl_number","label":"DL no."},{"key":"dl_classes","label":"DL details / endorsements"},{"key":"dl_rto","label":"Licensing RTO"},{"key":"dl_observation","label":"Observation"},{"key":"driver_injured","label":"Driver injured or not"},{"key":"neighbour_enquiry","label":"Enquiry from neighbours for accident confirmation"},{"key":"driver_relationship","label":"Driver relationship"},{"key":"injuries_deaths","label":"Injuries / deaths in the accident"},{"key":"nearby_police_hospital","label":"Nearest police station and hospitals checked"},{"key":"discreet_enquiry","label":"Discreet enquiry with driver at place of loss"},{"key":"bluetooth_photos","label":"Photos exchanged via Bluetooth / snapshot of insured mobile"}]},{"key":"statement","title":"Written statement","fields":[{"key":"written_statement","label":"Written statement of insured"}]},{"key":"timeline","title":"GPS timeline","fields":[{"key":"gps_timeline","label":"GPS timeline of insured / driver"}]},{"key":"police","title":"Police intimation details","fields":[{"key":"fir_no","label":"FIR no."},{"key":"fir_details","label":"FIR details"},{"key":"panchanama","label":"Panchanama details"},{"key":"injury_details","label":"Injury details (insured / driver / TP)"},{"key":"eye_witness","label":"Eye witness"}]},{"key":"garage","title":"Garage visit","fields":[{"key":"garage_visit","label":"Garage visit"},{"key":"garage_name","label":"Garage name"},{"key":"damage_correlation","label":"Damages correlate with accident description"},{"key":"traces_inspection","label":"Traces of blood / hair / other on vehicle"},{"key":"odometer_service","label":"Odometer reading and service history"},{"key":"gate_pass","label":"Date and time of gate pass entry"},{"key":"towing","label":"Towing vendor details"},{"key":"job_card","label":"Job card date and details"},{"key":"garage_delay_status","label":"Vehicle status if garage entry > 24 hrs after loss"}]},{"key":"insured_visit","title":"Insured visit","fields":[{"key":"insured_visit","label":"Insured visit"},{"key":"fastag","label":"FASTag details"},{"key":"travel_from_to","label":"Travelling from where to where"},{"key":"purpose_of_travel","label":"Purpose of travel"},{"key":"accident_version","label":"Accident version — exact loss location"},{"key":"rehabilitation","label":"How insured / driver left the loss location (towing)"},{"key":"first_contact","label":"After accident first contact details"},{"key":"police_clarification","label":"Police intimation clarification"}]},{"key":"summary","title":"Case summary and observations","fields":[{"key":"case_summary","label":"Case summary and observation"},{"key":"observations","label":"Observations (bullets)"}]},{"key":"conclusion","title":"Final conclusion","fields":[{"key":"final_conclusion","label":"Final conclusion"},{"key":"investigation_status","label":"Investigation status"},{"key":"repudiate_ground","label":"Repudiate ground"},{"key":"submission_date","label":"Report submission date"}]}]},{"id":"igi-motor-od","name":"IndusInd (Reliance) — Motor OD investigation","sections":[{"key":"insured","title":"Insured details","fields":[{"key":"insured_name","label":"Insured name"},{"key":"insurer_claim_no","label":"Claim no"},{"key":"policy_no","label":"Policy number"},{"key":"present_address","label":"Present address"},{"key":"permanent_address","label":"Permanent address"},{"key":"policy_address","label":"Policy address"},{"key":"insured_mobile","label":"Insured contact number"},{"key":"insured_email","label":"Insured email ID"},{"key":"vehicle_no","label":"Vehicle number"},{"key":"vehicle_class","label":"Vehicle type"},{"key":"investigation_points","label":"RCU trigger (points to address)"}]},{"key":"loss_and_policy","title":"Loss, intimation and policy","fields":[{"key":"loss_datetime","label":"Loss date and time"},{"key":"intimation_datetime","label":"Intimation to insurer date and time"},{"key":"intimation_delay_days","label":"Delay in intimation (days)"},{"key":"delay_reason","label":"Reason for delay in intimation"},{"key":"policy_type","label":"Policy type"},{"key":"policy_period","label":"Policy period"},{"key":"within_policy_period","label":"Is the accident within policy period"},{"key":"rollover_policy_no","label":"If rollover"},{"key":"previous_year_claim","label":"Any claim lodged in previous year"},{"key":"close_proximity","label":"Claim in close proximity"}]},{"key":"basic_details","title":"Basic details","fields":[{"key":"loss_dt_claim_form","label":"Loss date/time as per claim form"},{"key":"loss_dt_statement","label":"Loss date/time as per intimation / written statement"},{"key":"loss_dt_fir","label":"Loss date/time as per FIR / GD"},{"key":"mismatch_reason","label":"If mismatching"},{"key":"brief_remarks","label":"Brief remarks of the accident"}]},{"key":"accident","title":"Accident details","fields":[{"key":"loss_type","label":"Loss type"},{"key":"vehicle_burnt","label":"Vehicle burnt"},{"key":"origin_of_fire","label":"Origin of fire"},{"key":"vehicles_involved","label":"No. of vehicles involved"},{"key":"occupants","label":"No. of occupants"},{"key":"occupant_relation","label":"Relation of occupant/driver with insured"},{"key":"insured_travelling","label":"Is insured travelling"},{"key":"purpose_of_travel","label":"Purpose of travel"},{"key":"tp_involved","label":"Any TP accident involved"},{"key":"travel_from_to","label":"Travelling from / to (date and location)"},{"key":"anyone_injured","label":"Anyone travelling injured / dead"},{"key":"cause_of_loss_intimated","label":"Cause of loss as intimated"}]},{"key":"fir","title":"FIR / GD details","fields":[{"key":"fir_no_date","label":"FIR / GD date and number"},{"key":"fir_delay","label":"Any delay in FIR / GD and reason"},{"key":"police_station","label":"Police station name and address"},{"key":"io_details","label":"Investigating officer and contact"},{"key":"fir_narration","label":"Brief FIR / GD narration"}]},{"key":"driver","title":"Driver details","fields":[{"key":"driver_name","label":"Driver name"},{"key":"driver_dob","label":"Driver DOB as per DL"},{"key":"driver_address","label":"Driver resident address"},{"key":"driver_contact","label":"Driver contact number"},{"key":"driver_relation","label":"Relation with the insured"},{"key":"dl_number","label":"DL number of the driver"},{"key":"dl_authority","label":"DL issuing authority"},{"key":"dl_type","label":"Type of licence"},{"key":"dl_classes","label":"Vehicle classes authorised"},{"key":"dl_validity","label":"Licence validity"},{"key":"dl_valid_at_loss","label":"Licence valid at time of accident"},{"key":"driver_remarks","label":"Other remarks regarding the driver"}]},{"key":"garage","title":"Garage details","fields":[{"key":"garage_name","label":"Garage name"},{"key":"garage_address","label":"Garage address"},{"key":"garage_contact","label":"Garage contact number"},{"key":"garage_entry","label":"Vehicle entry date and time"},{"key":"job_card_no","label":"Job card number"},{"key":"odometer_at_entry","label":"Odometer reading at entry"},{"key":"loss_to_entry_gap","label":"Difference between loss date and garage entry"},{"key":"garage_gap_reason","label":"Reason"}]},{"key":"registration","title":"Vehicle registration details","fields":[{"key":"reg_number","label":"Registration number"},{"key":"reg_date","label":"Registration date"},{"key":"reg_rto","label":"Registration RTO"},{"key":"vehicle_make","label":"Vehicle make"},{"key":"vehicle_model","label":"Vehicle model"},{"key":"fuel_type","label":"Fuel type"},{"key":"seating_capacity","label":"Seating capacity"},{"key":"engine_no","label":"Engine number"},{"key":"chassis_no","label":"Chassis number"},{"key":"modifications","label":"Any modifications in vehicle"},{"key":"hypothecation","label":"Hypothecation / other observation"}]},{"key":"commercial","title":"If vehicle commercial","fields":[{"key":"commercial_details","label":"Load"}]},{"key":"spot","title":"Spot verification","fields":[{"key":"spot_matches","label":"Intimation / claim form spot matching"},{"key":"actual_spot","label":"If no"},{"key":"spot_witness","label":"Spot witness name(s)"},{"key":"spot_details","label":"Other details regarding the spot"}]},{"key":"injured","title":"Injured details","fields":[{"key":"injured_details","label":"Name"},{"key":"injury_observation","label":"Observation during investigation"}]},{"key":"statements","title":"Written statements","fields":[{"key":"statements","label":"Statements (name"}]},{"key":"findings","title":"Observations / findings","fields":[{"key":"findings","label":"Observations and findings (numbered)"},{"key":"documents_collected","label":"Documents collected"}]},{"key":"reminders","title":"Reminder letter / document deficiency letter","fields":[{"key":"reminder_1_date","label":"1st letter date"},{"key":"reminder_2_date","label":"2nd letter date"},{"key":"deficiency_list","label":"Document deficiency list"}]},{"key":"conclusion","title":"Conclusion","fields":[{"key":"conclusion","label":"Conclusion"},{"key":"investigation_status","label":"Investigation status"},{"key":"repudiate_ground","label":"Repudiate ground"},{"key":"submission_date","label":"Report submission date"},{"key":"compiled_by","label":"Compiled by"}]}]}]}/*END:DATA*/;
+(function () {
+  var KEYS = '1234567890qwertyuiopasfghjklzxcvbnm'; // no "d" (needs_detail)
+  var IMG = /\.(jpe?g|png|webp|gif|bmp)$/i;
+  var $ = function (id) { return document.getElementById(id); };
+  var files = [];       // [{path, file}]
+  var root = '';
+  var tplId = '';
+  var answers = {};     // path -> {codes, nd, fields, done}
+  var idx = 0;
+  var url = null;
+
+  function store(fn) { try { return fn(window.localStorage); } catch (e) { return null; } }
+  function skey() { return 'truth-labeller:' + root + '|' + tplId; }
+  function load() { var s = store(function (l) { return l.getItem(skey()); }); try { answers = s ? JSON.parse(s) || {} : {}; } catch (e) { answers = {}; } }
+  function persist() { store(function (l) { l.setItem(skey(), JSON.stringify(answers)); }); }
+  function tpl() { return DATA.templates.filter(function (t) { return t.id === tplId; })[0]; }
+  function say(msg, cls) { var s = $('status'); s.textContent = msg || ''; s.className = cls || ''; }
+  function ans(path) { return answers[path] || (answers[path] = { codes: [], nd: false, fields: [], done: false }); }
+
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) e[k] = attrs[k];
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // Template selector
+  DATA.templates.forEach(function (t) { $('tpl').appendChild(el('option', { value: t.id }, t.name)); });
+  tplId = (store(function (l) { return l.getItem('truth-labeller:last-template'); }) || '');
+  if (!DATA.templates.some(function (t) { return t.id === tplId; })) tplId = DATA.templates.length ? DATA.templates[0].id : '';
+  $('tpl').value = tplId;
+  $('tpl').onchange = function () {
+    tplId = $('tpl').value;
+    store(function (l) { l.setItem('truth-labeller:last-template', tplId); });
+    load(); render();
+  };
+
+  // Category buttons
+  DATA.categories.forEach(function (c, i) {
+    var b = el('button', { title: c.description || '' });
+    b.dataset.code = c.code;
+    b.appendChild(el('kbd', {}, KEYS[i] ? KEYS[i].toUpperCase() : ''));
+    b.appendChild(document.createTextNode(c.code + ' – ' + c.name));
+    b.appendChild(el('span', { className: 'order' }));
+    b.onclick = function () { toggleCat(c.code); };
+    $('cats').appendChild(b);
+  });
+
+  function toggleCat(code) {
+    if (!files.length) return;
+    var a = ans(files[idx].path), i = a.codes.indexOf(code);
+    if (i >= 0) a.codes.splice(i, 1);
+    else if (a.codes.length >= 3) { say('At most 3 categories', 'warn'); return; }
+    else a.codes.push(code);
+    a.done = false; persist(); render();
+  }
+  function toggleND() { if (!files.length) return; var a = ans(files[idx].path); a.nd = !a.nd; a.done = false; persist(); render(); }
+  function toggleField(key) {
+    var a = ans(files[idx].path), i = a.fields.indexOf(key);
+    if (i >= 0) a.fields.splice(i, 1); else a.fields.push(key);
+    a.done = false; persist(); render();
+  }
+  function go(n) { if (!files.length) return; idx = Math.max(0, Math.min(files.length - 1, n)); say(''); render(); }
+  function saveNext() {
+    if (!files.length) return;
+    var a = ans(files[idx].path);
+    if (!a.codes.length) { say('Pick at least one category first', 'warn'); return; }
+    a.done = true; persist(); say('Saved', 'ok');
+    if (idx < files.length - 1) idx++;
+    render();
+  }
+
+  function render() {
+    var t = tpl(), f = files[idx];
+    var doneN = files.filter(function (x) { var a = answers[x.path]; return a && a.done; }).length;
+    $('progress').textContent = files.length ? 'Image ' + (idx + 1) + ' of ' + files.length + ' · ' + doneN + ' done' : '';
+    // fields
+    var box = $('fields'); box.textContent = '';
+    var a = f ? ans(f.path) : { codes: [], nd: false, fields: [], done: false };
+    if (t) t.sections.forEach(function (s) {
+      var sec = el('div', { className: 'sec' }); sec.appendChild(el('div', {}, s.title));
+      s.fields.forEach(function (fl) {
+        var lab = el('label'), cb = el('input', { type: 'checkbox' });
+        cb.checked = a.fields.indexOf(fl.key) >= 0;
+        cb.onchange = function () { toggleField(fl.key); };
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(' ' + fl.label)); lab.title = fl.key;
+        sec.appendChild(lab);
+      });
+      box.appendChild(sec);
+    });
+    if (!f) return;
+    $('info').innerHTML = '';
+    var parts = f.path.split('/');
+    $('info').appendChild(el('b', {}, parts.slice(0, -1).join('/') || '(root)'));
+    $('info').appendChild(document.createTextNode(' / ' + parts[parts.length - 1] + '  '));
+    if (a.done) $('info').appendChild(el('span', { className: 'done' }, '✓ saved'));
+    Array.prototype.forEach.call($('cats').children, function (b) {
+      var i = a.codes.indexOf(b.dataset.code);
+      b.className = i >= 0 ? 'on' : '';
+      b.lastChild.textContent = i >= 0 ? '#' + (i + 1) : '';
+    });
+    $('nd').className = a.nd ? 'on' : '';
+    $('nd').lastChild.textContent = a.nd ? 'yes' : 'no';
+    if (url) URL.revokeObjectURL(url);
+    url = URL.createObjectURL(f.file);
+    $('viewer').textContent = '';
+    $('viewer').appendChild(el('img', { src: url, alt: f.path }));
+  }
+
+  $('pick').onclick = function () { $('folder').click(); };
+  $('folder').onchange = function () {
+    var list = Array.prototype.slice.call($('folder').files).filter(function (f) { return IMG.test(f.name); });
+    if (!list.length) { say('No images found in that folder', 'warn'); return; }
+    root = list[0].webkitRelativePath.split('/')[0];
+    files = list.map(function (f) { return { path: f.webkitRelativePath.split('/').slice(1).join('/'), file: f }; });
+    files.sort(function (x, y) { return x.path.localeCompare(y.path, undefined, { numeric: true }); });
+    load();
+    idx = 0;
+    for (var i = 0; i < files.length; i++) { var a = answers[files[i].path]; if (!a || !a.done) { idx = i; break; } }
+    say('Opened ' + root, 'ok'); render();
+  };
+
+  $('export').onclick = function () {
+    var rows = files.filter(function (x) { var a = answers[x.path]; return a && a.done && a.codes.length; })
+      .map(function (x) { var a = answers[x.path]; return { file: x.path, codes: a.codes, needs_detail: !!a.nd, fields: a.fields.length ? a.fields : [] }; });
+    if (!rows.length) { say('Nothing labelled yet', 'warn'); return; }
+    var blob = new Blob(['﻿' + buildTruthCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    var link = el('a', { href: URL.createObjectURL(blob), download: 'truth.csv' });
+    document.body.appendChild(link); link.click(); link.remove();
+    say('Exported ' + rows.length + ' rows', 'ok');
+  };
+  $('nd').onclick = toggleND;
+  $('save').onclick = saveNext;
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target, tag = t && t.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || (tag === 'INPUT' && t.type !== 'checkbox')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var k = e.key;
+    if (k === 'ArrowLeft') go(idx - 1);
+    else if (k === 'ArrowRight') go(idx + 1);
+    else if (k === 'Enter') { if (tag === 'BUTTON') return; saveNext(); }
+    else if (k.length === 1 && k.toLowerCase() === 'd') toggleND();
+    else if (k.length === 1) { var i = KEYS.indexOf(k.toLowerCase()); if (i >= 0 && DATA.categories[i]) toggleCat(DATA.categories[i].code); else return; }
+    else return;
+    e.preventDefault();
+  });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -5,7 +5,8 @@
   "description": "Vision labeller (D30, D34): prompt, model adapters, scoring, and the labelling bake-off. src/ is shared with the pipeline worker.",
   "scripts": {
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-reporter=spec \"test/*.test.ts\"",
-    "bakeoff": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bakeoff.ts"
+    "bakeoff": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bakeoff.ts",
+    "build:truth-labeller": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/build-truth-labeller.ts"
   },
   "devDependencies": {
     "sharp": "^0.34.0",

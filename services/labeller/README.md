@@ -123,3 +123,13 @@ There is no token price for `local`; compare its latency with the hourly GPU pri
 ```bash
 npm test -w services/labeller
 ```
+
+## Ground-truth labelling tool (6.9)
+
+`tools/truth-labeller.html` is a single offline file for the office to build `truth.csv`. Nothing is installed and nothing is uploaded: the images are read by the browser from the local disk and never leave the PC.
+
+- Rebuild after changing categories or templates: `npm run build:truth-labeller` (rewrites the data embedded in the HTML from `config/templates/`; a test fails if the categories go stale).
+- Use: open the file in Chrome, click "Open image folder" and pick the root (one sub-folder per case), pick the template, then label each image. Keys: left/right = previous/next, the letter or digit shown on a category button selects it (up to 3, in order), D = needs detail, Enter = save and go to the next. Tick the report fields the image is evidence for (none ticked is exported as `-`).
+- Progress is kept in the browser per folder name and template, so re-opening the same folder later restores the answers. Only saved images are exported.
+- "Export truth.csv" downloads the file. Put it next to the images and run `npm run bakeoff -- --images <root> --truth truth.csv --template <name>`; the paths in it are relative to the chosen root.
+- Limit of the CSV format: a file path that starts with `#` would be read as a comment, so avoid such folder names.

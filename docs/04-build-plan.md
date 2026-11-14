@@ -125,7 +125,7 @@ Contract: `docs/10-processing-pipeline.md`.
 | 6.5 | Field matching & suggestions | Field matches come from the **label call** (`evidence_field_matches`, D35); pattern rules on OCR text suggest values (dates, numbers, DL / RC / policy no.) | 🗄 / ⬜ |
 | 6.6 | Corrections & metrics | `set_evidence_labels()`; accuracy per label source; reprocessing by version | 🗄 / ⬜ |
 | 6.7 | Model bake-off | `npm run bakeoff -w services/labeller` on ≥ 5 real cases labelled by the office: label accuracy (documents / photos), field-match precision / recall, "needs detail" recall, description rate, confidence routing, cost per case and month, latency (D34, D35). Arms: Haiku 5.5 and Sonnet 5.5 × single images and numbered 6×6 collages (`--layouts single,6x6`, D36) | ✅ script / ⬜ run (needs Q21) |
-| 6.9 | Ground-truth labelling tool | Offline single HTML file `services/labeller/tools/truth-labeller.html`; the office labels real cases and exports `truth.csv` for the bake-off | ⬜ |
+| 6.9 | Ground-truth labelling tool | Offline single HTML file `services/labeller/tools/truth-labeller.html`; the office labels real cases and exports `truth.csv` for the bake-off | ✅ |
 | 6.10 | Model cost recording | Tokens and cost per processing job; monthly budget with an alert at 80 %; shown in M9 | ⬜ |
 
 ### M7 — Report Workspace (10 days)
