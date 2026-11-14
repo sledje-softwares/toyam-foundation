@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Toyam Field",
+    "slug": "toyam-field",
+    "version": "0.1.0",
+    "scheme": "toyamfield",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["android"],
+    "android": {
+      "package": "in.toyaminvestigation.field"
+    },
+    "plugins": ["expo-router", "expo-status-bar", "expo-secure-store", "expo-sqlite"],
+    "experiments": { "typedRoutes": true }
+  }
+}
