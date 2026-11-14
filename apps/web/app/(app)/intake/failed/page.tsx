@@ -2,7 +2,16 @@ import { Suspense } from "react";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
-import { failureReason, REASON_LABELS, truncateError } from "@/lib/failed-mail";
+import {
+  failureReason,
+  isStuck,
+  REASON_LABELS,
+  retryQueuedLabel,
+  STATUS_FILTER_OPTIONS,
+  statusesForFilter,
+  truncateError,
+} from "@/lib/failed-mail";
+import { requestRetry } from "./actions";
 import { applyListParams, parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import {
   Button,
@@ -22,7 +31,7 @@ export const metadata = { title: "Failed mail" };
 const CONFIG: ListConfig = {
   sortable: ["received_at", "from_address", "subject"],
   defaultSort: { key: "received_at", dir: "desc" },
-  filters: ["reason"],
+  filters: ["reason", "status"],
   searchColumns: ["from_address", "subject", "error"],
 };
 
@@ -35,7 +44,12 @@ type Row = {
   error: string | null;
   status: string;
   raw_storage_path: string | null;
+  retry_attempts: number;
+  retry_requested_at: string | null;
+  retry_alerted_at: string | null;
 };
+
+const NOW = () => new Date();
 
 const columns: Column<Row>[] = [
   { key: "received_at", header: "Received", sortable: true, cell: (r) => formatDateTime(r.received_at) },
@@ -47,7 +61,7 @@ const columns: Column<Row>[] = [
   },
   { key: "subject", header: "Subject", sortable: true, cell: (r) => r.subject || "—" },
   { key: "reason", header: "Failure", cell: (r) => REASON_LABELS[failureReason(r.error)] },
-  { key: "attempts", header: "Attempts", cell: () => "—" },
+  { key: "attempts", header: "Attempts", cell: (r) => r.retry_attempts },
   {
     key: "error",
     header: "Last error",
@@ -61,17 +75,49 @@ const columns: Column<Row>[] = [
       </details>
     ),
   },
-  { key: "status", header: "Status", cell: (r) => <StatusBadge kind="email_status" value={r.status} /> },
+  {
+    key: "status",
+    header: "Status",
+    cell: (r) => (
+      <div className="space-y-1">
+        <StatusBadge kind="email_status" value={r.status} />
+        {r.status === "retry_requested" && <p className="text-xs text-text-muted">{retryQueuedLabel(r.retry_requested_at, NOW())}</p>}
+      </div>
+    ),
+  },
   {
     key: "retry",
     header: "",
-    cell: () => (
-      <Button variant="secondary" disabled title="Retry needs the intake secret; not available from the browser">
-        Retry
-      </Button>
-    ),
+    cell: (r) => {
+      const queued = r.status === "retry_requested";
+      const noRaw = !r.raw_storage_path;
+      return (
+        <form action={requestRetry}>
+          <input type="hidden" name="email_id" value={r.id} />
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={queued || noRaw}
+            title={noRaw ? "The original message was not saved" : queued ? "Already queued" : undefined}
+          >
+            Retry
+          </Button>
+        </form>
+      );
+    },
   },
 ];
+
+/** Stuck is judged on all failed/queued mail, not only the filtered page. */
+async function hasStuck(supabase: Awaited<ReturnType<typeof createClient>>): Promise<boolean> {
+  const { data } = await supabase
+    .from("emails")
+    .select("status, retry_requested_at, retry_alerted_at")
+    .in("status", ["failed", "retry_requested"])
+    .or("retry_requested_at.not.is.null,retry_alerted_at.not.is.null");
+  const now = new Date();
+  return (data ?? []).some((r) => isStuck(r, now));
+}
 
 export default async function Page({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireRole(["orchestrator", "office", "admin"]);
@@ -79,29 +125,32 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const list = parseListParams(sp, CONFIG);
 
   const supabase = await createClient();
-  const { reason, ...rest } = list.filters;
+  const { reason, status, ...rest } = list.filters;
   let query = supabase
     .from("emails")
-    .select("id, received_at, from_address, from_name, subject, error, status, raw_storage_path", { count: "exact" })
-    .eq("status", "failed");
+    .select("id, received_at, from_address, from_name, subject, error, status, raw_storage_path, retry_attempts, retry_requested_at, retry_alerted_at", { count: "exact" })
+    .in("status", statusesForFilter(status));
   query = applyListParams(query, { ...list, filters: rest }, CONFIG);
   if (reason === "parser") query = query.like("error", "parser:%");
   if (reason === "decode") query = query.not("error", "like", "parser:%");
   const { data, count, error } = await query;
 
+  const stuck = !error && (await hasStuck(supabase));
+
   return (
     <div className="space-y-4">
       <PageHeader title="Failed mail" breadcrumbs={[{ label: "Intake", href: "/intake" }, { label: "Failed mail" }]} />
-      <InlineAlert tone="info" title="Retry is not available from the browser yet">
-        Retrying needs <code>intake_retry()</code> and then a re-post of the stored message to the intake function with the
-        intake secret, which the web app must not hold. Until a safe route exists, ask the developer to retry. The stored
-        message path is shown in each row&apos;s details.
-      </InlineAlert>
+      {stuck && (
+        <InlineAlert tone="danger" title="Retry stuck">
+          A retry has not gone through after 1 hour. The intake worker may be down; tell the developer.
+        </InlineAlert>
+      )}
       <Suspense>
         <FilterBar
           total={count ?? undefined}
           searchLabel="Search sender, subject or error"
           filters={[
+            { name: "status", label: "Status", allLabel: "All", options: STATUS_FILTER_OPTIONS },
             {
               name: "reason",
               label: "Reason",

@@ -2,7 +2,7 @@ import type { Enums } from "@/lib/database.types";
 
 type UserRole = Enums<"user_role">;
 
-export type NavBadge = "intake" | "reports";
+export type NavBadge = "intake" | "reports" | "failedMail";
 
 export type NavItem = {
   href: string;
@@ -12,6 +12,8 @@ export type NavItem = {
   group?: "Admin";
   /** Count shown next to the label; the layout supplies the numbers (see NavLinks `badges`). */
   badge?: NavBadge;
+  /** Badge colour; defaults to the primary colour. */
+  badgeTone?: "danger";
 };
 
 const ALL: UserRole[] = ["admin", "orchestrator", "office"];
@@ -19,6 +21,7 @@ const ALL: UserRole[] = ["admin", "orchestrator", "office"];
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", milestone: "M8", roles: ALL },
   { href: "/intake", label: "Intake", milestone: "M3", roles: ["admin", "orchestrator", "office"], badge: "intake" },
+  { href: "/intake/failed", label: "Failed mail", milestone: "M3", roles: ["admin", "orchestrator", "office"], badge: "failedMail", badgeTone: "danger" },
   { href: "/cases", label: "Cases", milestone: "M4", roles: ALL },
   { href: "/tasks", label: "Tasks", milestone: "M4", roles: ALL },
   { href: "/reports", label: "Reports", milestone: "M6", roles: ["admin", "office", "orchestrator"], badge: "reports" },

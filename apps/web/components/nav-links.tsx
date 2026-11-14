@@ -7,7 +7,10 @@ import type { NavBadge, NavItem } from "@/lib/nav";
 export function NavLinks({ items, badges = {} }: { items: NavItem[]; badges?: Partial<Record<NavBadge, number>> }) {
   const pathname = usePathname();
   const link = (i: NavItem) => {
-    const active = pathname === i.href || pathname.startsWith(i.href + "/");
+    // "/intake" must not stay highlighted on its child "/intake/failed", which has its own item.
+    const active =
+      pathname === i.href ||
+      (pathname.startsWith(i.href + "/") && !items.some((o) => o.href !== i.href && o.href.startsWith(i.href + "/") && (pathname === o.href || pathname.startsWith(o.href + "/"))));
     const count = i.badge ? badges[i.badge] : undefined;
     return (
       <li key={i.href}>
@@ -20,7 +23,7 @@ export function NavLinks({ items, badges = {} }: { items: NavItem[]; badges?: Pa
         >
           {i.label}
           {count !== undefined && count > 0 && (
-            <span className="ml-2 rounded-full bg-primary px-2 text-xs font-medium text-white">
+            <span className={`ml-2 rounded-full ${i.badgeTone === "danger" ? "bg-danger" : "bg-primary"} px-2 text-xs font-medium text-white`}>
               {count > 99 ? "99+" : count}
               <span className="sr-only"> waiting</span>
             </span>
