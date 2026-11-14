@@ -1,200 +1,204 @@
-# 04 — Phase 1 Build Plan
+# 04 — Phase 1 Build Plan (revised 2026-11-13)
 
-**Basis:** single developer working with Claude; 10 insurers; ~300 cases/month; 10 field operators.
+**Basis:** single developer working with Claude; 10 insurers; ~300 cases/month; 10 field operators; revised workflow D14–D26; **full scope** kept.
 
-Piece IDs (e.g. `3.6`) are stable references for issues, branches and commits.
+Piece IDs (e.g. `5.4`) are stable references for issues, branches and commits. The module list was renumbered for the revised flow on 2026-11-13; old → new: M4 → M4 (routing) + part of M5, M5 → M5, M6 → M7, M7 → M8, M8 → M9, M9 → M10 (old 9.6/9.7 are now 10.6/10.7), M10 → M11. M0–M3 keep their numbers; M2 pieces 2.1–2.4 (design `08-m2-admin-design.md`) are unchanged.
+
+Status legend: ✅ done · 🟡 in progress · 🗄 database layer done (migration `20261113000100_revised_flow.sql`, tests `07_revised_flow.test.sql`) · ⬜ not started
 
 ## 1. Module overview
 
-| ID | Module | Purpose | Est. (days) |
-|---|---|---|---|
-| M0 | Discovery & Setup | Client inputs; environments | 4 |
-| M1 | Platform Foundation | Database, authentication, roles, storage, deployment | 4 |
-| M2 | Administration & Master Data | Users, insurers, checklist templates | 3 |
-| M3 | Email Intake | Incoming emails → confirmed cases | 9 |
-| M4 | Case & Task Management | Lifecycle, assignment, re-investigation | 7 |
-| M5 | Field App (Android) | Task checklist and evidence capture | 12 |
-| M6 | Office Review & Reports | Evidence review, pre-filled report, versions | 6 |
-| M7 | Submission & Tracking | Email submission, portal pack, acknowledgements | 3 |
-| M8 | Dashboard & Notifications | Status overview, deadline alerts | 3 |
-| M9 | Security, Audit & Compliance | Access verification, retention, backups | 2 |
-| M10 | Testing, Pilot & Rollout | UAT, training, pilot, go-live | 10 |
-| | **Total** | | **≈ 63 working days (≈ 12–13 weeks)** |
+| ID | Module | Purpose | Days | Status |
+|---|---|---|---|---|
+| M0 | Discovery & Template Definition | Client inputs; templates and categories per insurer | 5 | 🟡 samples for 2 insurers received |
+| M1 | Platform Foundation | Database, auth, roles, storage, deployment | 4 | ✅ (hosted `toyam-dev` partially migrated) |
+| M2 | Administration & Template Configuration | Users, availability, insurers, checklists, template loader | 4 | 🟡 DB done; UI pending |
+| M3 | Email Intake & Auto-fill | Gmail relay → template detection → rule-based field fill | 8 | 🟡 built and tested; review screen and live Gmail test pending |
+| M4 | Routing & Assignment | Auto-assign to office, reassign, office → field tasks, escalation | 4 | 🗄 / ⬜ UI |
+| M5 | Field App (chat style, Android) | Threads, camera, gallery, share target, offline, ticks | 16 | 🗄 / ⬜ app |
+| M6 | Processing Pipeline | Queue, OCR, labelling, suggestions, corrections | 6 | 🗄 / ⬜ workers |
+| M7 | Report Workspace | Sections, relevant images, tap-to-fill, generation (PDF/Word) | 10 | 🗄 / ⬜ UI + generator |
+| M8 | Approval, Sending & Tracking | Approval, reply on thread, portal pack, submission records | 4 | 🗄 / ⬜ sender |
+| M9 | Dashboard & Alerts | Workload, ageing, turnaround, escalations | 3 | ⬜ |
+| M10 | Security, Audit & Compliance | Access tests, devices, backups, archive, retention | 2 | 🟡 RLS tested; archive jobs pending |
+| M11 | Testing, Pilot & Rollout | UAT, training, two-week pilot, go-live | 10 | ⬜ |
+| | **Total** | | **≈ 76 working days (≈ 15 weeks)** | |
 
 ## 2. Module breakdown
 
-### M0 — Discovery & Setup (4 days)
+### M0 — Discovery & Template Definition (5 days)
+
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 0.1 | Collect sample emails | 20–30 per insurer, with attachments, incl. follow-ups | 🟡 IGI (Reliance) ×4, ICICI ×1 |
+| 0.2 | Collect report formats | Each insurer's format (Word layout) and 2–3 completed samples | 🟡 IGI, ICICI |
+| 0.3 | Define categories and checklists | Evidence categories and field checklist per claim type | 🟡 `config/templates/_categories.yaml` drafted |
+| 0.4 | Write templates | One YAML per insurer × claim type × variant | 🟡 `igi-motor-od.yaml`, `icl-motor-od.yaml` drafted |
+| 0.5 | Confirm open items | Q2–Q18 in `07` | ⬜ |
+| 0.6 | Environments | Dev/prod projects, repository, domain, Android signing keys | 🟡 |
+
+**Exit:** templates for all pilot insurers loaded and signed off.
+
+### M1 — Platform Foundation (4 days) ✅
 
 | # | Piece | Output |
 |---|---|---|
-| 0.1 | Collect sample emails | 20–30 per insurer, with attachments |
-| 0.2 | Collect report formats | Each insurer's format and 2–3 completed samples |
-| 0.3 | Define checklists | Checklist per claim type, agreed with orchestrator |
-| 0.4 | Map current process | One case walked end-to-end; exceptions noted |
-| 0.5 | Confirm open items | Workspace vs Gmail, phones, data residency, portal, pilot insurer |
-| 0.6 | Set up environments | Dev/prod projects, repository, domain, Android signing keys |
+| 1.1 | Database | Schema + migrations workflow ✅ |
+| 1.2 | Authentication | Email login for staff; mobile + password for field (K4) ✅ |
+| 1.3 | Roles & access | RLS verified for all four roles ✅ |
+| 1.4 | File storage | R2 for evidence (presigned via server function); Supabase buckets for raw emails, reports, report templates ✅ |
+| 1.5 | Web app shell | Layout, navigation, role menus ✅ |
+| 1.6 | Deployment | Cloudflare Workers (OpenNext) ✅; error monitoring ⬜ |
 
-**Exit:** all inputs received; checklists and field list signed off by the client.
+### M2 — Administration & Template Configuration (4 days)
 
-### M1 — Platform Foundation (4 days)
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 2.1 | User management | Per `08-m2-admin-design.md` | 🗄 / ⬜ UI |
+| 2.2 | Insurer configuration | Domains, TAT, submission channel, report template | 🗄 / ⬜ UI |
+| 2.3 | Checklist editor | Items gain an evidence category | 🗄 / ⬜ UI |
+| 2.4 | Seed / master data session | Real insurers, staff, checklists | ⬜ |
+| 2.5 | Template loader | Script: YAML → JSON → `load_evidence_categories()` / `load_case_template()`; validation report; run in CI against the local stack | ✅ `services/intake/scripts/load-templates.ts` |
+| 2.6 | Availability & assignment rules screens | Staff availability, leave-until, case cap; rules and pools | 🗄 / ⬜ UI |
 
-| # | Piece | Output |
-|---|---|---|
-| 1.1 | Database | Schema deployed; migrations workflow *(schema drafted)* |
-| 1.2 | Authentication | Email login for staff; OTP login for field operators |
-| 1.3 | Roles & access | RLS verified for all four roles |
-| 1.4 | File storage | R2 bucket for evidence (presigned upload/download via server function); Supabase buckets for raw emails and reports; per-case folder structure |
-| 1.5 | Web app shell | Layout, navigation, role-based menus |
-| 1.6 | Deployment | Automatic deploys to dev/prod; error monitoring |
+### M3 — Email Intake & Auto-fill (8 days)
 
-**Exit:** each role logs in and sees only what it is permitted to see.
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 3.1 | Gmail relay | **Push (D33):** Gmail filter forwards insurer mail → Email Routing → Worker `email()` → function. **Safety net:** hourly IMAP poll, insurer senders only. Idempotent | ✅ `services/intake/worker` (push handler and poll tested in Node; live run pending, DNS Q14) |
+| 3.2 | Email storage | Raw `.eml` + attachments in `email-raw`; hashes | ✅ edge function `intake` |
+| 3.3 | Insurer & template detection | Sender domain → insurer; `intake_rules.subject_pattern` → variant + claim no; firm's own addresses = internal (Q15) | ✅ |
+| 3.4 | Classification | New case / follow-up / reminder / additional documents / query (subject + thread + existing case) | ✅ |
+| 3.5 | Rule-based field fill | Two-column label/value table parser; `extract.labels` aliases; investigation-points block | ✅ (HTML path to confirm on real `.eml`, Q19) |
+| 3.6 | AI fallback | Only when required fields are missing; output goes to the review queue (D26) | ⬜ deferred until real mails show a need (D25) |
+| 3.7 | Case creation & matching | Create case (`template_id`, `case_field_values`) when complete; attach follow-ups by thread / claim no. | ✅ `intake_ingest()` |
+| 3.8 | Insurer attachments → evidence | `capture_source = email_attachment`; labelled by file-name rules | ✅ (labelling runs in M6) |
+| 3.9 | Intake review screen | Uncertain cases only; highlight missing / low-confidence fields | 🗄 `confirm_intake()` / `reject_intake()`; ⬜ UI |
+| 3.10 | Error handling | Failed emails visible with retry | 🗄 `intake_record_failure()` / `intake_retry()` + `?reprocess=`; ⬜ UI |
 
-### M2 — Administration & Master Data (3 days)
+**Exit:** sample emails of the pilot insurers become complete cases without review; follow-ups attach to the right case.
 
-| # | Piece | Output |
-|---|---|---|
-| 2.1 | User management | Create, deactivate, assign role and region |
-| 2.2 | Insurer configuration | Sender domains, TAT days, submission channel, report template |
-| 2.3 | Checklist template editor | Add, reorder, mandatory and camera-only flags |
-| 2.4 | Seed data | 10 insurers and agreed checklists loaded |
+### M4 — Routing & Assignment (4 days)
 
-**Exit:** the admin configures a new insurer and its checklist without developer help.
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 4.1 | Automatic office assignment | Rules, least-loaded / round-robin, availability, caps; on case creation | 🗄 |
+| 4.2 | Reassignment | Orchestrator action with reason; history; notification | 🗄 / ⬜ UI |
+| 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | 🗄 / ⬜ UI |
+| 4.4 | Re-investigation request | Request in the thread → linked task; case back to field work | 🗄 / ⬜ UI |
+| 4.5 | Escalation | `escalate_unattended_cases()` every 10–15 min (pg_cron or Worker cron) | 🗄 / ⬜ schedule |
+| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ⬜ |
+| 4.7 | Staff notes | Staff-only messages in the case thread (D32) | 🗄 / ⬜ UI |
 
-### M3 — Email Intake (9 days)
+### M5 — Field App, chat style (16 days)
 
-| # | Piece | Output |
-|---|---|---|
-| 3.1 | Gmail connection | Cloudflare Worker polls Gmail (IMAP, 1-min cron) and relays raw messages to Supabase; Email Routing handler added once a domain exists; idempotent ingestion |
-| 3.2 | Email storage | Raw email and attachments stored; hashes recorded |
-| 3.3 | Insurer identification | Sender-domain match; unknown senders to review queue |
-| 3.4 | Classification | New case / reminder / additional documents / query |
-| 3.5 | OCR | Text extracted from scanned PDFs and images |
-| 3.6 | AI field extraction | Fields with confidence scores; per-insurer hints |
-| 3.7 | Case matching | Link by claim/policy no.; attach follow-up emails |
-| 3.8 | Intake review screen | Pre-filled form, low-confidence highlights, confirm → case |
-| 3.9 | Acknowledgement | Optional automatic reply to the insurer |
-| 3.10 | Error handling | Failed emails visible with retry; nothing lost silently |
+Detailed UX: `docs/11-field-app.md`.
 
-**Exit:** >95% of sample emails correctly classified; a case confirmed in under 2 minutes; duplicates rejected.
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 5.1 | Sign-in & session | Mobile + password; persistent; remote sign-out | ⬜ |
+| 5.2 | Case list | Open / Completed tabs, last message, unread badge (`field_case_list()`) | 🗄 / ⬜ |
+| 5.3 | Case thread | Messages, system events, requests, replies; read pointer | 🗄 / ⬜ |
+| 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | ⬜ |
+| 5.5 | Gallery & document picker | Multi-select; EXIF kept | ⬜ |
+| 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build) | ⬜ |
+| 5.7 | Offline queue & ticks | 🕓 queued → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`) | 🗄 / ⬜ |
+| 5.8 | Pinned checklist & tags | Progress from `v_case_checklist`; optional one-tap category on send | 🗄 / ⬜ |
+| 5.9 | Voice notes & text | Recorded statements with consent prompt | ⬜ |
+| 5.10 | Withdraw | Within the window (D19) | 🗄 / ⬜ |
+| 5.11 | On-device OCR | ML Kit text recognition sent with the file | 🗄 / ⬜ |
+| 5.12 | Push notifications | FCM; `device_tokens` | 🗄 / ⬜ |
+| 5.13 | Build & distribution | Signed APK / Play internal track; low-end device testing | ⬜ |
 
-### M4 — Case & Task Management (7 days)
+**Exit:** a full visit works offline; files appear in the office thread within minutes of reconnecting; share-from-gallery works from WhatsApp, Files and Gallery.
 
-| # | Piece | Output |
-|---|---|---|
-| 4.1 | Case list | Filters (status, insurer, due date); search (ref, claim no., name) |
-| 4.2 | Case detail | Overview, parties, entities, emails, tasks, evidence, history |
-| 4.3 | Parties & entities | Add/edit parties; link hospitals, garages, doctors (de-duplicated) |
-| 4.4 | Task creation | Select template → copy checklist → edit per case |
-| 4.5 | Assignment | Assign operator, due date, visit location |
-| 4.6 | Re-investigation | "Request more information" → linked task with reason |
-| 4.7 | Status transitions | Controlled transitions with history and reason |
+### M6 — Processing Pipeline (6 days)
 
-**Exit:** the orchestrator takes a case from intake through assignment and re-investigation entirely in the system.
+Contract: `docs/10-processing-pipeline.md`.
 
-### M5 — Field App, Android (12 days)
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 6.1 | Queue | Jobs per evidence and stage; claim / complete / retry with back-off | 🗄 |
+| 6.2 | Text extraction | PDF text layer (no OCR when present) | ⬜ |
+| 6.3 | OCR | Device OCR accepted; server OCR (dedicated OCR model, PaddleOCR family) on the fixed-cost worker **only where `ocr_wanted()`** — runs after labelling (D34) | 🗄 / ⬜ |
+| 6.4 | Labelling | **LLM vision labels** (template categories + description) as the main path; file-name rules for insurer attachments and operator tags first (D30); results fast enough to tick the field checklist on site. One image per call at ~384 px, `needs_detail` flag, low-confidence escalation, model stored per label (D34). Prompt, parser and provider adapters in `services/labeller/src` | 🗄 / ⬜ (adapters ✅) |
+| 6.5 | Field matching & suggestions | Field matches come from the **label call** (`evidence_field_matches`, D35); pattern rules on OCR text suggest values (dates, numbers, DL / RC / policy no.) | 🗄 / ⬜ |
+| 6.6 | Corrections & metrics | `set_evidence_labels()`; accuracy per label source; reprocessing by version | 🗄 / ⬜ |
+| 6.7 | Model bake-off | `npm run bakeoff -w services/labeller` on ≥ 5 real cases labelled by the office: label accuracy (documents / photos), field-match precision / recall, "needs detail" recall, description rate, confidence routing, cost per case and month, latency (D34, D35). Arms: Haiku 5.5 and Sonnet 5.5 × single images and numbered 6×6 collages (`--layouts single,6x6`, D36) | ✅ script / ⬜ run (needs Q21) |
 
-| # | Piece | Output |
-|---|---|---|
-| 5.1 | Login & session | OTP login, persistent session, remote sign-out |
-| 5.2 | Task list | "My tasks" and "Today"; case summary and location |
-| 5.3 | Task detail & checklist | Item progress; mandatory items enforced before completion |
-| 5.4 | Photo capture | In-app camera; compression; GPS, time and hash |
-| 5.5 | Document capture | Scan mode with edge crop |
-| 5.6 | Audio & notes | Recorded statements with consent prompt; text notes |
-| 5.7 | Offline queue | Capture offline; automatic upload with retry; progress shown |
-| 5.8 | Task status | Start and complete; mark item "not available" with reason |
-| 5.9 | Notifications | New task and re-investigation alerts |
-| 5.10 | Build & distribution | Signed APK / Play internal track; testing on low-end devices |
+### M7 — Report Workspace (10 days)
 
-**Exit:** a full visit completed offline; all evidence reaches the case within minutes of reconnecting, with complete metadata.
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 7.1 | Section form | Template sections and fields; intake values pre-filled | 🗄 / ⬜ |
+| 7.2 | Relevant images panel | Images whose active label is in the section's categories; plus unlabelled | 🗄 / ⬜ |
+| 7.3 | OCR viewer & tap-to-fill | Highlighted blocks; tap to copy into the focused field | 🗄 / ⬜ |
+| 7.4 | Suggestions | Accept / reject suggested values with source reference | 🗄 / ⬜ |
+| 7.5 | Relevance & labels | Mark not relevant; correct labels | 🗄 / ⬜ |
+| 7.6 | Annexures | Choose and order images per section | 🗄 / ⬜ |
+| 7.7 | Generation | Word from the insurer layout (`docx_template_path`) and/or PDF; versioned `reports` + `report_files` | 🗄 / ⬜ |
+| 7.8 | Orchestrator live view | Read-only report in progress: section progress, value sources, change history, live updates; staff notes alongside (D31) | 🗄 / ⬜ UI |
 
-### M6 — Office Review & Reports (6 days)
+### M8 — Approval, Sending & Tracking (4 days)
 
-| # | Piece | Output |
-|---|---|---|
-| 6.1 | Evidence viewer | Grouped by task and checklist item; gallery, map, timestamps, audio |
-| 6.2 | Completeness view | Missing mandatory items and flagged evidence highlighted |
-| 6.3 | Evidence flagging | Office flags or clears evidence with reason |
-| 6.4 | Pre-filled Word report | Insurer template populated with case data and annexure index |
-| 6.5 | Report upload | Versioned upload; draft/final; notes |
-| 6.6 | Review hand-off | Send to orchestrator review; return with comments |
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 8.1 | Approval | Request, approve / request changes (per template) | 🗄 / ⬜ UI |
+| 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | 🗄 / ⬜ sender |
+| 8.3 | Size handling | Compressed annexures; secure link when over the limit | ⬜ |
+| 8.4 | Portal pack | Files named and ordered for the portal insurer | ⬜ |
+| 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | 🗄 / ⬜ |
 
-**Exit:** office staff prepare a report without leaving the system; the pre-filled report matches each insurer's format.
+### M9 — Dashboard & Alerts (3 days) ⬜
 
-### M7 — Submission & Tracking (3 days)
+Workload per office employee and operator; ageing vs. TAT; turnaround per stage (`case_status_history`); escalations; daily summary.
 
-| # | Piece | Output |
-|---|---|---|
-| 7.1 | Email submission | Final report and annexures sent on the original email thread |
-| 7.2 | Portal pack | Download named and ordered for the portal insurer |
-| 7.3 | Submission record | Channel, date, portal reference, acknowledgement date |
-| 7.4 | Case closure | Close after submission; reopen on insurer query |
+### M10 — Security, Audit & Compliance (2 days)
 
-**Exit:** every submitted case has a recorded submission traceable to the report version sent.
+| # | Piece | Output | Status |
+|---|---|---|---|
+| 10.1 | Access testing | pgTAP per role (07 suite covers the revised flow) | ✅ |
+| 10.2 | Audit log viewer | Admin screen | ⬜ |
+| 10.3 | Backups | Backup and restore test | ⬜ |
+| 10.4 | Retention | As agreed (Q4) | ⬜ |
+| 10.5 | Privacy | Consent wording; staff note; sample data out of git (Q18) | ⬜ |
+| 10.6 | Archive sync (admin PC) | Daily download + SHA-256 re-check + manifest + DB backup; catch-up; restore on reopen | ⬜ |
+| 10.7 | Cloud purge job | Only after verified archive and ≥7 days after submission; records stay | 🗄 |
 
-### M8 — Dashboard & Notifications (3 days)
+### M11 — Testing, Pilot & Rollout (10 days) ⬜
 
-| # | Piece | Output |
-|---|---|---|
-| 8.1 | Overview | Cases by status and insurer; overdue and due-soon lists |
-| 8.2 | Workload | Open tasks per operator |
-| 8.3 | Turnaround | Average days per stage and per insurer |
-| 8.4 | Alerts | Due-soon and overdue alerts; daily summary email |
-
-### M9 — Security, Audit & Compliance (2 days)
-
-| # | Piece | Output |
-|---|---|---|
-| 9.1 | Access testing | RLS tests per role, including cross-operator access attempts |
-| 9.2 | Audit log viewer | Admin view of the audit log |
-| 9.3 | Backups | Backup and restore test |
-| 9.4 | Retention | File retention and archive policy as agreed with the client |
-| 9.5 | Privacy | Consent wording for statements; staff privacy note |
-| 9.6 | Archive sync (admin PC) | Daily download of new evidence, emails and reports per case; SHA-256 re-check; manifest; database backup; catch-up after missed days; restore to cloud on reopen |
-| 9.7 | Cloud purge job | Removes cloud copies of evidence only after verified archive and ≥7 days after submission; records stay |
-
-### M10 — Testing, Pilot & Rollout (10 days)
-
-| # | Piece | Output |
-|---|---|---|
-| 10.1 | Acceptance testing | End-to-end with client staff on sample cases |
-| 10.2 | Training | Short guides and in-person sessions for each role |
-| 10.3 | Pilot | One insurer, 2–3 operators, parallel run for two weeks |
-| 10.4 | Pilot fixes | Feedback-driven corrections |
-| 10.5 | Go-live | All insurers and operators; WhatsApp retired for case evidence |
-
-**Exit:** pilot cases completed fully in the system; client sign-off for go-live.
+Acceptance testing; training; two-week pilot (one insurer, 2–3 operators) in parallel with WhatsApp; fixes; go-live.
 
 ## 3. Sequence and milestones
 
-| Week | Work | Milestone |
+| Weeks | Work | Milestone |
 |---|---|---|
-| 1 | M0, M1 | — |
-| 2 | M1, M2 | **MS1** Platform ready; insurers and checklists configured |
-| 3–4 | M3 | **MS2** Emails become confirmed cases automatically |
-| 5 | M4 | **MS3** Cases assigned and tracked in the system |
-| 6–8 | M5 | **MS4** Field evidence captured end-to-end |
-| 9 | M6, M7 | **MS5** Report and submission completed in the system |
-| 10 | M8, M9, UAT | **MS6** Ready for pilot |
-| 11–12 | Pilot, fixes | **MS7** Pilot sign-off |
-| 13 | Go-live | **MS8** Full rollout |
+| 1–2 | M0 (templates for pilot insurers), M2 UI, 2.5 loader | **MS1** Admin and templates ready |
+| 3–4 | M3 intake, M4 routing | **MS2** Emails become assigned cases automatically |
+| 5–8 | M5 field app | **MS3** Field thread end-to-end incl. share target and offline |
+| 9 | M6 pipeline (on real pilot files) | **MS4** Files labelled and readable |
+| 10–11 | M7 report workspace | **MS5** Report built and generated in the system |
+| 12 | M8, M9, M10 | **MS6** Ready for pilot |
+| 13–14 | Pilot, fixes | **MS7** Pilot sign-off |
+| 15 | Go-live | **MS8** Full rollout |
 
-**Dependencies:** M3 and M4 require M1–M2; M5 requires M4; M6 requires M5; M7 requires M6.
+Dependencies: M3/M4 need M2 templates; M5 needs M4 tasks; M6 is tuned on M5 data; M7 needs M6; M8 needs M7.
 
 ## 4. Client inputs and timing
 
 | By | Input |
 |---|---|
-| Week 1 | Sample emails, report formats, checklist sign-off, Gmail access, portal details |
-| Week 2 | Staff list with roles and phone numbers |
-| Week 6 | Two field operators available for app testing |
-| Week 10 | Pilot insurer and participants confirmed; training slots |
+| Week 1 | Samples and report formats for the remaining insurers (Q17); domain/DNS owner (Q14); approval policy (Q11); case reference format (Q13) |
+| Week 2 | Staff list with roles, phones, regions; assignment pools (Q12) |
+| Week 5 | Two operators for app testing; their phone models (Q3) |
+| Week 12 | Pilot insurer and participants (Q6); training slots |
 
 ## 5. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Delayed inputs in week 1 | Run M1–M2 in parallel; stub M3 with available samples |
-| Field app overrun (largest module) | Build the offline queue first; minimal interface |
-| Greater variation in insurer formats | Per-insurer extraction hints; review screen as safety net |
-| Field operator resistance | Involve two operators from week 6; accept evidence only via the app after the pilot |
+| Field app (largest module) overruns | Offline queue and thread first; voice notes and withdraw last |
+| Share target behaves differently per Android version / OEM | Test on operators' actual phones from week 5 |
+| Insurer formats drift | Parser rules in templates; AI fallback to review queue; failed-parse alerts |
+| Operators keep using WhatsApp | Familiar chat UI; evidence accepted only through the app after the pilot |
+| Real personal data in the repository | Move samples out of git (Q18) |

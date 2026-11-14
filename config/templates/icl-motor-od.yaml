@@ -1,0 +1,158 @@
+# ICICI Lombard — Motor OD ("OD Investigation Case No - MOT… // vehicle // insured").
+# Built from the sample thread and report in icici lombard/ (repo root).
+# The insurer sends many attachments (vehicle views, DL, Aadhaar, policy, estimate, e-claim PDF):
+# they are stored as case evidence (capture_source email_attachment) and labelled by file name.
+# "This case is not reflected on FT" in the thread suggests ICICI's FastTrack portal is the
+# portal insurer (Q5) — confirm.
+insurer_code: ICL
+claim_type: motor
+variant: od
+name: ICICI Lombard — Motor OD investigation
+requires_approval: true
+output_formats: [pdf, docx]
+default_output_format: pdf
+docx_template_path: report-templates/icl-motor-od.docx
+
+intake_rules:
+  sender_domains: [icicilombard.com]
+  # e.g. "OD Investigation Case No - MOT00000001 // MP00XX0002 // SAMPLE TRADERS #Business#"
+  subject_pattern: '^(?:(?:re|fw|fwd):\s*)*OD Investigation Case No\s*-\s*(MOT\d+)\s*//\s*([A-Z0-9]+)\s*//\s*(.+?)\s*(#.*#)?$'
+  subject_groups: {insurer_claim_no: 1, vehicle_no: 2, insured_name: 3}
+  table_parser: label_value_two_column
+  investigation_points: {starts_after: 'verify the authenticity of the claim', until: 'Intimation Sheet'}
+  attachments_as_evidence: true
+
+report_email:
+  reply_on_thread: true
+  cc_from_original: true
+  subject: 'Re: {{original_subject}}'
+  attachment_name: 'IR_{{insurer_claim_no}}'
+
+checklists:
+  - {name: Motor OD — garage and spot visit, default: true}
+
+sections:
+  - key: case_reference
+    title: Investigator and claim reference
+    fields:
+      - {key: firm_case_ref, label: Case ref. no (investigator), help: 'Firm format, e.g. TIVPL_ILGIC_10/2026'}
+      - {key: insurer_claim_no, label: Claim no, source: intake, required: true, extract: {labels: [Claim Ref. No.]}}
+      - {key: insurer_internal_claim_no, label: Insurer claim number, source: intake, extract: {labels: [Claim No.]}}
+      - {key: interaction_no, label: Interaction no.}
+      - {key: policy_no, label: Policy no., source: intake, required: true, extract: {labels: [Policy No.]}}
+      - {key: date_of_loss, label: Date of loss, type: date, source: intake, extract: {labels: [Date of Loss]}}
+      - {key: time_of_accident, label: Time of accident, source: intake, extract: {labels: [Time of Loss]}}
+      - {key: national_holiday, label: Accident on a national holiday (name), help: 'No / holiday name'}
+      - {key: intimation_date, label: Date of claim intimated to call centre, type: date, source: intake, extract: {labels: [Intimation Date]}}
+      - {key: late_intimation_reason, label: Reason for late intimation (>10 days), type: long_text}
+      - {key: investigation_points, label: Red flags / points to address, type: long_text, source: intake}
+
+  - key: insured
+    title: Insured details
+    categories: [id_document, insured_photo]
+    fields:
+      - {key: insured_name, label: Name of insured, source: intake, required: true, extract: {labels: [Name of Insured]}}
+      - {key: insured_registration_no, label: Registration no (GST / firm)}
+      - {key: insured_profession, label: Insured profession}
+      - {key: insured_actual_address, label: Address — actual, not as per policy, type: long_text, source: intake, extract: {labels: [Address, City/Dist, State, Pin], within: Insured Details}}
+      - {key: negative_area, label: Address pertains to negative area, type: choice, options: ['Yes', 'No']}
+      - {key: contact_person, label: Contact person and number, source: intake, extract: {labels: [Registered Mobile No, Contact No -1], within: Insured Details}}
+
+  - key: vehicle
+    title: Vehicle and policy details
+    categories: [rc_document, vehicle_invoice, policy_document, loan_document]
+    fields:
+      - {key: vehicle_no, label: Vehicle registration no., source: intake, extract: {labels: [Vehicle Reg. No]}}
+      - {key: purchase_invoice, label: New vehicle invoice details}
+      - {key: make_model, label: Make and model, source: intake, extract: {labels: [Make of Vehicle, Model of Vehicle]}}
+      - {key: registration_date, label: Registration date, type: date}
+      - {key: hypothecation, label: Hypothecation details}
+      - {key: repayment, label: Repayment details till date}
+      - {key: tp_vehicle, label: TP vehicle details}
+      - {key: policy_period, label: Policy period, source: intake, extract: {labels: [Period from, Period to]}}
+      - {key: policy_type, label: Policy type}
+      - {key: agent_dealer, label: Name of agent / dealer, source: intake, extract: {labels: [Agent Name]}}
+      - {key: previous_insurer, label: Previous insurer and policy no. (if rollover)}
+      - {key: previous_claim, label: Any claim in previous policy}
+      - {key: break_in, label: Break-in details (date, odometer, discrepancy), type: long_text}
+
+  - key: driver
+    title: Driver details
+    categories: [dl_document]
+    fields:
+      - {key: driver_name, label: Driver name, source: intake, extract: {labels: [Name], within: Driver Details}}
+      - {key: dl_number, label: DL no.}
+      - {key: dl_classes, label: DL details / endorsements}
+      - {key: dl_rto, label: Licensing RTO}
+      - {key: dl_observation, label: Observation}
+      - {key: driver_injured, label: Driver injured or not}
+      - {key: neighbour_enquiry, label: Enquiry from neighbours for accident confirmation, type: long_text}
+      - {key: driver_relationship, label: Driver relationship}
+      - {key: injuries_deaths, label: Injuries / deaths in the accident}
+      - {key: nearby_police_hospital, label: Nearest police station and hospitals checked, type: long_text}
+      - {key: discreet_enquiry, label: Discreet enquiry with driver at place of loss, type: long_text}
+      - {key: bluetooth_photos, label: Photos exchanged via Bluetooth / snapshot of insured mobile}
+
+  - key: statement
+    title: Written statement
+    categories: [written_statement, avr_recording]
+    fields:
+      - {key: written_statement, label: Written statement of insured, type: long_text, required: true}
+
+  - key: timeline
+    title: GPS timeline
+    categories: [location_timeline]
+    fields:
+      - {key: gps_timeline, label: GPS timeline of insured / driver, type: long_text}
+
+  - key: police
+    title: Police intimation details
+    categories: [fir_police_document]
+    fields:
+      - {key: fir_no, label: FIR no.}
+      - {key: fir_details, label: FIR details, type: long_text}
+      - {key: panchanama, label: Panchanama details}
+      - {key: injury_details, label: Injury details (insured / driver / TP)}
+      - {key: eye_witness, label: Eye witness}
+
+  - key: garage
+    title: Garage visit
+    categories: [vehicle_photo, odometer_photo, chassis_engine_photo, job_card, estimate, towing_bill]
+    fields:
+      - {key: garage_visit, label: Garage visit, type: choice, options: ['Yes', 'No']}
+      - {key: garage_name, label: Garage name, source: intake, extract: {labels: [Name of Garage], within: Garage Details}}
+      - {key: damage_correlation, label: Damages correlate with accident description, type: choice, options: ['Yes', 'No', 'Partly']}
+      - {key: traces_inspection, label: Traces of blood / hair / other on vehicle}
+      - {key: odometer_service, label: Odometer reading and service history}
+      - {key: gate_pass, label: Date and time of gate pass entry}
+      - {key: towing, label: Towing vendor details, type: long_text}
+      - {key: job_card, label: Job card date and details}
+      - {key: garage_delay_status, label: Vehicle status if garage entry > 24 hrs after loss}
+
+  - key: insured_visit
+    title: Insured visit
+    categories: [insured_photo, cctv_footage]
+    fields:
+      - {key: insured_visit, label: Insured visit, type: choice, options: ['Yes', 'No']}
+      - {key: fastag, label: FASTag details}
+      - {key: travel_from_to, label: Travelling from where to where}
+      - {key: purpose_of_travel, label: Purpose of travel}
+      - {key: accident_version, label: Accident version — exact loss location, type: long_text}
+      - {key: rehabilitation, label: How insured / driver left the loss location (towing), type: long_text}
+      - {key: first_contact, label: After accident first contact details}
+      - {key: police_clarification, label: Police intimation clarification}
+
+  - key: summary
+    title: Case summary and observations
+    categories: [echallan_check, location_timeline, cctv_footage]
+    fields:
+      - {key: case_summary, label: Case summary and observation, type: long_text, required: true}
+      - {key: observations, label: Observations (bullets), type: long_text, required: true}
+
+  - key: conclusion
+    title: Final conclusion
+    fields:
+      - {key: final_conclusion, label: Final conclusion, type: long_text, required: true}
+      - {key: investigation_status, label: Investigation status, type: long_text, required: true}
+      - {key: repudiate_ground, label: Repudiate ground}
+      - {key: submission_date, label: Report submission date, type: date}

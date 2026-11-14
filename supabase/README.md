@@ -55,3 +55,24 @@ Field OTPs come from `[auth.sms.test_otp]` in `config.toml`; no SMS is sent. Fie
 
 - `multiple_permissive_policies`: staff and field policies are separate on purpose (readability); negligible at this data volume.
 - `extension_in_public` (citext): left in `public` so case-insensitive comparison keeps working in functions with `search_path = ''`.
+
+## Revised workflow objects (20261113000100)
+
+- Templates: load `config/templates/*.yaml` (as JSON) with `public.load_evidence_categories()` and `public.load_case_template()` — admin or service role. See `docs/09-template-model.md`.
+- Field app: `post_thread_message()` (idempotent on `client_message_id`), `withdraw_message()`, `mark_thread_read()`, `case_thread_state()`, `field_case_list()`.
+- Office: `create_field_task()`, `set_evidence_labels()`, `set_availability()`; orchestrator: `reassign_case()`, `retry_auto_assign()`.
+- Service role only: `claim_processing_jobs()`, `complete_processing_job()`, `enqueue_reprocessing()`, `escalate_unattended_cases()` (schedule every 10–15 min).
+- Settings in `public.app_settings` (`withdraw_window_minutes`, `escalate_unassigned_minutes`, `escalate_no_field_task_hours`).
+
+## Email intake (20261113000200, M3)
+
+- Edge function `functions/intake` (Deno) + shared parser `functions/_shared/intake`; `verify_jwt = false`, protected by the `INTAKE_SECRET` header. Local: `npx -y supabase@3.1.0 functions serve intake --env-file supabase/functions/.env`.
+- Service role only: `intake_config()`, `intake_ingest(jsonb)`, `intake_record_failure(...)`. Staff: `confirm_intake()`, `reject_intake()`, `intake_retry()`.
+- Insurer attachments are evidence in the `email-raw` bucket (`storage_backend = supabase`).
+- Deployment steps: `services/intake/README.md`.
+
+## Staff notes and report progress (20261114000000, D30–D32)
+
+- `case_messages.visibility` (`all` / `staff`); `post_staff_note()` for orchestrator ↔ office notes; field users never see `staff` messages or their files.
+- `v_report_progress` and `case_field_history(case)` for the orchestrator's live view; Realtime publication covers `case_messages`, `case_field_values`, `evidence_labels`, `notifications` (the local stack needs `wal_level = logical`, which the Supabase image already sets).
+- `evidence_labels.description` and `evidence_field_matches` for LLM labelling and cross-encoder field matching (written by the pipeline with the service role).

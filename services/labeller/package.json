@@ -1,0 +1,14 @@
+{
+  "name": "@toyam/labeller",
+  "private": true,
+  "type": "module",
+  "description": "Vision labeller (D30, D34): prompt, model adapters, scoring, and the labelling bake-off. src/ is shared with the pipeline worker.",
+  "scripts": {
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-reporter=spec \"test/*.test.ts\"",
+    "bakeoff": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/bakeoff.ts"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.0",
+    "yaml": "^2.9.1"
+  }
+}

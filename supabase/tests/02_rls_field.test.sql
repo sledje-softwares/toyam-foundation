@@ -146,8 +146,9 @@ select lives_ok($$insert into public.evidence (case_id, task_id, checklist_item_
                     'cases/30000000-0000-4000-8000-000000000001/tasks/40000000-0000-4000-8000-000000000001/' || repeat('0a', 32) || '.jpg',
                     repeat('0a', 32), '10000000-0000-4000-8000-0000000000f1', '2000-01-01')$$,
     'field can add evidence to own open task');
-select ok((select is_flagged and flag_reason is not null from public.evidence where sha256 = repeat('0a', 32)),
-    'gallery upload on a camera-only item is auto-flagged');
+-- D18 (2026-11-13): gallery / shared files are accepted without any mark or flag
+select ok((select not is_flagged and flag_reason is null from public.evidence where sha256 = repeat('0a', 32)),
+    'gallery upload is accepted without a flag (D18)');
 select ok((select server_received_at > now() - interval '1 minute' from public.evidence where sha256 = repeat('0a', 32)),
     'server_received_at is set by the database');
 select throws_ok($$insert into public.evidence (case_id, task_id, evidence_type, capture_source, storage_path, sha256, captured_by)

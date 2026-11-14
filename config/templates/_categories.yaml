@@ -1,0 +1,149 @@
+# Evidence categories — one taxonomy shared by field checklists, the labelling pipeline and
+# report sections (docs/09-template-model.md). Loaded with public.load_evidence_categories().
+#
+# filename_patterns / text_patterns are case-insensitive regular expressions used by the free
+# rule-based labeller (pipeline stage "label", sources filename_rule / text_rule). Patterns for
+# file names come from real insurer attachments, e.g. ICICI Lombard sends
+# "Front View(1)_..._MOT00000001_....jpg", "DRIVING LICENSE(1)_....jpg".
+#
+# description: one line shown to the vision labeller (D34) — say what the file looks like.
+# ocr: whether files of this category get OCR after labelling (default: true for documents,
+#      false for photos). Set it for photos that carry text the report needs.
+#
+# Codes are permanent once used: rename `name`, never `code`.
+
+- code: vehicle_photo
+  name: Vehicle photo
+  description: 'Exterior or interior of the insured vehicle, including damage close-ups and number plate views'
+  filename_patterns: ['front view', 'rear view', 'left (front|rear)? ?(side|view)', 'right (front|rear)? ?(side|view)', 'windshield', 'qc_initial', 'damage']
+- code: odometer_photo
+  name: Odometer photo
+  description: 'Instrument cluster showing the odometer reading'
+  ocr: true
+  filename_patterns: ['odometer', 'odo']
+  text_patterns: ['\bkm\b.*\d{3,6}', 'odo']
+- code: chassis_engine_photo
+  name: Chassis / engine number photo
+  description: 'Stamped chassis (VIN) or engine number on the vehicle'
+  ocr: true
+  filename_patterns: ['chassis', 'engine no']
+- code: spot_photo
+  name: Accident / loss spot photo
+  description: 'Place of accident or loss: road, junction, landmark, debris'
+  filename_patterns: ['spot']
+- code: insured_photo
+  name: Photo with insured / rider / witness
+  description: 'A person (insured, rider, driver or witness), usually with the investigator or the vehicle'
+  filename_patterns: ['insured', 'rider', 'selfie']
+- code: rc_document
+  name: Registration certificate / RC extract
+  description: 'Registration certificate (smart card or paper) or an RC / VAHAN extract'
+  default_evidence_type: document
+  filename_patterns: ['\brc\b', 'registration']
+  text_patterns: ['registration certificate', 'form ?23', 'vahan', 'registering authority']
+- code: dl_document
+  name: Driving licence / DL extract
+  description: 'Driving licence (card or booklet) or a DL / Sarathi extract'
+  default_evidence_type: document
+  filename_patterns: ['driving licen[cs]e', '\bdl\b']
+  text_patterns: ['driving licen[cs]e', 'licen[cs]ing authority', '\bMCWG\b|\bLMV\b']
+- code: policy_document
+  name: Policy copy
+  description: 'Insurance policy schedule or certificate of insurance'
+  default_evidence_type: document
+  filename_patterns: ['policy']
+  text_patterns: ['policy schedule', 'certificate of insurance', 'policy no']
+- code: claim_form
+  name: Claim form / intimation
+  description: 'Claim form or claim intimation filled by the insured'
+  default_evidence_type: document
+  filename_patterns: ['eclaim', 'claim form', 'intimation']
+- code: estimate
+  name: Repair estimate
+  description: 'Garage repair estimate or quotation listing parts and labour'
+  default_evidence_type: document
+  filename_patterns: ['estimate', 'quotation']
+  text_patterns: ['estimate', 'quotation']
+- code: job_card
+  name: Garage job card / gate entry
+  description: 'Garage job card, repair order or gate entry slip'
+  default_evidence_type: document
+  filename_patterns: ['job ?card', 'gate ?pass']
+  text_patterns: ['job ?card', 'repair order']
+- code: towing_bill
+  name: Towing bill
+  description: 'Bill or receipt for towing or crane service'
+  default_evidence_type: document
+  filename_patterns: ['towing', 'crane']
+  text_patterns: ['towing']
+- code: id_document
+  name: Identity / KYC document
+  description: 'Identity or KYC document of a person (Aadhaar, PAN, voter ID, passport)'
+  default_evidence_type: document
+  filename_patterns: ['aadhaar', 'aadhar', '\bpan\b', 'aml documents', 'kyc', 'voter']
+  text_patterns: ['government of india', 'income tax department', 'unique identification']
+- code: fir_police_document
+  name: FIR / GD / police document
+  description: 'FIR, general diary entry, panchnama or other police paper'
+  default_evidence_type: document
+  filename_patterns: ['\bfir\b', '\bgd\b', 'panchnama', 'release order', 'seizure']
+  text_patterns: ['first information report', 'police station', 'panchnama', 'general diary']
+- code: medical_document
+  name: Treatment / MLC papers
+  description: 'Hospital or doctor papers: MLC, discharge summary, prescription, bills'
+  default_evidence_type: document
+  filename_patterns: ['discharge', 'prescription', '\bmlc\b', 'medical']
+  text_patterns: ['discharge summary', 'medico.?legal', 'diagnosis', 'prescription']
+- code: written_statement
+  name: Written statement
+  description: 'Handwritten or typed statement or declaration signed by a person'
+  default_evidence_type: document
+  filename_patterns: ['statement']
+  text_patterns: ['i hereby', 'statement', 'declaration']
+- code: avr_recording
+  name: Audio / video recording (AVR)
+  description: 'Audio or video recording of a conversation or statement'
+  default_evidence_type: audio
+  filename_patterns: ['\bavr\b', 'recording', 'call']
+- code: cctv_footage
+  name: CCTV / dashcam footage
+  description: 'CCTV or dashcam footage or a still taken from it'
+  default_evidence_type: video
+  filename_patterns: ['cctv', 'dashcam', 'footage']
+- code: location_timeline
+  name: Google timeline / call log screenshot
+  description: 'Screenshot of a location timeline, map history or call log'
+  ocr: true
+  filename_patterns: ['timeline', 'call ?log', 'location']
+  text_patterns: ['timeline', 'call history']
+- code: echallan_check
+  name: e-Challan / portal check screenshot
+  description: 'Screenshot of an e-Challan or Parivahan portal check'
+  ocr: true
+  filename_patterns: ['challan', 'parivahan']
+  text_patterns: ['e-?challan', 'parivahan']
+- code: vehicle_invoice
+  name: Vehicle purchase invoice
+  description: 'Purchase invoice or sale certificate of the vehicle'
+  default_evidence_type: document
+  filename_patterns: ['invoice']
+  text_patterns: ['tax invoice', 'sale certificate']
+- code: loan_document
+  name: Loan statement / non-repossession letter
+  description: 'Loan statement, hypothecation or non-repossession / NOC letter'
+  default_evidence_type: document
+  filename_patterns: ['loan', 'repossession', '\bnoc\b']
+  text_patterns: ['loan account', 'repossess', 'no objection']
+- code: reminder_letter
+  name: Reminder / deficiency letter to insured
+  description: 'Reminder or deficiency letter sent to the insured'
+  default_evidence_type: document
+  filename_patterns: ['reminder', 'deficiency']
+- code: proof_of_dispatch
+  name: Proof of dispatch (POD)
+  description: 'Postal receipt or courier tracking proving a letter was sent'
+  default_evidence_type: document
+  filename_patterns: ['\bpod\b', 'dispatch', 'speed ?post']
+- code: other
+  name: Other
+  description: 'Anything that fits none of the categories above'

@@ -1,0 +1,109 @@
+# 10 — Processing Pipeline (D21, D30, D34, D35)
+
+Every file that reaches a case (field thread, staff upload, insurer attachment) is read and labelled so that the report workspace can place it beside the right section and offer its text for tap-to-fill. The developer optimises the implementation; this document fixes the **contract** so stages can be replaced without touching the apps.
+
+## Principle (revised 2026-11-14, D30)
+
+One vision LLM call per image returns its **labels** (the template's own categories), the **report fields** it is evidence for (and through them and the categories, its **sections**), and a **short description only where needed** (D35). Exact, free signals (insurer file names, operator tags) are used first so the LLM is not called when the label is already known — but the field matches still need the call. Values are not read by the LLM; OCR + rules read them. Latency matters: a label within seconds lets the operator's pinned checklist tick itself on site.
+
+Volume (revised 2026-11-14): 250–300 files per case × ~300 cases ≈ 75–90k a month.
+
+## Models and order (D34)
+
+1. **Label first, each image on its own, at low resolution** (~384 px long edge). At small-model prices a single low-resolution image costs a fraction of a paisa; labelling all 90k images costs ≈ $7 a month on Haiku 5.5 with the prompt cached. **Numbered 6×6 collages are tested as a bake-off arm (D36)** and adopted only if they meet the same pass marks; even then, files an operator is waiting on go singly.
+2. **OCR only where it is needed**, after the label (`ocr_wanted()`). Device OCR (ML Kit) sent with the file is used first; server OCR is a dedicated OCR model (PaddleOCR family) on the fixed-cost CPU worker. Dedicated OCR models read documents better than general vision models and invent fewer characters.
+3. **Numbers come from OCR + rules; the vision model is a second opinion** (below).
+4. **Escalate uncertain labels**: below the confidence threshold chosen in the bake-off, the image is labelled again at higher resolution or by a larger model (expected 5–10 % of images).
+5. ~~Embedding classifier later~~ — not planned (D35): every image needs the LLM call for its field matches anyway.
+
+The model is chosen by the bake-off (`services/labeller/README.md`) on real cases labelled by the office; whether images may go to an external provider is the client's decision (Q21). Every label stores its `model`; the provider sits behind one adapter (`services/labeller/src/providers.ts`) so it can be swapped.
+
+## Earlier principle: cheapest first
+
+| Need | Order of attempts | Cost |
+|---|---|---|
+| Text | PDF text layer → on-device OCR (sent with the file) → server OCR (dedicated OCR model) **only where `ocr_wanted()`** | Free → free → fixed |
+| Label | Operator tag / file-name rules (exact, free) → **small vision model** on a ~384 px image, constrained to the template's categories + short description + `needs_detail` (D30, D34) → larger model / higher resolution when confidence is low | Free → ≈ $0.0001 per image |
+| Field matching | **The same LLM call** returns the fields the image is evidence for → `evidence_field_matches` (D35); sections = sections of those fields + sections whose categories include the label | Included in the label call |
+| Field values | Pattern rules on OCR text (dates, amounts, DL / RC / policy / chassis numbers) → LLM only if asked | Free |
+
+A stage records what it did; the next one decides whether more work is needed (e.g. skip server OCR when device OCR confidence is high, skip the model when a rule already labelled the file).
+
+## Stages (run order `private.stage_rank()`: text_extract → label → ocr → field_suggest)
+
+| Stage | Input | Output | Default for |
+|---|---|---|---|
+| `text_extract` | Document file | `evidence_ocr` (engine `pdf_text_layer`), or `skipped` | documents |
+| `label` | File name, PDF text, image at ~384 px, the case template's categories and fields | `evidence_labels` (category, confidence, source `llm` / `filename_rule` / `operator`, pipeline_version, **description** (only where needed), **needs_detail**, **detail_reason**, **model**) and `evidence_field_matches` (field, confidence, model) | all except notes |
+| `ocr` | Photo / scanned page | `evidence_ocr` per page (engine name + version, text, blocks); `skipped` when `ocr_wanted()` is false or device OCR is good enough | photos, documents |
+| `field_suggest` | OCR blocks + the matched fields' pattern rules | `field_suggestions` (field, value, confidence, block index) — values for the fields the label stage matched | photos, documents |
+
+Jobs are created automatically when evidence is inserted (`trg_evidence_enqueue`). A stage becomes claimable once earlier stages (by rank) of the same file and pipeline version are no longer queued or running; a permanently failed stage does not block later ones. The enum keeps its original order (Postgres cannot reorder an enum); only the rank decides.
+
+## Labeller contract (D34)
+
+- **Request:** one image, resized to ~384 px on the long edge (JPEG), plus the system prompt built per template version (`buildSystemPrompt(categories, template)`: categories with their `description`, then the template's fields grouped by section, ≈ 2,200 tokens). **The system prompt must be cached** (it is ~90 % of the input); send a case's images close together so the cache stays warm.
+- **Answer:** `{"labels":[{"code","confidence"}], "fields":[{"key","confidence"}], "needs_detail", "detail_reason", "description"}`, parsed by `parseLabelAnswer()`: unknown codes and field keys dropped, at most 3 labels and 5 fields, best first; a missing `needs_detail` counts as true (an extra OCR run is cheaper than a missed number). `description` is `null` unless it adds something (damage and where, a scene, a person, an uncertain or "other" image). The model never returns values, never copies personal numbers and never judges the claim.
+- **Stored:** one `evidence_labels` row per label (source `llm`), with `needs_detail`, `detail_reason`, `description` and `model` (`provider/model-id`); one `evidence_field_matches` row per matched field (`score` = the model's confidence). Sections are derived (`sectionsFor()`), not stored.
+- **Escalation:** when the top confidence is below the bake-off threshold, label again at 1024–1568 px or with a larger model under a new `pipeline_version`; the office sees the file as unlabelled meanwhile.
+
+## OCR skip rule — `ocr_wanted(evidence)`
+
+True for documents, for files without an active label, and for files with an active label whose category has `needs_ocr` (from `ocr:` in `_categories.yaml`; documents by default; also odometer, chassis / engine, timeline and e-Challan photos) or with `needs_detail`. False for withdrawn files. An office correction to such a category makes OCR wanted again; the worker queues it with `enqueue_reprocessing()`.
+
+## Second opinion on numbers
+
+For identifier and amount fields (registration, chassis, engine, DL, policy and claim numbers, amounts, dates), the suggested value comes from OCR text and the field's pattern rule. When the file `needs_detail`, the vision model also reads the field at full resolution:
+
+| OCR rule value vs. vision reading | Suggestion |
+|---|---|
+| Same | One suggestion, high confidence |
+| Different | Both shown to the office; neither pre-selected |
+| Only one of them | That value, normal confidence |
+| Handwritten (no usable OCR) | Vision reading, marked for checking |
+
+## Worker API (service role only)
+
+```sql
+-- claim up to N jobs of the given stages (FOR UPDATE SKIP LOCKED; attempts += 1)
+select * from public.claim_processing_jobs(array['ocr','label']::processing_stage[], 10, 'worker-1');
+
+-- finish: done | skipped | failed (failed re-queues with 2^attempts minutes back-off until max_attempts)
+select public.complete_processing_job(:job_id, 'done');
+
+-- re-run stages with a new pipeline version (e.g. improved labeller) — previous outputs stay
+select public.enqueue_reprocessing(array[:evidence_ids], array['label']::processing_stage[], 'v2');
+```
+
+Outputs are written with the service role directly into `evidence_ocr`, `evidence_labels` and `field_suggestions`.
+
+## Data shapes
+
+`evidence_ocr.blocks` — array of `{ "text": "...", "bbox": [x, y, w, h], "conf": 0.0–1.0, "line": n }` in image pixel coordinates (page coordinates for PDFs). The workspace highlights blocks and copies `text` on tap. A new row for the same file and page supersedes the previous one (`is_current`).
+
+`evidence_labels` — several active labels per file are allowed (a photo can show both the odometer and the chassis plate). `source` is one of `operator`, `filename_rule`, `text_rule`, `model`, `llm`, `human`.
+
+`field_suggestions` — `field_id` refers to `case_template_fields` of the case's template version; `block_index` points into the current OCR blocks of that file.
+
+## Rules engine (free path)
+
+- File-name rules: `evidence_categories.filename_patterns` (case-insensitive regex). Insurer attachments are named descriptively (e.g. ICICI `Front View(1)_…`, `DRIVING LICENSE(1)_…`, `ECLAIM_MOT…`) — all 11 sample names matched.
+- Text rules: `evidence_categories.text_patterns` against OCR text (e.g. "Registration Certificate", "First Information Report", "Discharge Summary").
+- Field patterns: per field type and key (e.g. `dl_number` ~ Indian DL format, `chassis_no` ~ 17-character VIN, dates in `dd.mm.yyyy` / `dd-Mon-yyyy`).
+
+## Feedback loop
+
+- Office corrections go through `set_evidence_labels()`: previous labels are deactivated (kept), human labels added. These rows are the evaluation and training set.
+- Suggested values accepted or rejected in the workspace update `field_suggestions.status` (stamped with user and time).
+- Measure per label source and category: precision against human corrections; use it to decide where a model or LLM is worth calling.
+
+## Ticks in the field app
+
+`v_evidence_processing.state` per file: `none` (no jobs), `pending`, `processing`, `failed`, `done`. The app shows ✓✓ when every file of the message is `done` (or `none`).
+
+## Operating notes
+
+- Withdrawn evidence still has jobs; workers may skip it (`skipped`).
+- Keep engines and versions in `evidence_ocr.engine/engine_version` and `evidence_labels.pipeline_version` so results can be compared.
+- Language: ML Kit and PaddleOCR handle printed Latin and Devanagari; handwritten registers are unreliable — the vision model's reading is offered for checking and the workspace falls back to a zoom viewer.
+- Data: images go to the labelling provider only as approved by the client (Q21); the bake-off follows the same rule.

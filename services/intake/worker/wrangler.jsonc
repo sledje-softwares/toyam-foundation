@@ -1,0 +1,26 @@
+{
+  // Email intake Worker (D33): push via Email Routing + hourly IMAP safety net.
+  // Deploy: npm run worker:deploy -w services/intake
+  "name": "toyam-intake-relay",
+  "main": "index.ts",
+  "compatibility_date": "2026-11-01",
+  // safety net only: once an hour (minute chosen off the hour)
+  "triggers": { "crons": ["17 * * * *"] },
+  "kv_namespaces": [
+    // create with: npx wrangler kv namespace create STATE   and paste the id here
+    { "binding": "STATE", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  "vars": {
+    "INTAKE_URL": "https://REPLACE_WITH_PROJECT_REF.supabase.co/functions/v1/intake",
+    "MAILBOX": "INBOX",
+    "MAX_PER_RUN": "25",
+    // IMAP-side filter for the safety net: same senders as the Gmail forwarding filter
+    "ONLY_FROM": "indusindinsurance.com,icicilombard.com",
+    // envelope senders accepted by email(); the shared Gmail (GMAIL_USER secret) is always allowed
+    "ALLOWED_SENDERS": ""
+  },
+  "observability": { "enabled": true }
+  // secrets: npx wrangler secret put GMAIL_USER | GMAIL_APP_PASSWORD | INTAKE_SECRET
+  // Email Routing (Cloudflare dashboard → the domain → Email → Routing rules):
+  //   custom address intake@in.toyaminvestigation.in → action "Send to a Worker" → toyam-intake-relay
+}

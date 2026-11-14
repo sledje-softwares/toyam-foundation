@@ -1,62 +1,176 @@
 # 06 — Data Model (Phase 1)
 
-Source of truth: `supabase/migrations/20261111000000_phase1_initial_schema.sql`.
+Source of truth: all files in `supabase/migrations/` applied in order. Tests: `supabase/tests/`.
 
-## Entities
+| Migration | Adds |
+|---|---|
+| `20261111000000_phase1_initial_schema` | Core tables, triggers, RLS |
+| `20261111100000_security_hardening` | Private schema helpers, fixed search paths, stricter field rules, no anon |
+| `20261111110000_auth_profiles` | `auth.users` → `profiles` from app_metadata |
+| `20261111120000_storage` | `email-raw`, `reports` buckets |
+| `20261111130000_evidence_r2_archive` | R2 storage backend, archive / purge columns |
+| `20261112000000_m2_admin` | Admin user list, last-admin guard, insurer rules, `report-templates` bucket, checklist editor RPCs |
+| `20261113000000_revised_flow_enums` | `capture_source = 'share'` |
+| `20261113000100_revised_flow` | Templates, assignment, thread, processing, approvals (below) |
+| `20261113000200_intake` | Email intake: `intake_config()`, `intake_ingest()`, review queue actions, failure / retry (below) |
+| `20261114000000_staff_notes_progress` | Staff-only messages, report progress view, field history, LLM label descriptions, field matches, realtime (below) |
+| `20261114100000_label_first` | Stage order label → OCR, `needs_ocr` categories, label `needs_detail` / `model`, `ocr_wanted()` (D34, below) |
+
+## Core entities
 
 | Table | Purpose | Key points |
 |---|---|---|
-| `profiles` | Application users | Linked to `auth.users`; `role` ∈ admin, orchestrator, office, field |
-| `insurers` | Insurer configuration | Sender domains, TAT days, submission channel, report template, extraction hints |
-| `checklist_templates` / `checklist_template_items` | Reusable checklists | Per claim type, optional per-insurer override; mandatory and camera-only flags |
-| `entities` | Hospitals, garages, doctors, agents, police stations | De-duplicated by type + name + city; for Phase 3 fraud patterns |
-| `cases` | Investigation case | Auto `case_ref` (`INV-YYYY-NNNNNN`); `due_at` from insurer TAT; unique `(insurer_id, insurer_claim_no)` |
-| `parties` | People on a case | Insured, patient, claimant, nominee, driver, witness |
-| `case_entities` | Case ↔ entity links | With relation, e.g. `treating_hospital` |
-| `case_status_history` | Status changes | Written by trigger; basis for per-stage turnaround |
-| `emails` / `email_attachments` | Intake records | Idempotent on `gmail_message_id`; attachments hashed; OCR text |
-| `intake_extractions` | AI extraction output | Values and per-field confidence; `pending_review` → `confirmed` / `rejected` |
-| `tasks` | Units of investigation work | `initial`, `re_investigation`, `office`, `other`; `parent_task_id` links re-investigation |
-| `task_checklist_items` | Per-task checklist | Copied from template via `apply_checklist_template()`; editable per case |
-| `evidence` | Captured items | Photo, document, audio, video, note; GPS, device and server time, SHA-256, capture source, flags |
-| `reports` | Report versions | Unique `(case_id, version)`; draft / final |
-| `submissions` | Delivery to insurer | Channel, reference, acknowledgement |
-| `audit_log` | Change history | Insert/update/delete on core tables with old and new data |
+| `profiles` | Users | Role ∈ admin, orchestrator, office, field; `availability`, `availability_until`, `max_open_cases` |
+| `insurers` | Insurer configuration | Code, sender domains (unique across insurers), TAT, submission channel |
+| `cases` | Investigation case | `case_ref` auto; `due_at` from TAT; unique `(insurer_id, insurer_claim_no)`; `template_id`; `office_owner_id` + `assignment_method` |
+| `parties`, `entities`, `case_entities` | People and organisations on a case | Entities kept for Phase 3 pattern analysis |
+| `case_status_history` | Status changes | Basis for per-stage turnaround |
+| `emails`, `email_attachments`, `intake_extractions` | Intake record and review queue | Idempotent on message id |
+| `tasks`, `task_checklist_items` | Field work | Checklist copied from a template; items carry an evidence `category_id` |
+| `evidence` | Files and notes | Immutable core; GPS, device/server time, SHA-256, `capture_source`, `message_id`, withdraw, relevance, archive columns |
+| `reports`, `report_files`, `report_annexures` | Report versions, generated files (pdf/docx), chosen images | |
+| `report_approvals` | Approval per report version | Decided once by orchestrator/admin |
+| `submissions` | Delivery to insurer | Formats, recipients, sent message / thread ids |
+| `audit_log` | Change history | Insert/update/delete on core tables |
 
-## Design rules enforced in the database
+## Revised workflow additions (`20261113000100_revised_flow.sql`)
+
+### Templates and categories (D20)
+
+| Table | Purpose |
+|---|---|
+| `evidence_categories` | One taxonomy (`code`), with `filename_patterns` and `text_patterns` for the free labeller |
+| `case_templates` | Insurer × claim type × variant, versioned; `requires_approval`, `output_formats`, `default_output_format`, `docx_template_path`, `intake_rules`, `report_email` |
+| `case_template_sections` | Ordered report sections |
+| `case_template_fields` | Fields per section; `source` intake / office; `extract` rules; unique key per template |
+| `case_template_section_categories` | Which evidence categories are relevant to each section (drives the image panel) |
+| `case_template_checklists` | Default field checklist(s) for the template |
+| `case_field_values` | One value per case × field, with source (email_parser / llm / office / suggestion), confidence and evidence reference |
+
+Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, source_file, activate)` (admin or service role). Identical config → no new version; changed config → new version; one active version per insurer × claim type × variant; cases keep their version.
+
+### Assignment (D15, D16)
+
+| Object | Purpose |
+|---|---|
+| `assignment_rules`, `assignment_rule_members` | Pools per insurer / claim type (null = any), strategy, priority |
+| `case_assignments` | History of every assignment (auto / manual, reason) |
+| Trigger on `cases` insert | Auto-assigns when no owner; most specific rule first; skips unavailable staff and full caps; fallback to all available office staff; else orchestrators notified |
+| `reassign_case(case, user, reason)`, `retry_auto_assign(case)` | Orchestrator / admin only |
+| Owner guard | `office_owner_id` changes only through these functions (or system jobs) |
+| `set_availability(user, availability, until)` | Self, orchestrator or admin |
+| `create_field_task(...)` | Office staff assign field work (copies checklist) |
+
+### Thread (D17, D19)
+
+| Object | Purpose |
+|---|---|
+| `case_messages` | Kinds text / media / voice / system / request; `client_message_id` for offline idempotency; no edit, no delete; withdraw only |
+| `case_thread_reads` | Read pointer per user per case (ticks, unread counts) |
+| `post_thread_message(case, client_id, kind, body, task, reply_to, items)` | Runs as the caller (RLS decides); stores files as evidence with operator tag and device OCR; first upload starts the field task |
+| `withdraw_message(id)` | Sender only, within `withdraw_window_minutes`; hides message and files |
+| `mark_thread_read(case)`, `case_thread_state(case)` | Read state for ticks |
+| `field_case_list()` | Field app home: Open / Completed, last message, unread |
+
+### Processing (D21)
+
+| Object | Purpose |
+|---|---|
+| `processing_jobs` | One row per evidence × stage × pipeline version; queued / running / done / failed / skipped; back-off retries |
+| `evidence_ocr` | Text + blocks (bbox, confidence) per page and engine; newest is current |
+| `evidence_labels` | Category labels with source (operator / filename_rule / text_rule / model / llm / human); corrections deactivate, never delete |
+| `field_suggestions` | Proposed field values from OCR with block reference; accepted / rejected |
+| `claim_processing_jobs`, `complete_processing_job`, `enqueue_reprocessing` | Worker API, service role only |
+| `set_evidence_labels(evidence, categories[])` | Office correction → human labels |
+| `v_evidence_processing`, `v_case_checklist` | Read models for ticks and checklist progress |
+
+### Approval, sending, notifications
+
+| Object | Purpose |
+|---|---|
+| `report_approvals` | Request (office) → approve / changes requested (orchestrator, admin) |
+| Submission guard | Refuses unapproved reports where the template requires approval, and formats the template does not allow |
+| `notifications`, `device_tokens` | In-app notifications (de-duplicated), push tokens |
+| `escalate_unattended_cases()` | Service role, scheduled; unassigned cases and assigned cases without field work |
+| `app_settings` | Withdraw window, escalation thresholds |
+
+### Email intake (`20261113000200_intake.sql`, M3)
+
+| Object | Purpose |
+|---|---|
+| `emails` additions | `in_reply_to`, `references_ids`, `cc_addresses`, `from_name`, `is_internal`, `raw_sha256`, `template_id`, `parser_version`, `parse_notes`; `gmail_message_id` holds the Message-ID header (idempotency key) |
+| `email_attachments` additions | `content_id`, `is_inline`, `is_evidence` |
+| `intake_extractions` additions | `template_id`, `missing_required`, `parser_action`, `reject_reason` |
+| `intake_config()` | Service role: insurers + domains, active templates with intake fields, firm addresses |
+| `intake_ingest(decision)` | Service role, one transaction: idempotent on Message-ID → internal / unmatched / follow-up (Gmail thread, reply chain, then insurer + claim no.) / new case (rules complete) / review queue |
+| `confirm_intake(extraction, template, values)` / `reject_intake(extraction, reason)` | Office: review queue |
+| `intake_record_failure(...)` / `intake_retry(email)` | Undecodable mail kept visible; staff retry |
+| `app_settings` | `internal_email_domains`, `internal_email_addresses` |
+
+Insurer files become `evidence` with `capture_source = email_attachment`, `storage_backend = supabase` (bucket `email-raw`), `captured_by` null; field users never see them.
+
+### Staff notes, report progress, field matching (`20261114000000_staff_notes_progress.sql`, D30–D32)
+
+| Object | Purpose |
+|---|---|
+| `case_messages.visibility` | `all` (default) or `staff`; immutable. Field users never read or write `staff` messages, nor files posted in them. Assignment / reassignment and "report sent" events are `staff` |
+| `post_staff_note(case, client_id, body, reply_to)` | Staff-only note; notifies the case owner and the case orchestrator (not the author) |
+| `v_report_progress` | Per case and section: fields / required total and filled, values from email / suggestions / entered, last change and by whom (staff only through RLS) |
+| `case_field_history(case)` | Who changed which field from what to what (from the audit log; staff only) |
+| `evidence_labels.description` | LLM's short description of a file, only where useful (D35) |
+| `evidence_field_matches` | Report fields a file is evidence for, from the label call; `score` = the model's confidence (D35; pipeline output; staff read only) |
+| Realtime | `case_messages`, `case_field_values`, `evidence_labels`, `notifications` in the `supabase_realtime` publication (RLS applies) |
+
+### Label first (D34)
+
+| Object | Purpose |
+|---|---|
+| `private.stage_rank(stage)` | Run order text_extract → label → ocr → field_suggest (the enum keeps its original order; claiming uses the rank) |
+| `evidence_categories.needs_ocr` | Files of this category get server OCR; loaded from `ocr:` in `_categories.yaml` (default: documents) |
+| `evidence_labels.needs_detail`, `detail_reason`, `model` | Labeller says the file must be read at full resolution, and why; model that produced the label |
+| `ocr_wanted(evidence)` | Service role only: documents, unlabelled files, and files with an active label whose category needs OCR or that needs detail; never withdrawn files |
+
+## Case status automation
+
+| Event | Status change |
+|---|---|
+| Case created | `received` |
+| Office employee assigned | `received` → `assigned` |
+| Field task / request created | `assigned`, `office_review`, `orchestrator_review` → `field_in_progress` |
+| Last open task completed or cancelled | `field_in_progress` → `office_review` |
+| Approval requested | → `orchestrator_review` |
+| Changes requested | `orchestrator_review` → `office_review` |
+| Submission recorded | → `submitted` |
+
+Every change is written to `case_status_history` and shown in the thread as a system message where relevant.
+
+## Rules enforced in the database
 
 | Rule | Mechanism |
 |---|---|
-| No duplicate cases | Unique `(insurer_id, insurer_claim_no)` |
-| No duplicate emails | Unique `gmail_message_id` |
-| No duplicate evidence uploads | Unique `(case_id, sha256)` |
-| Evidence immutable | `evidence_guard` trigger blocks updates to core fields and all deletes |
-| Trusted server time | `evidence_autoflag` trigger overwrites `server_received_at` |
-| Gallery uploads flagged | `evidence_autoflag` flags gallery capture on camera-only items |
-| Field users update status only | `tasks_field_guard` trigger |
-| Status history | `cases_status_history` trigger |
-| Default deadline | `cases_before_insert` sets `due_at` from `insurers.tat_days` (default 15) |
-| Audit trail | `audit_row` trigger on core tables |
+| No duplicate cases / emails / evidence | Unique `(insurer_id, insurer_claim_no)`, message id, `(case_id, sha256)` |
+| Evidence immutable | `evidence_guard`: only flag, relevance (staff), withdraw (via function, once), archive (archive job, once) may change; no delete |
+| Trusted time | `server_received_at`, `created_at` set by the database; messages stamped on insert |
+| Files from gallery / share accepted, unmarked (D18) | `evidence_autoflag` no longer flags; origin kept in `capture_source` |
+| Thread consistency | Evidence message must be in the same case and sent by the uploader; replies and tasks in the same case |
+| Field users update task status only | `tasks_field_guard` |
+| Template consistency | Field values must belong to the case's template version |
+| Annexures | Only non-withdrawn, not-irrelevant evidence of the same case |
+| Approval before sending | Submission guard |
+| Audit trail | `private.audit_row` on core and new tables |
 
 ## Access model (row-level security)
 
 | Role | Access |
 |---|---|
-| Admin | Everything, including master data writes and the audit log |
-| Orchestrator, Office | Full operational read/write; master data read-only; evidence read, insert, flag |
-| Field | Cases and parties only where they hold a task; own tasks (status only); checklist items of own tasks; insert evidence on own open tasks; read own evidence. No access to emails, extractions, reports, submissions |
-
-Helper functions: `current_user_role()`, `is_staff()`, `is_admin()`, `field_can_see_case()`.
-
-## Dashboard view
-
-`v_case_dashboard` — per case: insurer, status, due date, days remaining, overdue flag, orchestrator, open tasks, re-investigation rounds, active assignees. Uses `security_invoker` so RLS applies.
-
-## Verification performed
-
-Loaded on PostgreSQL 16 with a stubbed `auth` schema and smoke-tested: case reference and TAT defaults, duplicate rejection, checklist copy, field user isolation (sees only assigned case, no emails), gallery auto-flag, field task edit blocked, evidence tamper blocked, evidence delete blocked, flag update allowed, status history and audit entries written.
+| Admin | Everything, incl. templates, categories, settings, audit log |
+| Orchestrator | Operational read/write; assignment rules; reassign; approve |
+| Office | Operational read/write; request approval; cannot change the case owner or decide approvals |
+| Field | Cases where they hold a task; intake fields of those cases; thread messages except staff-only ones; own files plus files posted into those threads (not withdrawn, not staff-only); categories; own notifications. Never emails, extractions, reports, approvals, submissions, OCR, field matches or templates |
+| Service role | Intake, pipeline, sender, archive and escalation jobs |
 
 ## Deliberate omissions
 
-- No government ID number columns; ID documents are stored as evidence files.
-- No billing, payout or scoring tables (later phases).
+- No government ID number columns; ID documents are evidence files (D8).
+- No billing or scoring tables (later phases).
+- `intake_confirmed` status unused in the revised flow (kept in the enum).

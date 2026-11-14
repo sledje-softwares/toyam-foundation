@@ -1,0 +1,43 @@
+From: Test Analyst /ICLM/ICICILOMBARD/INDR <analyst.test@icicilombard.com>
+To: TOYAM INVESTIGATION <toyaminvestigation@gmail.com>, Toyam Investigation <gi@toyaminvestigation.in>
+Cc: Test Manager <manager.test@icicilombard.com>
+Subject: OD Investigation Case No - MOT00000001 // MP00XX0002 // SAMPLE TRADERS #Business#
+Date: Wed, 28 Oct 2026 15:17:00 +0530
+Message-ID: <icl-0001@icicilombard.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix2"
+
+--mix2
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Dear Team,</p><p>Kindly initiate the investigation to verify the authenticity of the claim.</p>
+<p><b>Red Flag Case</b></p><ul><li>Driver Verification: Confirm the identity of the driver at the time of the incident.</li>
+<li>Google Timeline Verification: Analyse the Google timeline of the insured and the driver.</li>
+<li>CCTV and Other Surveillance: Obtain any relevant CCTV footage.</li></ul>
+<p>Please ensure your report is comprehensive.</p><p><b>Intimation Sheet</b></p><table><tr><td>Intimation Date</td><td>19-OCT-2026</td><td>Intimation Time</td><td>18:32</td></tr><tr><td colspan="4" align="center"><b>Policy Details</b></td></tr><tr><td>Product Name</td><td>MOTOR</td><td>Sub Product Name</td><td>TWO WHEELER</td></tr><tr><td>Claim No.</td><td>17000001</td><td>Claim Ref. No.</td><td>MOT00000001</td></tr><tr><td>Policy No.</td><td>3005/O/000000001/00/B00</td><td>Cover Note No.</td><td>000000001</td></tr><tr><td>Period from</td><td>19-SEP-2026</td><td>Period to</td><td>18-SEP-2027</td></tr><tr><td>Agent Name</td><td>TEST BROKERS PVT LTD</td><td>IL Branch</td><td>BHOPAL</td></tr><tr><td colspan="4" align="center"><b>Insured Details</b></td></tr><tr><td>Name of Insured</td><td>SAMPLE TRADERS</td><td>Address</td><td>H NO. 1 TEST MARKET</td></tr><tr><td>Registered Mobile No</td><td>9000000002</td><td>State</td><td>MADHYA PRADESH</td></tr><tr><td>E-mail Id</td><td>sample@example.com</td><td>City/Dist</td><td>BHOPAL</td></tr><tr><td>Contact No -1</td><td>9000000003</td><td>Pin</td><td>462001</td></tr><tr><td colspan="4" align="center"><b>Vehicle Details</b></td></tr><tr><td>Make of Vehicle</td><td>ATHER</td><td>Vehicle Reg. No</td><td>MP-00-XX-0002</td></tr><tr><td>Model of Vehicle</td><td>450X</td><td>Engine No</td><td>ENG0000000</td></tr><tr><td colspan="4" align="center"><b>Garage Details</b></td></tr><tr><td>Name of Garage</td><td>TEST AVENUES PVT LTD</td><td>Address</td><td>PLOT 1</td></tr><tr><td>Contact No -1</td><td>9000000004</td><td>State</td><td>MADHYA PRADESH</td></tr><tr><td colspan="4" align="center"><b>Loss Details</b></td></tr><tr><td>Nature of Loss</td><td>OD</td><td>Address</td><td>home--</td></tr><tr><td>Date of Loss</td><td>17-OCT-2026</td><td>City/Dist</td><td>BHOPAL</td></tr><tr><td>Time of Loss</td><td>11:30</td><td>Pin</td><td></td></tr><tr><td>Accident Description</td><td>gadi start nahi hui; workshop ne bataya wiring chuhe ne kaat di</td><td>Damage Details</td><td>accident</td></tr><tr><td colspan="4" align="center"><b>Driver Details</b></td></tr><tr><td>Name</td><td>test driver</td><td>Occupation</td><td></td></tr></table><p>With Regards,<br>Test Analyst</p><p>From: fastrack.support@icicilombard.com<br>Subject: INVESTIGATION MAIN CASE</p><img src="cid:sig002"></body></html>
+--mix2
+Content-Type: image/png; name="image002.png"
+Content-Disposition: inline; filename="image002.png"
+Content-Transfer-Encoding: base64
+Content-ID: <sig002>
+
+c2lnLWxvZ28taWNs
+--mix2
+Content-Type: image/jpeg; name="Front View(1)_1790000000001_1048996_MOT00000001_21_10_2026_13_15_25.jpg"
+Content-Disposition: attachment; filename="Front View(1)_1790000000001_1048996_MOT00000001_21_10_2026_13_15_25.jpg"
+Content-Transfer-Encoding: base64
+
+anBlZy1mcm9udC12aWV3LTAwMDE=
+--mix2
+Content-Type: image/jpeg; name="DRIVING LICENSE(1)_1790000000002_1048996_MOT00000001_23_10_2026_20_00_51.jpg"
+Content-Disposition: attachment; filename="DRIVING LICENSE(1)_1790000000002_1048996_MOT00000001_23_10_2026_20_00_51.jpg"
+Content-Transfer-Encoding: base64
+
+anBlZy1kbC0wMDAy
+--mix2
+Content-Type: application/pdf; name="ECLAIM_MOT00000001_19102026190707.PDF"
+Content-Disposition: attachment; filename="ECLAIM_MOT00000001_19102026190707.PDF"
+Content-Transfer-Encoding: base64
+
+JVBERiBlY2xhaW0gMDAwMw==
+--mix2--

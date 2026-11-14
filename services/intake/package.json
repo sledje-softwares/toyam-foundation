@@ -1,0 +1,17 @@
+{
+  "name": "@toyam/intake",
+  "private": true,
+  "type": "module",
+  "description": "Email intake: Gmail IMAP relay (Cloudflare Worker), template loader, parser tests. The parser itself lives in supabase/functions/_shared/intake.",
+  "scripts": {
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-reporter=spec \"test/*.test.ts\"",
+    "templates:json": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/load-templates.ts --dry-run",
+    "templates:load": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/load-templates.ts",
+    "worker:dev": "npx wrangler dev --config worker/wrangler.jsonc",
+    "worker:deploy": "npx wrangler deploy --config worker/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "postal-mime": "^4.2.1",
+    "yaml": "^2.9.1"
+  }
+}
