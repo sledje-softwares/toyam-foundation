@@ -446,3 +446,10 @@ verify_jwt = false
 [functions.admin-users]
 enabled = true
 verify_jwt = true
+
+# Remote-sign-out drain (D43): called by a deactivated operator's phone, which has no valid JWT.
+# Authenticated by the per-device secret inside the drain_* SQL functions. Secrets R2_ACCOUNT_ID,
+# R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+[functions.field-drain]
+enabled = true
+verify_jwt = false
