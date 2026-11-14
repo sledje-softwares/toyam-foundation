@@ -52,7 +52,8 @@ insert into public.cases (id, insurer_id, insurer_claim_no, claim_type, office_o
 insert into public.tasks (id, case_id, title, assignee_id) values
  ('47a00000-0000-4000-8000-000000000002', '37a00000-0000-4000-8000-000000000002', 'Late visit', 'a7000000-0000-4000-8000-0000000000f1');
 
-create function pg_temp.tid(p text) returns uuid language sql stable as $$ select id from public.tasks where title = p $$;
+-- security definer: the test looks ids up even as users who cannot read the task under D44 RLS
+create function pg_temp.tid(p text) returns uuid language sql stable security definer set search_path = '' as $$ select id from public.tasks where title = p $$;
 
 -- =====================================================================
 -- B. create_field_task hardening
