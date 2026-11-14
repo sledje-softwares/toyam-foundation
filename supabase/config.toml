@@ -440,3 +440,9 @@ enabled = true
 [functions.intake]
 enabled = true
 verify_jwt = false
+
+# User administration (M2 T5, docs/08 §2.1.5): called from Next.js server actions with the
+# signed-in admin's access token. Secret FIELD_SIGN_IN (default mobile_password).
+[functions.admin-users]
+enabled = true
+verify_jwt = true

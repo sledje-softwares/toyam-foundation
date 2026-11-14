@@ -303,7 +303,7 @@ Server action calls the auth "update user" with the user's own session (no admin
 
 #### 2.1.5 Server-side mechanism: `admin-users` function
 
-Location `supabase/functions/admin-users/index.ts`; `verify_jwt = true` in `config.toml`. Called only from Next.js server actions with the signed-in user's session (`supabase.functions.invoke("admin-users", { body })` attaches the user's access token). The service-role key exists only inside the function runtime.
+Location `supabase/functions/admin-users/index.ts`; `verify_jwt = true` in `config.toml`. **Built (T5): the exact request/response contract and error codes are in `supabase/functions/admin-users/README.md`.** Called only from Next.js server actions with the signed-in user's session (`supabase.functions.invoke("admin-users", { body })` attaches the user's access token). The service-role key exists only inside the function runtime.
 
 Request: `POST`, JSON `{ action, ... }`. Response: `200 { ok: true, ... }` or `{ ok: false, error: { code, message, field? } }` with status 400/401/403/409/502.
 
