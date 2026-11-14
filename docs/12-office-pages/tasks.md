@@ -15,7 +15,7 @@ Routes (this page set; docs/08 §1.3 listed nested `/cases/[caseRef]/tasks/...` 
 
 All staff (admin, orchestrator, office). Field operators never use the web app (layout redirect).
 
-**RLS reality:** `p_tasks_staff` is `for all using (is_staff())`, so every staff member can read every task. "Office employees see tasks on their cases" is therefore a **default filter**, not a security boundary: for `office` the list opens on *My cases* (`cases.office_owner_id = me`), for orchestrator/admin on *All cases*; both can switch (`scope=all|mine`). Assigning field work: `create_field_task()` allows any staff (D16: the assigned office employee, orchestrator or admin); the UI does the same.
+**RLS (D44):** staff task policies are `p_tasks_staff_r` (SELECT) and `p_tasks_staff_i` (INSERT), both `private.can_manage_case(case_id)`; there is no staff UPDATE / DELETE policy (changes go through the task RPCs). An `office` user therefore sees only the tasks of cases assigned to them; the list has no scope filter for office (`scope` is ignored). Orchestrator / admin open on *All cases* and can switch to *My cases* (`scope=all|mine`). Operator workload counts in the assign form are, for office, counts on their own cases only. Assigning field work: `create_field_task()` allows any staff (D16: the assigned office employee, orchestrator or admin); the UI does the same.
 
 ## /tasks — list
 
@@ -120,6 +120,6 @@ Empty states: no checklist → "No checklist on this task."; no device report �
 2. **`create_field_task()` validates little:** the parent task may belong to another case, the case may be closed / cancelled, the checklist may be out of use or not linked to the case template. The web action checks these; a direct RPC call does not.
 3. `tasks.reason` cannot be set through `create_field_task()` (the re-investigation request is stored as `instructions` and posted to the thread).
 4. A task raised on a **Submitted** case leaves the case Submitted (`tasks_after_change` only moves received … awaiting approval). Confirm whether re-investigation after submission should reopen the case.
-5. **Office scope is not enforced by RLS** (all staff read all tasks). If office staff must only see their cases' tasks, `p_tasks_staff` needs splitting (read: owner or orchestrator/admin).
+5. ~~Office scope is not enforced by RLS~~ Closed by D44 (`20261115500000_office_case_scope`): office reads only their cases' tasks; staff policies are SELECT + INSERT only.
 6. No way to add **ad-hoc checklist items** to a re-investigation task through a function (staff could insert `task_checklist_items` directly; not offered).
 7. Field-operator availability: `profiles.availability` exists for every profile but only `set_availability()` changes it and there is no screen for operators; the picker shows it when set.

@@ -5,6 +5,7 @@ import {
   asStringMap,
   buildReviewForm,
   CLAIM_KEY,
+  confirmedElsewhereMessage,
   isReviewReason,
   readSubmittedValues,
   requiredErrors,
@@ -12,6 +13,17 @@ import {
   templateLabel,
   type TemplateFieldDef,
 } from "./intake-review";
+
+describe("confirmedElsewhereMessage", () => {
+  it("names the case when the reference is known", () => {
+    expect(confirmedElsewhereMessage("INV-2026-000042")).toBe(
+      "Intake confirmed: case INV-2026-000042. It is assigned to another office employee, so it does not open for you.",
+    );
+  });
+  it("still confirms without a reference", () => {
+    expect(confirmedElsewhereMessage(null)).toBe("Intake confirmed. The case is assigned to another office employee.");
+  });
+});
 
 describe("reviewReason", () => {
   it("puts replies without a case first", () => {

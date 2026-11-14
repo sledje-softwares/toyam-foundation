@@ -4,7 +4,7 @@ Routes follow docs/08 §1.3: `/cases`, `/cases/[caseRef]` with one case layout (
 
 ## Who sees what
 
-Roles are `admin`, `orchestrator`, `office` (staff, `STAFF_ROLES`) and `field`. Field users never reach the web app (the `(app)` layout sends them to `/login`); every page also calls `requireRole(STAFF_ROLES)`. RLS: `is_staff()` reads all cases, messages (incl. `visibility = 'staff'`), evidence, labels, tasks, assignments, status history.
+Roles are `admin`, `orchestrator`, `office` (staff, `STAFF_ROLES`) and `field`. Field users never reach the web app (the `(app)` layout sends them to `/login`); every page also calls `requireRole(STAFF_ROLES)`. RLS (D44, `20261115500000_office_case_scope`): orchestrator and admin read every case and everything on it; an `office` user reads only cases where `office_owner_id = auth.uid()` and their messages (incl. `visibility = 'staff'`), evidence, labels, tasks, assignments, status history, linked emails, reports and submissions (`private.can_manage_case(case_id)`). Unassigned cases are orchestrator / admin only. For office, `/cases` therefore has no owner filter, no "Show my cases" toggle and no Owner column; a case reassigned away from them disappears from their list and its page returns not-found.
 
 | Action | admin | orchestrator | office |
 |---|---|---|---|

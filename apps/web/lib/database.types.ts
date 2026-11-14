@@ -1652,6 +1652,9 @@ isOneToOne: false
 "intake_config":
 { Args: Record<PropertyKey, never>; Returns: Json
                            },
+"intake_confirmed_case_ref":
+{ Args: { "p_extraction_id": string }; Returns: string
+                           },
 "intake_ingest":
 { Args: { "p": Json }; Returns: Json
                            },
