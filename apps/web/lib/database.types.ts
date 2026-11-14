@@ -1634,6 +1634,11 @@ isOneToOne: false
               "archive_location": string,"archived_at": string,"case_id": string,"evidence_id": string,"last_submitted_at": string,"storage_backend": string,"storage_path": string
             }[]
                            },
+"evidence_upload_target":
+{ Args: { "p_sha256": (string)[],"p_task_id": string }; Returns: {
+              "case_id": string,"stored_sha256": (string)[]
+            }[]
+                           },
 "field_case_list":
 { Args: Record<PropertyKey, never>; Returns: {
               "case_id": string,"case_ref": string,"claim_type": Database["public"]['Enums']["claim_type"],"insurer_name": string,"last_message_at": string,"last_message_preview": string,"list": string,"title": string,"unread_count": number
