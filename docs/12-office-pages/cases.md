@@ -11,6 +11,7 @@ Roles are `admin`, `orchestrator`, `office` (staff, `STAFF_ROLES`) and `field`. 
 | List / open any case | ✓ | ✓ | ✓ |
 | Staff note (staff-only) / message to field | ✓ | ✓ | ✓ |
 | Assign field task / request re-investigation (links to `/tasks/new?case=<ref>`, built elsewhere) | ✓ | ✓ | ✓ |
+| Create a case directly (`/cases/new`, D49) | ✓ (any owner / auto) | ✓ (any owner / auto) | ✓ (owner = self) |
 | Reassign office employee (with reason) | ✓ | ✓ | — (`reassign_case` refuses; button hidden) |
 | Run automatic assignment on an unassigned case | ✓ | ✓ | — |
 
@@ -100,6 +101,35 @@ Table of the case's files: file name / type, source (camera / gallery / share / 
 ### History
 
 One timeline, newest first, merged in code (`buildHistory`, `lib/cases.ts`): `case_status_history` (from → to, by, note), `case_assignments` (auto / manual, reason) and `case_field_history(p_case_id)` (field, old → new, by).
+
+## `/cases/new` — create a case directly (D49)
+
+For a case that did not arrive by email (phone call, insurer portal). "New case" button in the `/cases` header, for every staff role.
+
+```
+Cases / New case
+Insurer [IGI General (IGI) ▾] [Continue]          step 1: ?insurer=<id> lists its templates in use
+  Motor · OD · v3   IndusInd (Reliance) — Motor OD investigation   → ?template=<id>
+─────────────────────────────────────────────
+IGI General · Motor · OD · v3                     [Change template]   step 2
+┌ Insured ─────────────────────────────────┐
+│ Claim no *  [      ]   Insured name * [ ] │   the template's intake fields, by type
+└───────────────────────────────────────────┘
+┌ Assignment ───────────────────────────────┐
+│ Owner [Assign automatically ▾]            │   orchestrator / admin (active staff, load, availability)
+│ "This case will be assigned to you."      │   office
+│ Staff note (optional) [            ]      │
+└───────────────────────────────────────────┘                        [Cancel] [Create case]
+```
+
+| Item | Source |
+|---|---|
+| Step 1 | `case_templates` active, insurer active (`load.ts`); template label "claim type · variant · version" |
+| Fields | `case_template_fields` with `source = 'intake'` in section / position order; claim no. always present and required; controls and normalising as in the report workspace (`normaliseValue`, `lib/reports.ts`); helpers in `lib/new-case.ts` |
+| Owner options | active `office` / `orchestrator` / `admin` profiles with open-case counts (`assigneeOptions`) |
+| Create | `create_case_direct(p_template_id, p_values, p_owner_id, p_note)` → flash "Case INV-… created." and redirect to `/cases/<ref>`. Duplicate claim no. and empty required fields show next to the field |
+
+`create_case_direct` (migration `20261116000000_create_case_direct.sql`, pgTAP 21): staff only; office owner is always the caller (another owner refused); orchestrator / admin choose an active staff owner or leave it null for the automatic assignment (D40); active template of an active insurer; keys must be the template's intake fields (claim no. always accepted, required); required intake fields filled; duplicate `(insurer, claim no.)` refused, naming the existing case ref only when the caller can see it. Writes the case (`created_by`, `due_at` from TAT, status `assigned` with a chosen owner, `received` → auto-assign otherwise), field values (source `office`), parties (insured / driver, as intake), status history, assignment row, owner notification (when not the creator), staff-only "Case created by ‹name›" message, the note as a staff-only message, audit row `CASE_CREATED`.
 
 ## Errors and empty states
 

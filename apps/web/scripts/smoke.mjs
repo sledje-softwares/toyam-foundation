@@ -12,7 +12,7 @@ if (!anon || !password) {
 }
 const routes = ["/", "/dashboard", "/intake", "/intake/failed", "/admin/users", "/admin/users/new", "/admin/insurers", "/admin/insurers/new", "/admin/checklists", "/admin/checklists/new", "/admin/audit-log", "/audit-log", "/dev/ui", "/account", "/tasks",
   // office pages; refs come from supabase/seed.sql (both owned by office@example.com: -000007 field work + re-investigation, -000008 report in progress)
-  "/cases", "/cases/INV-2026-000007", "/tasks/new?case=INV-2026-000007", "/tasks/e0000000-0000-4000-8000-000000000104",
+  "/cases", "/cases/new", "/cases/INV-2026-000007", "/tasks/new?case=INV-2026-000007", "/tasks/e0000000-0000-4000-8000-000000000104",
   "/reports", "/reports/INV-2026-000008", "/submissions",
   // D44: owned by Neel (office2), so office@example.com (Uma) must get 404
   "/cases/INV-2026-000006"];

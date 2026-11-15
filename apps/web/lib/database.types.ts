@@ -1616,6 +1616,11 @@ isOneToOne: false
 "confirm_intake":
 { Args: { "p_extraction_id": string,"p_template_id": string,"p_values": Json }; Returns: string
                            },
+"create_case_direct":
+{ Args: { "p_note"?: string,"p_owner_id"?: string,"p_template_id": string,"p_values": Json }; Returns: {
+              "case_id": string,"case_ref": string
+            }[]
+                           },
 "create_field_task":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_checklist_template_id"?: string,"p_due_at"?: string,"p_instructions"?: string,"p_kind"?: Database["public"]['Enums']["task_kind"],"p_location_text"?: string,"p_parent_task_id"?: string,"p_reason"?: string,"p_title": string }; Returns: string
                            },
