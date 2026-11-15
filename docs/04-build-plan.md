@@ -89,7 +89,7 @@ Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and
 | 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | ✅ `/tasks/new`, `/tasks/[id]` with cancel / reassign / edit (`20261115600000`) |
 | 4.4 | Re-investigation request | Request in the thread → linked task; case back to field work | ✅ `/tasks/new?kind=reinvestigation` |
 | 4.5 | Escalation | `escalate_unattended_cases()` every 10–15 min (pg_cron or Worker cron) | 🗄 / ⬜ schedule |
-| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ✅ `/cases`, `/cases/[ref]`; office sees own cases only (D44); evidence open / download via `evidence-view` |
+| 4.6 | Case list & detail | Filters, search, thread, evidence, history; create a case directly (D49) | ✅ `/cases`, `/cases/new`, `/cases/[ref]`; office sees own cases only (D44); evidence open / download via `evidence-view` |
 | 4.7 | Staff notes | Staff-only messages in the case thread (D32) | ✅ |
 
 ### M5 — Field App, chat style (16 days)
@@ -147,7 +147,7 @@ Contract: `docs/10-processing-pipeline.md`.
 
 | # | Piece | Output | Status |
 |---|---|---|---|
-| 8.1 | Approval | Request, approve / request changes (per template) | ✅ UI (request disabled until 7.7 creates versions) |
+| 8.1 | Approval | Request, approve / request changes (per template) | ✅ UI; orchestrator/admin one-step approve (D47); request disabled until 7.7 creates versions |
 | 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | 🗄 / ⬜ sender |
 | 8.3 | Size handling | Compressed annexures; secure link when over the limit | ⬜ |
 | 8.4 | Portal pack | Files named and ordered for the portal insurer | ⬜ |
