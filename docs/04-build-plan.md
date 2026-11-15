@@ -86,10 +86,10 @@ Build order (2026-11-14): UI foundation (T2-T4), then 3.9/3.10 intake review and
 |---|---|---|---|
 | 4.1 | Automatic office assignment | Rules, least-loaded / round-robin, availability, caps; on case creation | 🗄 |
 | 4.2 | Reassignment | Orchestrator action with reason; history; notification | ✅ `/cases/[ref]` (`reassign_case`) |
-| 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | ✅ `/tasks/new`, `/tasks/[id]`; cancel / reassign / edit RPCs missing (docs/12 tasks) |
+| 4.3 | Field task assignment | Office picks operator, checklist, due date, location (`create_field_task`) | ✅ `/tasks/new`, `/tasks/[id]` with cancel / reassign / edit (`20261115600000`) |
 | 4.4 | Re-investigation request | Request in the thread → linked task; case back to field work | ✅ `/tasks/new?kind=reinvestigation` |
 | 4.5 | Escalation | `escalate_unattended_cases()` every 10–15 min (pg_cron or Worker cron) | 🗄 / ⬜ schedule |
-| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ✅ `/cases`, `/cases/[ref]`; evidence downloads pending |
+| 4.6 | Case list & detail | Filters, search, thread, evidence, history | ✅ `/cases`, `/cases/[ref]`; office sees own cases only (D44); evidence open / download via `evidence-view` |
 | 4.7 | Staff notes | Staff-only messages in the case thread (D32) | ✅ |
 
 ### M5 — Field App, chat style (16 days)
@@ -135,7 +135,7 @@ Contract: `docs/10-processing-pipeline.md`.
 | # | Piece | Output | Status |
 |---|---|---|---|
 | 7.1 | Section form | Template sections and fields; intake values pre-filled | ✅ `/reports/[caseRef]` |
-| 7.2 | Relevant images panel | Images whose active label is in the section's categories; plus unlabelled | ✅ (R2 previews need a view function) |
+| 7.2 | Relevant images panel | Images whose active label is in the section's categories; plus unlabelled | ✅ (`evidence-view`) |
 | 7.3 | OCR viewer & tap-to-fill | Highlighted blocks; tap to copy into the focused field | 🗄 / ⬜ |
 | 7.4 | Suggestions | Accept / reject suggested values with source reference | 🗄 / ⬜ |
 | 7.5 | Relevance & labels | Mark not relevant; correct labels | ✅ |
@@ -151,7 +151,7 @@ Contract: `docs/10-processing-pipeline.md`.
 | 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | 🗄 / ⬜ sender |
 | 8.3 | Size handling | Compressed annexures; secure link when over the limit | ⬜ |
 | 8.4 | Portal pack | Files named and ordered for the portal insurer | ⬜ |
-| 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | 🟡 `/submissions` list; acknowledgement + reopen RPCs missing |
+| 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | ✅ `/submissions` with acknowledgement, portal / other record, reopen (`20261115800000`) |
 
 ### M9 — Dashboard & Alerts (3 days) 🟡 structure pass at `/dashboard` (docs/12)
 
