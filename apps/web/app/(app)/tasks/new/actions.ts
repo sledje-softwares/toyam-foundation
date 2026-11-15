@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { setFlash } from "@/lib/flash-server";
 import { createClient } from "@/lib/supabase/server";
-import { canRaiseTask, caseHref, isGuid } from "@/lib/tasks";
+import { canRaiseTask, caseHref, isGuid, noFieldWorkReason } from "@/lib/tasks";
 import { readTaskForm, validateTaskForm, type TaskFieldErrors, type TaskFormValues } from "@/lib/tasks-form";
 import { mapDbError } from "@/lib/validation/db-errors";
 import { loadCase, loadCaseTasks, loadChecklistOptions, loadOperators } from "./load";
@@ -35,7 +35,10 @@ export async function createFieldTaskAction(_prev: TaskFormState, formData: Form
   const c = await loadCase(supabase, { id: values.case_id });
   if (c === "error") return { error: "The case could not be loaded. Try again.", fieldErrors: {}, values };
   if (!c) return { error: "This case was not found. It may have been removed.", fieldErrors: {}, values };
-  if (!canRaiseTask(c.status)) return { error: "This case is closed or cancelled, so it takes no new field work.", fieldErrors: {}, values };
+  if (!canRaiseTask(c.status)) {
+    const why = c.status === "submitted" ? noFieldWorkReason(c.status) : "This case is closed or cancelled, so it takes no new field work.";
+    return { error: why, fieldErrors: {}, values };
+  }
 
   const [operators, checklists, tasks] = await Promise.all([
     loadOperators(supabase, now),

@@ -1,7 +1,7 @@
 import { formatDateTime } from "@/lib/format";
 import { APPROVAL_DECISIONS, type ApprovalModel, type LinkResult, type VersionRow } from "@/lib/reports";
 import { Badge, InlineAlert } from "@/components/ui";
-import { DecideApproval, ReportFileButton, RequestApprovalButton } from "./approval-actions";
+import { ApproveReportButton, DecideApproval, ReportFileButton, RequestApprovalButton } from "./approval-actions";
 import { PlannedButton } from "./planned";
 
 type VoidAction = (fd: FormData) => Promise<void>;
@@ -9,7 +9,7 @@ type VoidAction = (fd: FormData) => Promise<void>;
 const STATE_TEXT: Record<ApprovalModel["state"], string> = {
   not_required: "This template does not require approval; the report can be sent once it is generated.",
   no_version: "No version generated yet. Approval is required by this template.",
-  not_requested: "The latest version has not been sent for approval yet.",
+  not_requested: "The latest version has not been approved yet.",
   pending: "The latest version is waiting for an orchestrator.",
   approved: "The latest version is approved and can be sent.",
   changes_requested: "Changes were requested on the latest version.",
@@ -29,7 +29,12 @@ export function ApprovalCard({
   model: ApprovalModel;
   versions: VersionRow[];
   outputFormats: string[];
-  actions: { requestApproval: VoidAction; decideApproval: VoidAction; reportFileLink: (id: string, format: string) => Promise<LinkResult> };
+  actions: {
+    requestApproval: VoidAction;
+    approveOwnReport: VoidAction;
+    decideApproval: VoidAction;
+    reportFileLink: (id: string, format: string) => Promise<LinkResult>;
+  };
 }) {
   const latest = versions.find((v) => v.id === model.latest?.id) ?? null;
   const detail = latest?.approvalDetail ?? null;
@@ -62,13 +67,16 @@ export function ApprovalCard({
           {model.canDecide && latest?.approval && (
             <DecideApproval approvalId={latest.approval.id} caseRef={caseRef} version={latest.version} action={actions.decideApproval} />
           )}
-          {model.canRequest && latest && (
+          {model.canRequest && latest && model.oneStep && (
+            <ApproveReportButton caseId={caseId} reportId={latest.id} caseRef={caseRef} version={latest.version} action={actions.approveOwnReport} />
+          )}
+          {model.canRequest && latest && !model.oneStep && (
             <RequestApprovalButton caseId={caseId} reportId={latest.id} caseRef={caseRef} version={latest.version} action={actions.requestApproval} />
           )}
           {!model.canRequest && model.requestBlocked && (
             <span className="flex flex-wrap items-center gap-2">
               <button type="button" disabled className="inline-flex h-9 items-center rounded border border-border-input px-4 text-sm font-medium opacity-60" aria-describedby="request-why">
-                Request approval
+                {model.oneStep ? "Approve report" : "Request approval"}
               </button>
               <span id="request-why" className="max-w-64 text-xs text-text-muted">
                 {model.requestBlocked}

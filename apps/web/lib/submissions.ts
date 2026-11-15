@@ -110,7 +110,7 @@ export const ManualInput = z
 
 export const ReopenInput = z.object({
   case_id: Guid,
-  reason: z.string().trim().min(3, { message: "Say why the case is reopened (at least 3 characters)." }).max(500, { message: "Keep the reason under 500 characters." }),
+  reason: z.string().trim().min(3, { message: "Say what the insurer asked for (at least 3 characters)." }).max(500, { message: "Keep the reason under 500 characters." }),
 });
 
 /** First validation message of a failed parse. */

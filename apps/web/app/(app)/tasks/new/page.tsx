@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { SearchParams } from "@/lib/list-params";
-import { canRaiseTask, caseHref, defaultKind, isCaseRef, isGuid } from "@/lib/tasks";
+import { canRaiseTask, caseHref, defaultKind, isCaseRef, isGuid, noFieldWorkReason } from "@/lib/tasks";
 import { emptyTaskForm, parseMode, type TaskFormValues } from "@/lib/tasks-form";
 import { Button, EmptyState, ErrorState, InlineAlert, PageHeader, StatusBadge, TextInput } from "@/components/ui";
 import { loadCase, loadCaseTasks, loadChecklistOptions, loadOperators } from "./load";
@@ -72,12 +72,25 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
   );
 
   if (!canRaiseTask(c.status)) {
+    // D46: a submitted case is reopened from Submissions (the insurer's request) before new field work.
     return (
       <>
         {header}
-        <InlineAlert tone="warning" title="This case takes no new field work">
-          It is closed or cancelled.
-        </InlineAlert>
+        <div className="max-w-3xl">
+          <InlineAlert tone="warning" title="This case takes no new field work">
+            {c.status === "submitted" ? (
+              <>
+                This case was submitted. Reopen it from{" "}
+                <Link href="/submissions" className="font-medium underline hover:no-underline">
+                  Submissions
+                </Link>{" "}
+                when the insurer asks; it goes back to office review and field work can then be assigned.
+              </>
+            ) : (
+              noFieldWorkReason(c.status)
+            )}
+          </InlineAlert>
+        </div>
       </>
     );
   }
@@ -115,13 +128,6 @@ export default async function NewTaskPage({ searchParams }: { searchParams: Prom
   return (
     <>
       {header}
-      {c.status === "submitted" && (
-        <div className="mb-5 max-w-3xl">
-          <InlineAlert tone="warning" title="This case has been submitted">
-            Its status stays Submitted while this field work is open.
-          </InlineAlert>
-        </div>
-      )}
       {reinv && (
         <p className="mb-5 max-w-3xl text-sm text-text-muted">
           A re-investigation is a new field task linked to the earlier one. The request is posted in the case thread, the

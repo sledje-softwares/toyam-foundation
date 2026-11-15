@@ -334,9 +334,19 @@ describe("approvalModel", () => {
     expect(approvalModel({ ...base, versions: [v(1, null)], requiredMissing: 2 }).requestBlocked).toMatch(/2 required fields/);
     expect(approvalModel({ ...base, versions: [v(1, null)], status: "field_in_progress" }).requestBlocked).toMatch(/Field work/);
     expect(approvalModel({ ...base, versions: [v(1, "changes_requested")] }).requestBlocked).toMatch(/new version/);
-    expect(approvalModel({ ...base, role: "orchestrator", versions: [v(1, null)] }).canRequest).toBe(false);
     expect(approvalModel({ ...base, ownsCase: false, versions: [v(1, null)] }).requestBlocked).toMatch(/case owner/);
     expect(approvalModel({ ...base, status: "received", versions: [v(1, null)] }).requestBlocked).toMatch(/not in office review/);
+  });
+
+  it("office requests approval; orchestrators and admins approve in one step under the same rules (D47)", () => {
+    expect(approvalModel({ ...base, versions: [v(1, null)] })).toMatchObject({ canRequest: true, oneStep: false });
+    for (const role of ["orchestrator", "admin"] as const) {
+      expect(approvalModel({ ...base, role, ownsCase: false, versions: [v(1, null)] })).toMatchObject({ canRequest: true, oneStep: true, requestBlocked: null });
+      expect(approvalModel({ ...base, role, versions: [v(1, null)], requiredMissing: 1 })).toMatchObject({ canRequest: false, oneStep: true });
+      expect(approvalModel({ ...base, role, versions: [v(1, null)], status: "field_in_progress" }).requestBlocked).toMatch(/Field work/);
+      expect(approvalModel({ ...base, role, versions: [] }).requestBlocked).toMatch(/Generate/);
+    }
+    expect(approvalModel({ ...base, role: "field", versions: [v(1, null)] })).toMatchObject({ canRequest: false, oneStep: false });
   });
 
   it("allows a desk-only case (assigned, never sent to the field)", () => {

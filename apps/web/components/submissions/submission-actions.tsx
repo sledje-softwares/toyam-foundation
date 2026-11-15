@@ -25,18 +25,19 @@ export function AckDialog({ submissionId, caseRef, back, action }: { submissionI
   );
 }
 
-/** Reopen a submitted case on an insurer's query (reopen_case). */
+/** Reopen a submitted case when the insurer asks (reopen_case; D46: the only way to new field work on it). */
 export function ReopenDialog({ caseId, caseRef, back, action }: { caseId: string; caseRef: string; back: string; action: VoidAction }) {
   return (
     <ConfirmDialog trigger="Reopen…" title={`Reopen ${caseRef}?`} confirmLabel="Reopen case" tone="danger" action={action}>
       <p>
-        The case goes back to office review: the report can be edited again and needs a new version and approval before it is
-        sent. The owner is notified and the reason is kept in the case history.
+        Reopen a sent case only when the insurer asks. It goes back to office review: field work can be assigned again,
+        and the report can be edited and needs a new version and approval before it is sent. The owner is notified and the
+        insurer&apos;s request is kept in the case history.
       </p>
       <input type="hidden" name="case_id" value={caseId} />
       <input type="hidden" name="back" value={back} />
       <div className="mt-4 text-text">
-        <FormField label="Reason" required hint="E.g. the insurer's query. 3 to 500 characters.">
+        <FormField label="Insurer's request (what they asked for)" required hint="E.g. a second garage visit or the RC copy. 3 to 500 characters.">
           {(p) => <Textarea {...p} name="reason" required minLength={3} maxLength={500} rows={3} />}
         </FormField>
       </div>
