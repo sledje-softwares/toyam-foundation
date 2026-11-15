@@ -50,7 +50,6 @@ Empty: "No open field tasks" (+ "Clear filters" when filtered). Error: `ErrorSta
 ```
 Tasks / INV-2026-000123 / Assign field task
 Case INV-2026-000123 · ICICI Lombard · Motor OD · claim 12345 · In the field · office: Asha R.   [Open case]
-⚠ Case submitted: its status stays Submitted while this task is open.               (only when submitted)
 
 Operator *          ( ) Farid Khan   Pune    2 open tasks
                     ( ) Ravi Shah    Nashik  0 open tasks
@@ -82,9 +81,11 @@ Validation (server action, pure helpers in `lib/tasks-form.ts`; the database re-
 - title 3–120 characters; instructions ≤ 4000 (a thread message is ≤ 4000); request required in re-investigation mode (10–4000);
 - checklist: empty or one of the offered checklists; parent: empty or a task of the same case;
 - due: optional `datetime-local` read as IST (+05:30), must be in the future and within 1 year;
-- location ≤ 300; reason optional, 3–500 (stored in `tasks.reason`, readable by the operator); case must exist and not be Closed or Cancelled.
+- location ≤ 300; reason optional, 3–500 (stored in `tasks.reason`, readable by the operator); case must exist and not be Submitted, Closed or Cancelled.
 
-The database re-checks (since `20261115600000`): caller manages the case (D44), case exists and is not Closed / Cancelled, active field assignee, title, parent task on the same case, checklist in use and offered for the case (linked to its template, or the claim-type fallback above), reason 3–500.
+A **Submitted** case takes no field work (D46): the form shows a blocking notice "This case was submitted. Reopen it from Submissions when the insurer asks." with a link to `/submissions`; the case header and the task detail show "Reopen from Submissions" instead of "Assign field task" / "Request re-investigation". Reopening (`reopen_case`, reason = the insurer's request) returns the case to office review, after which work is assigned as usual.
+
+The database re-checks (since `20261115600000`; Submitted since `20261115900000`): caller manages the case (D44), case exists and is not Submitted / Closed / Cancelled (also for a direct insert into `tasks`, trigger `tasks_open_case_guard`), active field assignee, title, parent task on the same case, checklist in use and offered for the case (linked to its template, or the claim-type fallback above), reason 3–500.
 
 Errors: field messages inline, others in an `InlineAlert` via `mapDbError`. Unknown case → 404. No active operators → empty state "No active field operators. An admin adds them in Users."
 
@@ -114,12 +115,12 @@ Visit the garage  [In progress] [First visit]            [Request re-investigati
 | Late-upload holds (D43) | `task_holds` for the task + `profiles.deactivated_at` + `app_settings.late_upload_grace_hours` (72) / `drain_window_days` (7): same deadline as `private.field_upload_allowed()` — `held_until + grace` for a hold that ended before deactivation, `deactivated_at + drain` for a deactivated operator, the earlier wins |
 | Files waiting on a phone | `rpc case_outbox_status(case_id)`, limited to operators who held this task and have files waiting |
 
-Actions: **Request re-investigation** (link to the form with `parent`) on a completed task of a case that is not Closed or Cancelled (open work is discussed in the thread); **Open case**. On an open task, for whoever manages the case (D44), a **Manage task** panel:
+Actions: **Request re-investigation** (link to the form with `parent`) on a completed task of a case that is not Submitted, Closed or Cancelled (on a Submitted case: **Reopen from Submissions**) (open work is discussed in the thread); **Open case**. On an open task, for whoever manages the case (D44), a **Manage task** panel:
 
 | Action | Form | RPC | What the database does |
 |---|---|---|---|
-| Edit… | title (3–120), instructions / request (≤ 4000; a request ≥ 10), due (IST; a changed due must be in the future and within a year, an unchanged past due is kept), location (≤ 300) | `update_field_task(p_task_id, p_title, p_instructions, p_due_at, p_location_text)` — replaces all four, blank clears; returns false when nothing changed | system message "Field work updated (due time, location): title" (visible to the operators); notifies the operator (`task_updated`); audit `TASK_UPDATED` with the changed fields |
-| Reassign operator… | new operator (active field, not the current one), reason 3–500 | `reassign_field_task(p_task_id, p_assignee_id, p_reason)` (case not Closed / Cancelled) | assignee changes and the task restarts as Pending; `tasks_track_holds` closes the old hold and opens a new one, so the old operator keeps the D43 late-upload window; visible "Field work reassigned from A to B: title" + staff-only reason; notifies the new operator (`task_assigned` / `field_request`), the old one (`task_unassigned`) and the case owner if someone else acted (`task_reassigned`); audit `TASK_REASSIGNED` |
+| Edit… | title (3–120), instructions / request (≤ 4000; a request ≥ 10), due (IST; a changed due must be in the future and within a year, an unchanged past due is kept), location (≤ 300) | `update_field_task(p_task_id, p_title, p_instructions, p_due_at, p_location_text)` — replaces all four, blank clears; returns false when nothing changed; refused on a Submitted case (D46; Edit and Reassign are hidden there, Cancel stays) | system message "Field work updated (due time, location): title" (visible to the operators); notifies the operator (`task_updated`); audit `TASK_UPDATED` with the changed fields |
+| Reassign operator… | new operator (active field, not the current one), reason 3–500 | `reassign_field_task(p_task_id, p_assignee_id, p_reason)` (case not Submitted / Closed / Cancelled; D46) | assignee changes and the task restarts as Pending; `tasks_track_holds` closes the old hold and opens a new one, so the old operator keeps the D43 late-upload window; visible "Field work reassigned from A to B: title" + staff-only reason; notifies the new operator (`task_assigned` / `field_request`), the old one (`task_unassigned`) and the case owner if someone else acted (`task_reassigned`); audit `TASK_REASSIGNED` |
 | Cancel task | confirm dialog with reason 3–500 | `cancel_field_task(p_task_id, p_reason)` | status Cancelled (case to Office review when no field work is left; hold ends); visible "Field work cancelled: title" + staff-only reason; notifies the operator and, if someone else acted, the case owner (`task_cancelled`); audit `TASK_CANCELLED` |
 
 Success redirects back to the task with a flash; errors show inline (`mapDbError`). Server actions in `app/(app)/tasks/[id]/actions.ts`, forms in `components/tasks/task-actions.tsx`, pure helpers in `lib/tasks-actions.ts`.
@@ -138,7 +139,7 @@ Resolved by `20261115600000_field_task_rpcs.sql` (pgTAP `17_field_task_rpcs`):
 
 Still open:
 
-4. A task raised on a **Submitted** case leaves the case Submitted (`tasks_after_change` only moves received … awaiting approval). Confirm whether re-investigation after submission should reopen the case.
+4. ~~A task raised on a Submitted case leaves the case Submitted~~ Closed by D46 (`20261115900000_submitted_case_rules`): `create_field_task`, a direct task insert, `reassign_field_task` and `update_field_task` refuse a Submitted case ("This case was submitted. Reopen it from Submissions when the insurer asks."); `cancel_field_task` still clears a left-over open task. Staff reopen the case (`reopen_case`, the insurer's request) first; it returns to office review.
 5. ~~Office scope is not enforced by RLS~~ Closed by D44 (`20261115500000_office_case_scope`): office reads only their cases' tasks; staff policies are SELECT + INSERT only.
 6. No way to add **ad-hoc checklist items** to a re-investigation task through a function (staff could insert `task_checklist_items` directly; not offered).
 7. Field-operator availability: `profiles.availability` exists for every profile but only `set_availability()` changes it and there is no screen for operators; the picker shows it when set.

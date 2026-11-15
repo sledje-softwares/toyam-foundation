@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   availabilityNote,
   canRaiseTask,
+  noFieldWorkReason,
   checklistProgress,
   defaultKind,
   dueBounds,
@@ -125,11 +126,15 @@ describe("late uploads", () => {
 });
 
 describe("assign form helpers", () => {
-  it("blocks closed and cancelled cases", () => {
+  it("blocks submitted (D46), closed and cancelled cases", () => {
     expect(canRaiseTask("office_review")).toBe(true);
-    expect(canRaiseTask("submitted")).toBe(true);
+    expect(canRaiseTask("orchestrator_review")).toBe(true);
+    expect(canRaiseTask("submitted")).toBe(false);
     expect(canRaiseTask("closed")).toBe(false);
     expect(canRaiseTask("cancelled")).toBe(false);
+    expect(noFieldWorkReason("submitted")).toMatch(/Reopen it from Submissions/);
+    expect(noFieldWorkReason("closed")).toMatch(/closed or cancelled/);
+    expect(noFieldWorkReason("office_review")).toBeNull();
   });
   it("defaults to first visit until a field task exists", () => {
     expect(defaultKind([])).toBe("initial");

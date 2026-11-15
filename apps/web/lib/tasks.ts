@@ -201,9 +201,19 @@ export function plural(n: number, one: string, many = `${one}s`): string {
 // ---------------------------------------------------------------------
 // Assign form helpers
 // ---------------------------------------------------------------------
-/** Cases that are closed or cancelled take no new field work. */
+/**
+ * Cases that are submitted, closed or cancelled take no new field work (D46: a submitted case is reopened from
+ * Submissions when the insurer asks, then work can be assigned again). Same rule as create_field_task().
+ */
 export function canRaiseTask(caseStatus: string): boolean {
-  return caseStatus !== "closed" && caseStatus !== "cancelled";
+  return caseStatus !== "submitted" && caseStatus !== "closed" && caseStatus !== "cancelled";
+}
+
+/** Why a case takes no new field work, for the blocking notice (null when it does). */
+export function noFieldWorkReason(caseStatus: string): string | null {
+  if (caseStatus === "submitted") return "This case was submitted. Reopen it from Submissions when the insurer asks.";
+  if (caseStatus === "closed" || caseStatus === "cancelled") return "It is closed or cancelled.";
+  return null;
 }
 
 /** First visit when the case has no earlier field task (cancelled ones do not count), else additional work. */

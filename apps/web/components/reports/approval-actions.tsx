@@ -31,6 +31,36 @@ export function RequestApprovalButton({
   );
 }
 
+/** D47: an orchestrator / admin approves the latest version in one step (approve_own_report). */
+export function ApproveReportButton({
+  caseId,
+  reportId,
+  caseRef,
+  version,
+  action,
+}: {
+  caseId: string;
+  reportId: string;
+  caseRef: string;
+  version: number;
+  action: VoidAction;
+}) {
+  return (
+    <ConfirmDialog trigger="Approve report" triggerVariant="primary" title={`Approve version ${version}?`} confirmLabel="Approve report" action={action}>
+      <p>
+        You approve this version yourself; no one else needs to. The approval is final for this version, the values are locked
+        and the report can be sent to the insurer.
+      </p>
+      <input type="hidden" name="case_id" value={caseId} />
+      <input type="hidden" name="report_id" value={reportId} />
+      <input type="hidden" name="case_ref" value={caseRef} />
+      <div className="mt-4 text-text">
+        <FormField label="Comment (optional)">{(p) => <Textarea {...p} name="comments" maxLength={2000} rows={3} />}</FormField>
+      </div>
+    </ConfirmDialog>
+  );
+}
+
 /** Approve, or request changes with a comment (decided once; orchestrator / admin). */
 export function DecideApproval({ approvalId, caseRef, version, action }: { approvalId: string; caseRef: string; version: number; action: VoidAction }) {
   const hidden = (decision: string) => (

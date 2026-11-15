@@ -1552,6 +1552,9 @@ isOneToOne: false
 "apply_checklist_template":
 { Args: { "p_task_id": string,"p_template_id": string }; Returns: number
                            },
+"approve_own_report":
+{ Args: { "p_comment"?: string,"p_report_id": string }; Returns: string
+                           },
 "can_upload_case_file":
 { Args: { "p_case_id": string }; Returns: boolean
                            },

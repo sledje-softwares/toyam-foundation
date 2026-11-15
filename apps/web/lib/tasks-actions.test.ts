@@ -36,8 +36,9 @@ describe("canManageTask (D44)", () => {
     expect(canManageTask({ role: "admin", userId: ME, caseOwnerId: ME, taskStatus: "cancelled" })).toBe(false);
     expect(canManageTask({ role: "field", userId: ME, caseOwnerId: ME, taskStatus: "pending" })).toBe(false);
   });
-  it("no reassignment on closed or cancelled cases", () => {
+  it("no reassignment on submitted, closed or cancelled cases (D46)", () => {
     expect(canReassignOnCase("field_in_progress")).toBe(true);
+    expect(canReassignOnCase("submitted")).toBe(false);
     expect(canReassignOnCase("closed")).toBe(false);
     expect(canReassignOnCase("cancelled")).toBe(false);
   });

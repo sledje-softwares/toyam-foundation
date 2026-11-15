@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 import { caseHref, dueState, newTaskHref } from "@/lib/cases";
 import { CLAIM_TYPE_LABELS } from "@/lib/checklists";
 import { templateLabel } from "@/lib/intake-review";
+import { canRaiseTask } from "@/lib/tasks";
 import { Badge, ButtonLink, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
 import { CaseTabs } from "@/components/cases/case-tabs";
 import { loadCase, refParam } from "./load";
@@ -75,12 +76,19 @@ export default async function CaseLayout({ children, params }: { children: React
           </>
         }
         actions={
-          <>
-            <ButtonLink href={newTaskHref(c.case_ref)}>Assign field task</ButtonLink>
-            <ButtonLink href={newTaskHref(c.case_ref, "re_investigation")} variant="secondary">
-              Request re-investigation
+          canRaiseTask(c.status) ? (
+            <>
+              <ButtonLink href={newTaskHref(c.case_ref)}>Assign field task</ButtonLink>
+              <ButtonLink href={newTaskHref(c.case_ref, "re_investigation")} variant="secondary">
+                Request re-investigation
+              </ButtonLink>
+            </>
+          ) : c.status === "submitted" ? (
+            // D46: no field work on a submitted case until it is reopened on the insurer's request.
+            <ButtonLink href="/submissions" variant="secondary">
+              Reopen from Submissions
             </ButtonLink>
-          </>
+          ) : null
         }
       />
       <dl className="-mt-3 mb-5 flex flex-wrap gap-x-6 gap-y-1 text-sm">

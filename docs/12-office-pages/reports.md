@@ -15,8 +15,9 @@ One template drives a case (D20): the workspace shows the template version's rep
 | Open list / workspace / submissions | ✓ | ✓ | ✓ (own cases only) |
 | Edit report values (D45: orchestrators too) | ✓ | ✓ | ✓ |
 | Relevance, label correction | ✓ | ✓ | ✓ |
-| Request approval | ✓ | — (G9 open, UI hides) | ✓ |
-| Approve / request changes | ✓ | ✓ | — |
+| Request approval | — | — | ✓ |
+| Approve report (one step, D47) | ✓ | ✓ | — |
+| Approve / request changes (on an office request) | ✓ | ✓ | — |
 | Record acknowledgement / portal or other submission / reopen | ✓ | ✓ | ✓ |
 
 ## Report stages and editable statuses
@@ -87,7 +88,8 @@ IGI General · Claim CL/77/2026 · IGI Motor OD v3 · Owner N Office · Due 18 N
 | Save section | `saveSection` → `save_case_field_values(p_case_id, p_values, p_expected)` |
 | Relevance | `setRelevance` → `update evidence set relevance` (`evidence_guard` stamps who / when; D44 RLS limits office to own cases) |
 | Correct labels | `correctLabels` → `set_evidence_labels(p_evidence_id, p_category_ids)` (checks `can_manage_case`) |
-| Request approval | `requestApproval` → `insert report_approvals` (`report_approvals_guard`) |
+| Request approval (office) | `requestApproval` → `insert report_approvals` (`report_approvals_guard`) |
+| Approve report (orchestrator / admin, D47) | `approveOwnReport` → `approve_own_report(p_report_id, p_comment)`: in one transaction the request (same `report_approvals_guard` rules: case in `assigned` / `office_review`, no open field task, every required field filled; latest version only) and the approval by the same person (`requested_by = decided_by`); the "waiting for approval" notifications are withdrawn; staff-only thread event "Report version n approved by …"; the case owner is notified (`report_approved`) when someone else approved |
 | Approve / request changes | `decideApproval` → `update report_approvals set decision` (once; changes → `office_review`, requester notified) |
 | Download a version file | `reportFileLink` → 60 s signed URL, bucket `reports` |
 | Open a file | `evidenceLink` → `evidence-view` function (caller's JWT, RLS decides) |
@@ -143,8 +145,9 @@ Empty: "Nothing sent yet". Errors from actions come back as a flash message on t
 |---|---|
 | G1 | Nothing creates `reports` versions yet (generator 7.7), so approval request and sending cannot be exercised end to end |
 | G2 | Versions do not snapshot the field values they were generated from; an approved version and the current values can only be compared once 7.7 stores them |
-| G9 | Self-approval: an orchestrator or admin can approve a version they requested (awaiting decision; UI hides "Request approval" from orchestrators) |
-| — | Re-investigation on a submitted case (awaiting decision); today a new task on an `orchestrator_review` case moves it to field work while an approval may be pending |
+| — | A new task on an `orchestrator_review` case moves it to field work while an approval may be pending |
+
+G9 (self-approval) is closed by D47 (`20261115900000_submitted_case_rules`): orchestrators and admins approve their own reports in one step (`approve_own_report`); office reports still need an orchestrator's or admin's decision; no four-eyes rule. Re-investigation on a submitted case is closed by D46 (same migration): no field work on a submitted case until it is reopened from Submissions on the insurer's request.
 
 G3 (staff view of R2 files) is closed by the `evidence-view` function.
 
@@ -153,6 +156,5 @@ G3 (staff view of R2 files) is closed by the `evidence-view` function.
 | # | Question |
 |---|---|
 | O1 | Storage format for multi_choice (JSON array of strings today) and boolean (`Yes` / `No` today): confirm before the generator (7.7) and the intake parser rely on them, or switch to `true` / `false` and a delimiter list |
-| O2 | Should orchestrators request approval on cases they edit (tied to G9)? |
 | O3 | Should "Record portal / other submission" also accept emails sent outside the system until the sender (8.2) is built? |
 | O4 | Does reopening require a new approval even when only the insurer's query is answered without changing the report? (Today: yes, the case returns to office review.) |

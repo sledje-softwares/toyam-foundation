@@ -585,18 +585,27 @@ export type ApprovalModel = {
   /** What the approval card says. */
   state: "not_required" | "no_version" | "not_requested" | "pending" | "approved" | "changes_requested";
   latest: VersionLite | null;
+  /** The request rules pass for this user (approval request, or the one-step approval when `oneStep`). */
   canRequest: boolean;
-  /** Why "Request approval" is disabled (shown next to it). */
+  /** D47: orchestrators and admins approve their own reports in one step ("Approve report") instead of requesting. */
+  oneStep: boolean;
+  /** Why "Request approval" / "Approve report" is disabled (shown next to it). */
   requestBlocked: string | null;
   canDecide: boolean;
 };
 
+/** Decide office requests, and approve in one step (D47). */
 export const APPROVER_ROLES: UserRole[] = ["orchestrator", "admin"];
-export const REQUESTER_ROLES: UserRole[] = ["office", "admin"];
+/** Request approval from an orchestrator / admin (office employees, on the cases they own). */
+export const REQUESTER_ROLES: UserRole[] = ["office"];
 
 /** Statuses in which approval can be requested (report_approvals_guard also refuses open field work). */
 export const REQUEST_STATUSES: CaseStatus[] = ["assigned", "office_review"];
 
+/**
+ * Same rules as report_approvals_guard (G5). Office employees request approval; orchestrators and admins (D47)
+ * approve in one step under the same rules (approve_own_report) and still decide office requests.
+ */
 export function approvalModel(input: {
   role: UserRole;
   /** Office staff request approval only on cases they own (D44). */
@@ -616,9 +625,10 @@ export function approvalModel(input: {
         ? "not_requested"
         : decision;
 
+  const oneStep = APPROVER_ROLES.includes(input.role);
   let requestBlocked: string | null = null;
   if (state === "no_version" || state === "not_requested" || state === "changes_requested") {
-    if (!REQUESTER_ROLES.includes(input.role)) requestBlocked = "Office staff request approval.";
+    if (!oneStep && !REQUESTER_ROLES.includes(input.role)) requestBlocked = "Office staff request approval.";
     else if (input.role === "office" && !input.ownsCase) requestBlocked = "Only the case owner requests approval.";
     else if (state === "no_version") requestBlocked = "Generate a report version first (7.7, not built yet).";
     else if (state === "changes_requested") requestBlocked = "Changes were requested on the latest version. Generate a new version first.";
@@ -631,6 +641,7 @@ export function approvalModel(input: {
     state,
     latest,
     canRequest: state === "not_requested" && requestBlocked === null,
+    oneStep,
     requestBlocked,
     canDecide: state === "pending" && APPROVER_ROLES.includes(input.role),
   };

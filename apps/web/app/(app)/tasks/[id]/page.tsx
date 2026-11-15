@@ -105,6 +105,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
 
   // D44: office staff change tasks only on their own cases; the database enforces it too.
   const manage = canManageTask({ role: me.role, userId: me.id, caseOwnerId: c.office_owner_id, taskStatus: t.status });
+  // D46: on a submitted case an open task can only be cancelled (reopen the case to change its field work).
   const canReassign = manage && canReassignOnCase(c.status);
   const operators = canReassign ? await loadOperators(supabase, now) : null;
   const operatorOptions = (operators ?? [])
@@ -135,6 +136,12 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
                 Request re-investigation
               </ButtonLink>
             )}
+            {/* D46: a submitted case takes new field work only after it is reopened on the insurer's request. */}
+            {c.status === "submitted" && (
+              <ButtonLink href="/submissions" variant="secondary">
+                Reopen from Submissions
+              </ButtonLink>
+            )}
             <ButtonLink href={caseHref(c.case_ref)}>Open case</ButtonLink>
           </>
         }
@@ -145,12 +152,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           {manage && (
             <Section title="Manage task">
               <div className="flex flex-wrap items-start gap-3">
-                <EditTaskForm
-                  taskId={t.id}
-                  defaults={editDefaults(t)}
-                  isRequest={t.kind === "re_investigation"}
-                  action={updateTaskAction}
-                />
+                {canReassign && (
+                  <EditTaskForm
+                    taskId={t.id}
+                    defaults={editDefaults(t)}
+                    isRequest={t.kind === "re_investigation"}
+                    action={updateTaskAction}
+                  />
+                )}
                 {canReassign &&
                   (operators ? (
                     <ReassignTaskForm taskId={t.id} options={operatorOptions} action={reassignTaskAction} />

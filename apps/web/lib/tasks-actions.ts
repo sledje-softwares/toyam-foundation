@@ -26,9 +26,12 @@ export function canManageTask(p: { role: UserRole; userId: string; caseOwnerId: 
   return p.role === "office" && p.caseOwnerId !== null && p.caseOwnerId === p.userId;
 }
 
-/** Case statuses on which an open task may move to another operator (the database refuses closed / cancelled). */
+/**
+ * Case statuses on which an open task may be edited or move to another operator (the database refuses submitted,
+ * closed and cancelled cases, D46). Cancelling stays possible.
+ */
 export function canReassignOnCase(caseStatus: string): boolean {
-  return caseStatus !== "closed" && caseStatus !== "cancelled";
+  return caseStatus !== "submitted" && caseStatus !== "closed" && caseStatus !== "cancelled";
 }
 
 const str = (fd: FormData, k: string) => {
