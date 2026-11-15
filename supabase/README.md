@@ -76,3 +76,22 @@ Field OTPs come from `[auth.sms.test_otp]` in `config.toml`; no SMS is sent. Fie
 - `case_messages.visibility` (`all` / `staff`); `post_staff_note()` for orchestrator ↔ office notes; field users never see `staff` messages or their files.
 - `v_report_progress` and `case_field_history(case)` for the orchestrator's live view; Realtime publication covers `case_messages`, `case_field_values`, `evidence_labels`, `notifications` (the local stack needs `wal_level = logical`, which the Supabase image already sets).
 - `evidence_labels.description` and `evidence_field_matches` for LLM labelling and cross-encoder field matching (written by the pipeline with the service role).
+
+## Seed data (office demo)
+
+`seed.sql` also loads the evidence categories and the two templates in `config/templates` (inlined; regenerate the two marked blocks with `node supabase/seed-tools/gen-template-seed.mjs categories|templates`) and eight demo cases for the office pages. All names, phones, vehicles and claim numbers are invented. No files exist in any bucket, so open / download links on seeded evidence, reports and email attachments do not work; processing jobs for them are marked `skipped`.
+
+Extra logins (password `DevPassw0rd!`): `office2@example.com` (Neel Office); Field 1 / 2 / 3 (`+919800000001`, `…02`, `…03`, Feroz Field, Nashik) also sign in with phone + password. Insurers `IGI` and `ICL` match the templates.
+
+| Case ref | Insurer | Status | Owner | Shows |
+|---|---|---|---|---|
+| INV-2026-000004 | IGI | received | none | Unassigned queue, orchestrator alert, intake values only |
+| INV-2026-000005 | ICL | assigned | Uma | No field work yet; staff-only notes |
+| INV-2026-000006 | IGI | field_in_progress | Neel | Due today; operator Fatima mid-visit, operator and LLM labels, gallery photo, office task, suggested odometer |
+| INV-2026-000007 | ICL | field_in_progress | Uma | Overdue; reassigned by orchestrator; completed task plus open re-investigation (linked to parent); DL with OCR and pending suggestions |
+| INV-2026-000008 | IGI | office_review | Uma | Report half written (required fields empty), FIR / DL documents, label correction, relevance marks |
+| INV-2026-000009 | ICL | orchestrator_review | Neel | All required fields filled, draft report, pending approval |
+| INV-2026-000010 | IGI | submitted | Neel | Approved report, submission by email |
+| INV-2026-000011 | ICL | closed | Uma | Acknowledged submission, closed |
+
+Cases `INV-2026-000001..3` (insurers SGI / DHI / TLA, no template) are the older seed rows. Fixed ids: cases `d0000000-0000-4000-8000-000000000101..108`, tasks `e0000000-0000-4000-8000-000000000103..114`, reports `91000000-0000-4000-8000-000000000106..108`. Case refs follow the sequence and are stable after `db reset`.
