@@ -169,23 +169,23 @@ export async function correctLabels(fd: FormData): Promise<ActionResult> {
 // 8.1 Approval
 // ---------------------------------------------------------------------
 const RequestInput = z.object({ case_id: Id, report_id: Id, case_ref: CaseRef });
+type RequestData = z.infer<typeof RequestInput>;
 
-/** insert report_approvals: report_approvals_guard moves the case to orchestrator_review and notifies orchestrators. */
-export async function requestApproval(fd: FormData): Promise<void> {
-  const me = await requireRole(REQUESTER_ROLES);
-  const parsed = RequestInput.safeParse({ case_id: fd.get("case_id"), report_id: fd.get("report_id"), case_ref: fd.get("case_ref") });
-  if (!parsed.success) {
-    await setFlash(RELOAD, "error");
-    redirect("/reports");
-  }
-  const back = workspacePath(parsed.data.case_ref);
-  const supabase = await createClient();
-
-  // The same rules the page shows; report_approvals_guard checks owner, status and required fields again (G5).
+/**
+ * The approval model for the version the form names, with the same rules the page shows (report_approvals_guard
+ * checks owner, status and required fields again, G5). Redirects with a flash when the request is not allowed.
+ */
+async function checkRequest(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  me: { id: string; role: Parameters<typeof approvalModel>[0]["role"] },
+  data: RequestData,
+  oneStep: boolean,
+): Promise<void> {
+  const back = workspacePath(data.case_ref);
   const [c, versions, progress] = await Promise.all([
-    supabase.from("cases").select("status, office_owner_id, case_templates(requires_approval)").eq("id", parsed.data.case_id).maybeSingle(),
-    supabase.from("reports").select("id, version, report_approvals(id, decision, requested_by, requested_at)").eq("case_id", parsed.data.case_id),
-    supabase.from("v_report_progress").select("required_total, required_filled").eq("case_id", parsed.data.case_id),
+    supabase.from("cases").select("status, office_owner_id, case_templates(requires_approval)").eq("id", data.case_id).maybeSingle(),
+    supabase.from("reports").select("id, version, report_approvals(id, decision, requested_by, requested_at)").eq("case_id", data.case_id),
+    supabase.from("v_report_progress").select("required_total, required_filled").eq("case_id", data.case_id),
   ]);
   if (!c.data || versions.error || progress.error) {
     await setFlash(RELOAD, "error");
@@ -199,10 +199,24 @@ export async function requestApproval(fd: FormData): Promise<void> {
     versions: (versions.data ?? []).map((v) => ({ id: v.id, version: v.version, approval: oneOf(v.report_approvals) })),
     requiredMissing: (progress.data ?? []).reduce((n, s) => n + Math.max(0, (s.required_total ?? 0) - (s.required_filled ?? 0)), 0),
   });
-  if (!model.canRequest || model.latest?.id !== parsed.data.report_id) {
-    await setFlash(model.requestBlocked ?? "Approval cannot be requested for this version. Reload the page.", "error");
+  if (!model.canRequest || model.oneStep !== oneStep || model.latest?.id !== data.report_id) {
+    const fallback = oneStep ? "This version cannot be approved. Reload the page." : "Approval cannot be requested for this version. Reload the page.";
+    await setFlash(model.requestBlocked ?? fallback, "error");
     redirect(back);
   }
+}
+
+/** insert report_approvals: report_approvals_guard moves the case to orchestrator_review and notifies orchestrators. */
+export async function requestApproval(fd: FormData): Promise<void> {
+  const me = await requireRole(REQUESTER_ROLES);
+  const parsed = RequestInput.safeParse({ case_id: fd.get("case_id"), report_id: fd.get("report_id"), case_ref: fd.get("case_ref") });
+  if (!parsed.success) {
+    await setFlash(RELOAD, "error");
+    redirect("/reports");
+  }
+  const back = workspacePath(parsed.data.case_ref);
+  const supabase = await createClient();
+  await checkRequest(supabase, me, parsed.data, false);
 
   const { error } = await supabase.from("report_approvals").insert({ case_id: parsed.data.case_id, report_id: parsed.data.report_id });
   if (error) {
@@ -211,6 +225,42 @@ export async function requestApproval(fd: FormData): Promise<void> {
   }
   revalidateReports(parsed.data.case_ref);
   await setFlash("Approval requested. The orchestrators have been notified.");
+  redirect(back);
+}
+
+const ApproveOwnInput = RequestInput.extend({
+  comments: z.string().trim().max(2000, { message: "Keep the comment under 2000 characters." }),
+});
+
+/**
+ * D47: an orchestrator / admin approves the latest version in one step through
+ * public.approve_own_report(p_report_id, p_comment): request + approval by the same person in one transaction,
+ * under the report_approvals_guard rules; no orchestrator notification; the case owner is told if someone else.
+ */
+export async function approveOwnReport(fd: FormData): Promise<void> {
+  const me = await requireRole(APPROVER_ROLES);
+  const parsed = ApproveOwnInput.safeParse({
+    case_id: fd.get("case_id"),
+    report_id: fd.get("report_id"),
+    case_ref: fd.get("case_ref"),
+    comments: String(fd.get("comments") ?? ""),
+  });
+  if (!parsed.success) {
+    const caseRef = CaseRef.safeParse(fd.get("case_ref"));
+    await setFlash(parsed.error.issues[0]?.path[0] === "comments" ? parsed.error.issues[0].message : RELOAD, "error");
+    redirect(caseRef.success ? workspacePath(caseRef.data) : "/reports");
+  }
+  const back = workspacePath(parsed.data.case_ref);
+  const supabase = await createClient();
+  await checkRequest(supabase, me, parsed.data, true);
+
+  const { error } = await supabase.rpc("approve_own_report", { p_report_id: parsed.data.report_id, p_comment: parsed.data.comments || undefined });
+  if (error) {
+    await setFlash(mapDbError(error).message, "error");
+    redirect(back);
+  }
+  revalidateReports(parsed.data.case_ref);
+  await setFlash("Report approved. It can now be sent to the insurer.");
   redirect(back);
 }
 

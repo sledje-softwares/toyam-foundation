@@ -10,7 +10,7 @@ import { ApprovalCard } from "@/components/reports/approval-card";
 import { EvidencePanel } from "@/components/reports/evidence-panel";
 import { PlannedButton, PlannedNote } from "@/components/reports/planned";
 import { SectionEditor, SourceBadge, ValueText } from "@/components/reports/section-editor";
-import { correctLabels, decideApproval, evidenceLink, reportFileLink, requestApproval, saveSection, setRelevance } from "./actions";
+import { approveOwnReport, correctLabels, decideApproval, evidenceLink, reportFileLink, requestApproval, saveSection, setRelevance } from "./actions";
 import { loadWorkspace } from "./load";
 
 export const metadata = { title: "Report" };
@@ -132,7 +132,7 @@ export default async function ReportWorkspacePage({
             model={approval}
             versions={ws.versions}
             outputFormats={ws.template.output_formats}
-            actions={{ requestApproval, decideApproval, reportFileLink }}
+            actions={{ requestApproval, approveOwnReport, decideApproval, reportFileLink }}
           />
 
           {ws.sections.length === 0 ? (
