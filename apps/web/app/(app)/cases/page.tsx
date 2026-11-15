@@ -18,7 +18,7 @@ import {
 } from "@/lib/cases";
 import { CLAIM_TYPE_LABELS, CLAIM_TYPES, isClaimType } from "@/lib/checklists";
 import { STATUS_MAPS } from "@/components/ui/badge";
-import { Badge, DataTable, EmptyState, ErrorState, FilterBar, Pagination, PageHeader, StatusBadge, type Column } from "@/components/ui";
+import { Badge, ButtonLink, DataTable, EmptyState, ErrorState, FilterBar, Pagination, PageHeader, StatusBadge, type Column } from "@/components/ui";
 
 export const metadata = { title: "Cases" };
 
@@ -159,15 +159,18 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <PageHeader
         title="Cases"
         actions={
-          ownerChoice ? (
-            <Link
-              href={buildHref(BASE, sp, { owner: mine ? null : "me" })}
-              aria-pressed={mine}
-              className="text-sm text-primary underline hover:no-underline"
-            >
-              {mine ? "Show everyone's cases" : "Show my cases"}
-            </Link>
-          ) : undefined
+          <>
+            {ownerChoice && (
+              <Link
+                href={buildHref(BASE, sp, { owner: mine ? null : "me" })}
+                aria-pressed={mine}
+                className="text-sm text-primary underline hover:no-underline"
+              >
+                {mine ? "Show everyone's cases" : "Show my cases"}
+              </Link>
+            )}
+            <ButtonLink href="/cases/new">New case</ButtonLink>
+          </>
         }
       />
       {!ownerChoice && (
