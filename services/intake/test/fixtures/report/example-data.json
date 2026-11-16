@@ -1,0 +1,37 @@
+{
+  "_note": "Fictional data for the report writer tests; every value is invented.",
+  "case": {
+    "case_ref": "INV-2099-000001",
+    "insurer_code": "EXM",
+    "insurer_name": "Example Insurance Ltd",
+    "claim_no": "EX/CLM/0001",
+    "policy_no": "EX-POL-0001",
+    "template_key": "exm-motor-od",
+    "template_name": "Example Insurance — Motor OD (test only)",
+    "template_version": 1,
+    "office_owner_name": "Asha Example",
+    "received_at": "2099-01-02T04:30:00Z",
+    "due_at": "2099-01-17T04:30:00Z",
+    "generated_at": "2099-01-10T06:45:00+00:00",
+    "report_version": 2
+  },
+  "fields": {
+    "insurer_claim_no": {"type": "text", "label": "Claim no", "value": "EX/CLM/0001"},
+    "policy_no": {"type": "text", "label": "Policy no.", "value": "EX-POL-0001"},
+    "insured_name": {"type": "text", "label": "Name of insured", "value": "ravi example kumar"},
+    "loss_date": {"type": "date", "label": "Date of loss", "value": "2099-01-01"},
+    "loss_datetime": {"type": "datetime", "label": "Loss date and time", "value": "2099-01-01T14:05"},
+    "vehicle_burnt": {"type": "boolean", "label": "Vehicle burnt", "value": "No"},
+    "damaged_parts": {"type": "multi_choice", "label": "Damaged parts", "value": "[\"Bumper\",\"Headlamp\"]"},
+    "estimate_amount": {"type": "currency", "label": "Estimate", "value": "1234567"},
+    "odometer": {"type": "number", "label": "Odometer", "value": "45210"},
+    "remarks": {"type": "text", "label": "Remarks", "value": "Vehicle seen at the **garage** gate"},
+    "garage_name": {"type": "text", "label": "Garage name", "value": "Sample Motors Workshop"},
+    "statements": {"type": "long_text", "label": "Statements", "value": "Mr. A. Example (driver)\nStated that the vehicle skidded on a wet road.\n\nHe was alone in the vehicle.\n---\nMs. B. Example (insured)\nConfirmed the driver's version by video call."},
+    "findings": {"type": "long_text", "label": "Findings", "value": "1. The driver holds a valid licence.\n2. No FIR was lodged.\nNo third party was involved.\n\n3. Damage matches the reported manner of accident."},
+    "documents_collected": {"type": "long_text", "label": "Documents collected", "value": "RC copy\nDL copy\nPolicy copy\nEstimate"},
+    "reminder_date": {"type": "date", "label": "Reminder date", "value": null},
+    "conclusion": {"type": "long_text", "label": "Conclusion", "value": "The claim appears genuine.\n\nRecommended for settlement as per policy terms."},
+    "investigation_status": {"type": "choice", "label": "Investigation status", "value": "Recommended"}
+  }
+}
