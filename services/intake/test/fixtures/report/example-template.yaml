@@ -1,0 +1,41 @@
+# Fictional template for the report writer tests. Every name and value here is invented.
+insurer_code: EXM
+claim_type: motor
+variant: od
+name: Example Insurance — Motor OD (test only)
+report_layout: example-layout.yaml
+
+sections:
+  - key: claim
+    title: Claim
+    fields:
+      - {key: insurer_claim_no, label: Claim no, source: intake, required: true}
+      - {key: policy_no, label: Policy no.}
+      - {key: insured_name, label: Name of insured}
+      - {key: loss_date, label: Date of loss, type: date}
+      - {key: loss_datetime, label: Loss date and time, type: datetime}
+      - {key: vehicle_burnt, label: Vehicle burnt, type: boolean}
+      - {key: damaged_parts, label: Damaged parts, type: multi_choice, options: [Bumper, Headlamp, Bonnet, Mirror]}
+      - {key: estimate_amount, label: Estimate, type: currency}
+      - {key: odometer, label: Odometer, type: number}
+      - {key: remarks, label: Remarks}
+  - key: garage
+    title: Garage visit
+    categories: [vehicle_photo]
+    fields:
+      - {key: garage_name, label: Garage name}
+  - key: statements
+    title: Statements
+    fields:
+      - {key: statements, label: Statements, type: long_text}
+  - key: findings
+    title: Findings
+    fields:
+      - {key: findings, label: Findings, type: long_text}
+      - {key: documents_collected, label: Documents collected, type: long_text}
+      - {key: reminder_date, label: Reminder date, type: date}
+  - key: conclusion
+    title: Conclusion
+    fields:
+      - {key: conclusion, label: Conclusion, type: long_text}
+      - {key: investigation_status, label: Investigation status, type: choice, options: [Recommended, Repudiate]}

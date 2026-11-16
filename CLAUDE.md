@@ -28,6 +28,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Seed data (users, demo cases): `supabase/README.md` "Seed data"
 - Vision labeller and model bake-off (D34): `services/labeller/README.md`
 - Office pages (cases, tasks, reports, dashboard; wireframes, data sources, DB gaps): `docs/12-office-pages/`
+- Report layouts and writers (D51, 7.7; format, writer interface, sample checklists): `docs/13-report-layouts.md`
 
 ## Non-negotiable design rules
 
