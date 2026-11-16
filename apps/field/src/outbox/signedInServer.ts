@@ -1,5 +1,7 @@
 // Server for a signed-in field operator (JWT; RLS applies, never a service-role key — rule 4).
-import { classifyPgError, type Presigned, type PresignRequest, type Server, ServerError } from './server';
+import {
+  classifyPgError, type DerivativePresign, type DerivativePresignRequest, type Presigned, type PresignRequest, type Server, ServerError,
+} from './server';
 
 /** The supabase-js surface used here (kept minimal so tests can fake it). */
 export interface RpcClient {
@@ -70,9 +72,43 @@ export function evidenceUploadPresigner(client: FunctionsClient): (req: PresignR
   };
 }
 
+/** evidence-upload `derivatives`: both copies of one photo in one call (no `files`). */
+export function derivativePresigner(client: FunctionsClient): (req: DerivativePresignRequest) => Promise<DerivativePresign[]> {
+  return async (req) => {
+    let res;
+    try {
+      res = await client.functions.invoke('evidence-upload', {
+        body: {
+          task_id: req.task_id,
+          case_id: req.case_id,
+          files: [],
+          derivatives: req.copies.map((c) => ({ original_sha256: req.original_sha256, width: c.width, sha256: c.sha256, size: c.size_bytes })),
+        },
+      });
+    } catch (e) {
+      throw new ServerError('transient', 'network', e instanceof Error ? e.message : String(e));
+    }
+    if (res.error) throw await classifyUploadError(res.error);
+    const list = (res.data as { derivatives?: unknown } | null)?.derivatives;
+    if (!Array.isArray(list)) throw new ServerError('transient', 'bad_reply');
+    return (list as Record<string, unknown>[]).flatMap((d) => {
+      if (!d || typeof d.width !== 'number') return [];
+      const status = d.status === 'upload' || d.status === 'already_stored' ? d.status : 'skipped';
+      return [{
+        width: d.width,
+        status,
+        ...(typeof d.storage_path === 'string' ? { storage_path: d.storage_path } : {}),
+        ...(typeof d.url === 'string' ? { url: d.url } : {}),
+        ...(d.headers && typeof d.headers === 'object' ? { headers: d.headers as Record<string, string> } : {}),
+      } satisfies DerivativePresign];
+    });
+  };
+}
+
 export function signedInServer(
   client: RpcClient & FunctionsClient,
   presign: (req: PresignRequest) => Promise<Presigned> = evidenceUploadPresigner(client),
+  presignDerivatives: (req: DerivativePresignRequest) => Promise<DerivativePresign[]> = derivativePresigner(client),
 ): Server {
   const call = async (fn: string, args: Record<string, unknown>): Promise<unknown> => {
     let res;
@@ -86,6 +122,27 @@ export function signedInServer(
   };
   return {
     presign,
+    presignDerivatives,
+    async recordDerivative(r) {
+      try {
+        await call('record_device_derivative', {
+          p_case_id: r.case_id,
+          p_original_sha256: r.original_sha256,
+          p_width: r.width,
+          p_storage_path: r.storage_path,
+          p_sha256: r.sha256,
+          p_size_bytes: r.size_bytes,
+          p_pixel_width: r.pixel_width,
+          p_pixel_height: r.pixel_height,
+        });
+      } catch (e) {
+        // P0002 (photo not found among the caller's uploads) and 55000 (withdrawn) never get better
+        if (e instanceof ServerError && e.kind === 'transient' && (e.code === 'P0002' || e.code === '55000')) {
+          throw new ServerError('rejected', e.code, e.message);
+        }
+        throw e;
+      }
+    },
     async postMessage(m) {
       const id = await call('post_thread_message', {
         p_case_id: m.case_id,

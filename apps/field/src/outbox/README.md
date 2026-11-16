@@ -81,6 +81,41 @@ last_success_at, last_prompt_at, next_retry_at }`. It is stable between changes.
   Errors: 401 → auth, 403 `upload_window_closed` → window_closed, other 400 / 403 / 413 → rejected (held),
   5xx / network → transient.
 
+## Shrunk copies of photos (D51)
+
+Every image the app sends (camera, gallery, share-in; jpeg / png / heic / heif / webp) also gets two JPEG
+copies: 1600 px (reports) and 384 px (labelling) on the long edge, quality 0.8, upright, **no EXIF / GPS**,
+never enlarged (an image smaller than the target keeps its size). They are a rebuildable cache, not
+evidence: the operator never sees them, and any failure drops the copy silently (the report then uses the
+original). The server never decodes images.
+
+| Piece | Where |
+|---|---|
+| Planning (sizes, no upscale, order, caps; pure, tested with a fake decoder) | `src/capture/copies.ts`, `copies.test.ts` |
+| Native decoder / hashing / sandbox (`expo-image-manipulator`, `File.digest`) | `src/capture/copiesNative.ts` |
+| Engine (making, sending, dropping; tested) | `outbox.ts` (`startCopies`, `sendCopiesPass`, `sendCopies`), `copies.test.ts` here |
+| Server calls | `Server.presignDerivatives` (evidence-upload `derivatives`), `Server.recordDerivative` (`record_device_derivative`) |
+
+- **Making:** `enqueue()` saves the message at once, then makes the copies in the background (one photo at
+  a time, 1600 then 384), hashes each (SHA-256 of the copy's own bytes), stores them in the outbox sandbox
+  (`copy-<fileId>-w<width>.jpg`) and records them on the file (`OutboxFile.copies`, persisted in the item
+  JSON; no store migration needed, old items simply have none). Sending a message waits for its copy job so
+  the original is still in the sandbox. Skipped when the free-space guard is not `ok` (`runtime.ts`) and in
+  drain mode. After a restart, queued photos saved without copies get them then.
+- **Sending order per photo:** original PUT → `post_thread_message` (message stored ✓) → one
+  `evidence-upload` call with both copies → PUT each → `record_device_derivative`. Copies go only while no
+  message is waiting, under the same global backoff.
+- **Outcomes:** `skipped` / `already_stored` / refused (window closed, rejected, photo withdrawn) → the copy
+  is dropped; transient errors back off and retry, a copy is dropped after `MAX_COPY_ATTEMPTS` (6) failures;
+  an expired session pauses sending like for files. Copies never hold a message.
+- **Drain (remote sign-out):** `field-drain` has no copy calls; copies are skipped and deleted at `wipe()`.
+- **Invisible:** counts, ticks, the "Sending k of n" bar and sign-out checks cover messages and files only.
+  A sent row stays in the store (not shown as pending) until its copies are done, then it is pruned.
+- **Cleanup:** copy files are deleted after the record call, when a file is removed from the phone, and on wipe.
+- **Orientation / metadata:** the copy is rendered by `ImageManipulator` (decoded upright) and re-encoded
+  with `saveAsync` (Android `Bitmap.compress`: pixels only). Not verified on a device yet: shoot a portrait
+  photo and a gallery photo with GPS EXIF, open the copy and check it is upright and has no EXIF.
+
 ## Behaviour notes
 
 - Backoff is global (one job, like WorkManager): 30 s doubling to 30 min, equal jitter; reset on

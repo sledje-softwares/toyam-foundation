@@ -134,7 +134,7 @@ The edge function `report-generate` runs with the staff user's JWT: (1) `prepare
 <file> = "evidence_type", "mime_type", "original_filename", "capture_source", "storage_backend", "storage_path", "sha256",
          "size_bytes", "server_received_at", "device_captured_at", "latitude", "longitude", "relevance",
          "labels": ["<category code>"],
-         "derivatives": [{"width": 384|1600, "storage_path", "sha256", "size_bytes", "pixel_width", "pixel_height"}]   (empty when the phone made none)
+         "derivatives": [{"width": 384|1600, "storage_path", "sha256", "size_bytes", "pixel_width", "pixel_height"}]   (empty when the phone made none; storage_path = `derived/{case_id}/{original_sha256}/w{width}-{copy_sha256}.jpg`, content-addressed so a re-upload can never overwrite a recorded copy)
 ```
 
 `template.key` is the config file name (`icl-motor-od`), else `<insurer code>-<claim type>-<variant>` in lower case. Values follow O1 (boolean `Yes` / `No`, multi_choice a JSON array string). **Default photo selection:** image (`photo`) evidence of the case, not withdrawn, relevance not `not_relevant`, placed in the first section (by position) whose categories contain one of its active labels; within a section ordered by that category's position, then `server_received_at`; `position` 1, 2, … per section; caption = the label's description if any, else the category name. Images with no matching label are `unplaced_photos`; documents, audio and video are `annexure_files` (same placement for `section_key`).

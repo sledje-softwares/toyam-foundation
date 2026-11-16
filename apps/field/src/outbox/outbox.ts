@@ -5,7 +5,7 @@ import { emptyBatch, allSentEvent, outboxTotals, type SendBatch } from './select
 import { type PostMessage, type Server, ServerError, type Transport } from './server';
 import { assertTransition, tickRank } from './stateMachine';
 import type { Store } from './store';
-import { type HeldReason, isPending, type NewItem, type OutboxFile, type OutboxItem } from './types';
+import { type HeldReason, isPending, MAX_COPY_ATTEMPTS, type NewItem, type OutboxCopy, type OutboxFile, type OutboxItem } from './types';
 
 export type OutboxMode = 'normal' | 'drain';
 
@@ -43,6 +43,11 @@ export interface OutboxDeps {
   uuid: () => string;
   /** Delete a sandbox file once its message is stored. */
   removeFile?: (localPath: string) => Promise<void>;
+  /**
+   * D51: make the shrunk copies of an image in the sandbox (never throws; [] for non-images or when
+   * it cannot). Left out = no copies are made or sent (the report uses the original).
+   */
+  makeCopies?: (file: OutboxFile) => Promise<OutboxCopy[]>;
   /** Wake-up timer for backoff; returns a cancel function. */
   schedule?: (ms: number, fn: () => void) => () => void;
   log?: (msg: string) => void;
@@ -53,8 +58,11 @@ const META_SUCCESS = 'last_success_at';
 const META_PROMPT = 'last_prompt_at';
 
 export class Outbox {
-  private d: Required<Omit<OutboxDeps, 'deviceId'>> & { deviceId: string | null };
+  private d: Required<Omit<OutboxDeps, 'deviceId' | 'makeCopies'>> & { deviceId: string | null; makeCopies?: OutboxDeps['makeCopies'] };
   private items = new Map<string, OutboxItem>();
+  /** Copy-making per message (one at a time, in enqueue order); sending the message waits for its job. */
+  private copyJobs = new Map<string, Promise<void>>();
+  private copyChain: Promise<void> = Promise.resolve();
   private listeners = new Set<() => void>();
   private eventListeners = new Set<(e: OutboxEvent) => void>();
   private running: Promise<void> | null = null;
@@ -103,6 +111,8 @@ export class Outbox {
     this.lastSuccessAt = await this.d.store.getMeta(META_SUCCESS);
     this.lastPromptAt = await this.d.store.getMeta(META_PROMPT);
     this.batch = { ...emptyBatch(), oldest_queued_at: this.oldestQueued() };
+    // the app was closed before the copies of these photos were made: make them now (originals still exist)
+    for (const it of this.items.values()) if (it.state === 'queued' || it.state === 'held') this.startCopies(it);
     this.changed();
   }
 
@@ -125,7 +135,8 @@ export class Outbox {
         online: this.online,
         mode: this.mode,
         paused: this.paused,
-        sending: this.running && this.batchSize() > 0 ? { k: this.batch.sent, n: this.batchSize() } : null,
+        // copies (D51) are invisible: the bar shows only while a message is waiting or being sent
+        sending: this.running && this.batchSize() > 0 && [...this.items.values()].some((i) => i.state === 'queued' || i.state === 'uploading') ?{ k: this.batch.sent, n: this.batchSize() } : null,
         last_success_at: this.lastSuccessAt,
         last_prompt_at: this.lastPromptAt,
         next_retry_at: this.nextRetryAt === null ? null : new Date(this.nextRetryAt).toISOString(),
@@ -158,11 +169,51 @@ export class Outbox {
       split_from: null,
     };
     await this.save(item);
+    this.startCopies(item);
     if (this.batch.oldest_queued_at === null) this.batch.oldest_queued_at = item.created_at;
     this.reportDirty = true;
     this.changed();
     void this.run();
     return item;
+  }
+
+  /**
+   * D51: make the shrunk copies of the item's photos in the background (the operator is not kept
+   * waiting). Sending the message waits for this job so the original is still in the sandbox.
+   */
+  private startCopies(item: OutboxItem): void {
+    const make = this.d.makeCopies;
+    const id = item.client_message_id;
+    const photos = item.files.filter((f) => f.evidence_type === 'photo' && f.copies === undefined);
+    if (!make || this.mode === 'drain' || photos.length === 0 || this.copyJobs.has(id)) return;
+    const job: Promise<void> = this.copyChain
+      .then(async () => {
+        for (const f of photos) {
+          let copies: OutboxCopy[] = [];
+          try {
+            copies = await make(f);
+          } catch {
+            copies = [];
+          }
+          const live = this.items.get(id);
+          if (!live || !live.files.includes(f)) {
+            await this.dropCopyFiles(copies); // sent-and-wiped or removed meanwhile
+            continue;
+          }
+          f.copies = copies; // [] = done, nothing to send
+          await this.save(live);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (this.copyJobs.get(id) === job) this.copyJobs.delete(id);
+      });
+    this.copyChain = job;
+    this.copyJobs.set(id, job);
+  }
+
+  private async dropCopyFiles(copies: readonly OutboxCopy[] | undefined): Promise<void> {
+    for (const c of copies ?? []) await this.d.removeFile(c.local_path).catch(() => {});
   }
 
   /** NetInfo change. Coming online resets the backoff and sends at once; going offline stops quietly. */
@@ -222,6 +273,7 @@ export class Outbox {
     if (!f) return false;
     it.files = it.files.filter((x) => x.id !== fileId);
     await this.d.removeFile(f.local_path);
+    await this.dropCopyFiles(f.copies);
     if (it.files.length === 0 && it.kind !== 'text') {
       this.items.delete(clientMessageId);
       await this.d.store.remove(clientMessageId);
@@ -263,6 +315,7 @@ export class Outbox {
       for (const f of it.files) {
         if (isPending(it)) discarded++;
         await this.d.removeFile(f.local_path);
+        await this.dropCopyFiles(f.copies);
       }
     }
     this.items.clear();
@@ -306,6 +359,7 @@ export class Outbox {
       const stop = await this.sendItem(next);
       if (stop) break;
     }
+    await this.sendCopiesPass();
     await this.maybeReport(true);
     this.checkAllSent();
     this.scheduleWake();
@@ -313,6 +367,8 @@ export class Outbox {
 
   /** Returns true when the loop should stop (transient error, auth, drain closed). */
   private async sendItem(it: OutboxItem): Promise<boolean> {
+    await this.copyJobs.get(it.client_message_id); // the copies are made from the original; keep it until then
+    if (it.state !== 'queued') return false; // removed or changed while waiting
     const now = this.d.now().toISOString();
     if (this.mode === 'drain' && it.kind === 'text') {
       await this.hold(it, 'drain_text', 'text messages are not drained');
@@ -350,6 +406,116 @@ export class Outbox {
     } catch (e) {
       return this.onError(it, e);
     }
+  }
+
+  // ------------------------------------------------------------------ shrunk copies (D51)
+
+  /** A stored message's photo that still has copies to send; none in drain mode or without server support. */
+  private nextCopyWork(): { it: OutboxItem; f: OutboxFile } | undefined {
+    if (this.mode === 'drain' || !this.d.server.presignDerivatives || !this.d.server.recordDerivative) return undefined;
+    let best: { it: OutboxItem; f: OutboxFile } | undefined;
+    for (const it of this.items.values()) {
+      if (it.state !== 'stored' && it.state !== 'processed' && it.state !== 'seen') continue;
+      for (const f of it.files) {
+        if (f.copies && f.copies.length > 0 && (!best || it.created_at < best.it.created_at)) best = { it, f };
+      }
+    }
+    return best;
+  }
+
+  /** Originals first: copies go only while no message waits, under the same backoff as everything else. */
+  private async sendCopiesPass(): Promise<void> {
+    for (;;) {
+      if (!this.online || this.paused) return;
+      if (this.nextRetryAt !== null && this.d.now().getTime() < this.nextRetryAt) return;
+      if (this.nextQueued()) return;
+      const work = this.nextCopyWork();
+      if (!work) return;
+      if (await this.sendCopies(work.it, work.f)) return;
+    }
+  }
+
+  /** Presign both copies of one photo, PUT, record. Returns true when the pass should stop. */
+  private async sendCopies(it: OutboxItem, f: OutboxFile): Promise<boolean> {
+    const server = this.d.server;
+    const copies = f.copies ?? [];
+    if (!it.task_id || !server.presignDerivatives || !server.recordDerivative) {
+      await this.dropCopies(it, f, copies);
+      return false;
+    }
+    try {
+      const presigns = await server.presignDerivatives({
+        case_id: it.case_id,
+        task_id: it.task_id,
+        original_sha256: f.sha256,
+        copies: copies.map((c) => ({ width: c.width, sha256: c.sha256, size_bytes: c.size_bytes })),
+      });
+      for (const c of [...copies]) {
+        const p = presigns.find((x) => x.width === c.width);
+        if (!p || p.status === 'skipped' || p.status === 'already_stored') {
+          await this.dropCopies(it, f, [c]); // not usable here, or already recorded: nothing to send
+          continue;
+        }
+        if (!c.storage_path) {
+          if (!p.url || !p.storage_path) throw new ServerError('rejected', 'bad_reply');
+          await this.d.transport.put(p.url, p.headers ?? {}, c.local_path, () => {});
+          c.storage_path = p.storage_path;
+          await this.save(it);
+        }
+        await server.recordDerivative({
+          case_id: it.case_id,
+          original_sha256: f.sha256,
+          width: c.width,
+          storage_path: c.storage_path,
+          sha256: c.sha256,
+          size_bytes: c.size_bytes,
+          pixel_width: c.pixel_width,
+          pixel_height: c.pixel_height,
+        });
+        await this.dropCopies(it, f, [c]); // recorded (recorded:false = already there, equally done)
+      }
+      this.failures = 0;
+      this.nextRetryAt = null;
+      return false;
+    } catch (e) {
+      return this.onCopyError(it, f, e);
+    }
+  }
+
+  /** Copies never block or hold a message: permanent trouble drops them, transient trouble backs off. */
+  private async onCopyError(it: OutboxItem, f: OutboxFile, e: unknown): Promise<boolean> {
+    const err = e instanceof ServerError ? e : new ServerError('transient', 'client', e instanceof Error ? e.message : String(e));
+    this.d.log(`outbox copies ${it.client_message_id}: ${err.kind} ${err.code}`);
+    switch (err.kind) {
+      case 'window_closed':
+      case 'rejected':
+        await this.dropCopies(it, f, f.copies ?? []);
+        return false;
+      case 'auth':
+      case 'drain_closed':
+      case 'reactivated':
+        this.paused = true;
+        this.changed();
+        this.emit({ type: err.kind === 'auth' ? 'auth_blocked' : err.kind });
+        return true;
+      case 'transient': {
+        const worn = (f.copies ?? []).filter((c) => ++c.attempts >= MAX_COPY_ATTEMPTS);
+        if (worn.length > 0) await this.dropCopies(it, f, worn);
+        else await this.save(it);
+        this.failures += 1;
+        this.nextRetryAt = this.d.now().getTime() + backoffDelay(this.failures, this.d.random);
+        this.changed();
+        return true;
+      }
+    }
+  }
+
+  /** Remove copies from the file (and their sandbox files); persists. */
+  private async dropCopies(it: OutboxItem, f: OutboxFile, which: readonly OutboxCopy[]): Promise<void> {
+    if (which.length === 0) return;
+    f.copies = (f.copies ?? []).filter((c) => !which.includes(c));
+    await this.dropCopyFiles(which);
+    await this.save(it);
   }
 
   private async uploadFile(it: OutboxItem, f: OutboxFile): Promise<void> {
@@ -457,7 +623,7 @@ export class Outbox {
   private scheduleWake(): void {
     this.cancelTimer?.();
     this.cancelTimer = null;
-    if (!this.online || this.paused || this.nextRetryAt === null || !this.nextQueued()) return;
+    if (!this.online || this.paused || this.nextRetryAt === null || !(this.nextQueued() || this.nextCopyWork())) return;
     const ms = Math.max(0, this.nextRetryAt - this.d.now().getTime());
     this.cancelTimer = this.d.schedule(ms, () => {
       this.cancelTimer = null;
@@ -471,7 +637,8 @@ export class Outbox {
     if (totals.items === 0 && this.mode === 'normal') {
       // drained: drop the sent rows (the thread shows server ticks from now on) and reset the batch
       for (const it of [...this.items.values()]) {
-        if (!isPending(it)) {
+        // a sent row stays while its shrunk copies are still to be sent (they are invisible to the operator)
+        if (!isPending(it) && !it.files.some((f) => f.copies && f.copies.length > 0)) {
           this.items.delete(it.client_message_id);
           void this.d.store.remove(it.client_message_id);
         }

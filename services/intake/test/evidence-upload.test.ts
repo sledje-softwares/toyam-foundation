@@ -197,3 +197,95 @@ describe('evidence-upload handler', () => {
     assert.ok(!logs.join('\n').includes(R2.secretAccessKey));
   });
 });
+
+// ---- shrunk copies (D51) ----
+const SHA3 = 'a3'.repeat(32);
+const CSHA = 'c1'.repeat(32);
+const CSHA2 = 'c2'.repeat(32);
+const deriv = (over: Record<string, unknown> = {}) => ({ original_sha256: SHA, width: 1600, sha256: CSHA, size: 250_000, ...over });
+const dbody = (derivatives: unknown[], over: Record<string, unknown> = {}) => ({ task_id: TASK, case_id: CASE, files: [], derivatives, ...over });
+const target = (originals: Record<string, number[]>, over: Record<string, unknown> = {}): Record<string, Res> => ({
+  device_derivative_target: { data: { case_id: CASE, allowed: true, originals, ...over }, error: null },
+});
+
+describe('evidence-upload copies: validation', () => {
+  it('copies may travel alone, but not with files, and files are still required otherwise', () => {
+    assert.equal(parseRequest(dbody([deriv()])).ok, true);
+    assert.equal(parseRequest(dbody([])).ok, false);
+    assert.equal(parseRequest(dbody([deriv()], { files: [file()] })).ok, false);
+    assert.equal(parseRequest(body({ derivatives: [] })).ok, true);
+    const r = parseRequest(dbody([deriv()]));
+    if (r.ok) assert.deepEqual(r.value.derivatives, [deriv()]);
+  });
+  it('checks width, hashes, size, repeats and the cap of 60', () => {
+    const cases: [unknown[], string][] = [
+      [[deriv({ width: 800 })], 'derivatives[0].width'],
+      [[deriv({ sha256: 'X' })], 'derivatives[0].sha256'],
+      [[deriv({ original_sha256: 'x' })], 'derivatives[0].original_sha256'],
+      [[deriv({ size: 0 })], 'derivatives[0].size'],
+      [[deriv(), deriv({ sha256: CSHA2 })], 'derivatives[1]'],
+      [[5], 'derivatives[0]'],
+    ];
+    for (const [d, field] of cases) {
+      const r = parseRequest(dbody(d));
+      assert.equal(r.ok, false);
+      if (!r.ok) assert.equal(r.failure.error.field, field);
+    }
+    assert.equal(parseRequest(dbody(Array(61).fill(deriv()))).ok, false);
+    const big = parseRequest(dbody([deriv({ size: 3 * 1024 * 1024 + 1 })]));
+    assert.equal(big.ok, false);
+    if (!big.ok) assert.equal(big.failure.status, 413);
+    assert.equal(parseRequest(dbody([deriv({ size: 3 * 1024 * 1024 })])).ok, true);
+    // 60 copies are allowed (30 photos x 2), but only 30 distinct originals per request
+    const sixty = Array.from({ length: 30 }, (_, i) => [384, 1600].map((w) => deriv({ original_sha256: i.toString(16).padStart(64, 'b'), width: w }))).flat();
+    assert.equal(parseRequest(dbody(sixty)).ok, true);
+    const many = Array.from({ length: 31 }, (_, i) => deriv({ original_sha256: i.toString(16).padStart(64, 'b') }));
+    assert.equal(parseRequest(dbody(many)).ok, false);
+  });
+});
+
+describe('evidence-upload copies: handler', () => {
+  it('signs the content-addressed key bound to the copy hash and size, with the caller only', async () => {
+    const { gw, calls } = fakeGateway(target({ [SHA]: [] }));
+    const r = await post(gw, dbody([deriv(), deriv({ width: 384, sha256: CSHA2, size: 30_000 })]));
+    assert.equal(r.status, 200);
+    assert.deepEqual(calls.map((c) => c.fn), ['device_derivative_target']);
+    assert.deepEqual(calls[0].args, { p_task_id: TASK, p_originals: [SHA] });
+    const ds = r.body.derivatives as Record<string, unknown>[];
+    assert.equal(ds.length, 2);
+    assert.equal(ds[0].status, 'upload');
+    assert.equal(ds[0].storage_path, `derived/${CASE}/${SHA}/w1600-${CSHA}.jpg`);
+    assert.equal(ds[0].method, 'PUT');
+    assert.equal(ds[0].expires_in, 600);
+    assert.deepEqual(ds[0].headers, { 'x-amz-content-sha256': CSHA });
+    assert.match(String(ds[0].url), /content-length/);
+    assert.equal(ds[1].storage_path, `derived/${CASE}/${SHA}/w384-${CSHA2}.jpg`);
+    assert.deepEqual(r.body.files, []);
+    assert.ok(!JSON.stringify(r.body).includes(R2.secretAccessKey));
+  });
+  it('a copy already recorded is already_stored; an unusable original is skipped (no URL)', async () => {
+    const { gw } = fakeGateway(target({ [SHA]: [1600] }));
+    const r = await post(gw, dbody([deriv(), deriv({ width: 384, sha256: CSHA2 }), deriv({ original_sha256: SHA3 })]));
+    const [a, b, c] = r.body.derivatives as Record<string, unknown>[];
+    assert.deepEqual(a, { original_sha256: SHA, width: 1600, sha256: CSHA, status: 'already_stored', storage_path: `derived/${CASE}/${SHA}/w1600-${CSHA}.jpg` });
+    assert.equal(b.status, 'upload');
+    assert.deepEqual(c, { original_sha256: SHA3, width: 1600, sha256: CSHA, status: 'skipped' });
+  });
+  it('not allowed (closed window): 403 upload_window_closed, nothing signed', async () => {
+    const { gw } = fakeGateway(target({ [SHA]: [] }, { allowed: false }));
+    const r = await post(gw, dbody([deriv()]));
+    assert.equal(r.status, 403);
+    assert.equal((r.body.error as Record<string, unknown>).code, 'upload_window_closed');
+    assert.ok(!JSON.stringify(r.body).includes('X-Amz'));
+  });
+  it('a case_id that is not the task\'s case is 400; rpc failures map as for files', async () => {
+    const { gw } = fakeGateway(target({ [SHA]: [] }, { case_id: '3e500000-0000-4000-8000-0000000000ff' }));
+    assert.equal((await post(gw, dbody([deriv()]))).status, 400);
+    const forb = fakeGateway({ device_derivative_target: { data: null, error: { code: '42501', message: 'x' } } });
+    assert.equal((await post(forb.gw, dbody([deriv()]))).status, 403);
+    const down = fakeGateway({ device_derivative_target: { data: null, error: { code: '57014', message: 'timeout' } } });
+    assert.equal((await post(down.gw, dbody([deriv()]))).status, 502);
+    const odd = fakeGateway({ device_derivative_target: { data: null, error: null } });
+    assert.equal((await post(odd.gw, dbody([deriv()]))).status, 502);
+  });
+});

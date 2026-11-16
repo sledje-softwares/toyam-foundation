@@ -1717,6 +1717,9 @@ isOneToOne: false
 "create_report_version":
 { Args: { "p_case_id": string,"p_files": Json,"p_notes"?: string,"p_photos": Json,"p_report_id": string,"p_values_token": string }; Returns: Json
                            },
+"device_derivative_target":
+{ Args: { "p_originals": (string)[],"p_task_id": string }; Returns: Json
+                           },
 "drain_authorize_upload":
 { Args: { "p_device_captured_at": string,"p_device_id": string,"p_secret": string,"p_sha256": string,"p_task_id": string }; Returns: string
                            },

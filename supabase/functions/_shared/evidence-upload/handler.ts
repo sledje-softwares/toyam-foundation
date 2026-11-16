@@ -3,8 +3,8 @@
 // client carrying the CALLER's JWT: no service-role key is used (rule 4). The database decides who
 // may upload (can_upload_evidence_at, evidence_upload_target); this layer validates, maps errors and
 // presigns R2 PUTs bound to each file's SHA-256 and size.
-import { type DbErrorLike, type Failure, fail, mapDbError, parseRequest } from './logic.ts';
-import { evidenceKey, presignEvidencePut, type R2Config } from '../r2/presign.ts';
+import { type DbErrorLike, type Failure, fail, mapDbError, parseRequest, type UploadRequest } from './logic.ts';
+import { derivativeKey, evidenceKey, presignEvidencePut, type R2Config } from '../r2/presign.ts';
 
 export const MAX_BODY_CHARS = 64_000;
 
@@ -63,6 +63,8 @@ export async function handleEvidenceUpload(
   };
   const isReply = (r: { data: unknown } | Reply): r is Reply => 'status' in r;
 
+  if (req.derivatives.length > 0) return handleDerivatives(req, call, isReply, r2, now());
+
   // 1. Upload window per capture time (open task, or the D43 late / drain window).
   const refused: string[] = [];
   const times = [...new Set(req.files.map((f) => f.device_captured_at))];
@@ -100,4 +102,49 @@ export async function handleEvidenceUpload(
     files.push({ sha256: f.sha256, status: 'upload', storage_path, method: 'PUT', ...put });
   }
   return { status: 200, body: { ok: true, case_id: req.case_id, files } };
+}
+
+type CallFn = (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown } | Reply>;
+
+/**
+ * Shrunk copies of photos the caller already stored (D51). A rebuildable cache, so a copy whose
+ * original is not usable is answered `skipped` (the app drops it) instead of failing the request.
+ * The upload rule is the one that lets the database record the copy (device_derivative_target).
+ */
+async function handleDerivatives(
+  req: UploadRequest,
+  call: CallFn,
+  isReply: (r: { data: unknown } | Reply) => r is Reply,
+  r2: R2Config,
+  at: Date,
+): Promise<Reply> {
+  const originals = [...new Set(req.derivatives.map((d) => d.original_sha256))];
+  const t = await call('device_derivative_target', { p_task_id: req.task_id, p_originals: originals });
+  if (isReply(t)) return t;
+  const row = t.data as { case_id?: unknown; allowed?: unknown; originals?: unknown } | null;
+  if (!row || typeof row.case_id !== 'string' || typeof row.originals !== 'object' || row.originals === null) {
+    return err(fail(502, 'upstream_error', 'Something went wrong. Try again later.'));
+  }
+  if (row.case_id !== req.case_id) return err(fail(400, 'invalid_input', 'task_id does not belong to case_id.', 'case_id'));
+  if (row.allowed !== true) {
+    return err(fail(403, 'upload_window_closed', 'Copies can no longer be sent for this case.'));
+  }
+  const known = row.originals as Record<string, unknown>;
+  const derivatives = [];
+  for (const d of req.derivatives) {
+    const base = { original_sha256: d.original_sha256, width: d.width, sha256: d.sha256 };
+    const recorded = known[d.original_sha256];
+    if (!Array.isArray(recorded)) {
+      derivatives.push({ ...base, status: 'skipped' }); // not a photo of the caller's on this case
+      continue;
+    }
+    const storage_path = derivativeKey(req.case_id, d.original_sha256, d.width, d.sha256);
+    if (recorded.includes(d.width)) {
+      derivatives.push({ ...base, status: 'already_stored', storage_path });
+      continue;
+    }
+    const put = await presignEvidencePut(r2, storage_path, d.sha256, at, d.size);
+    derivatives.push({ ...base, status: 'upload', storage_path, method: 'PUT', ...put });
+  }
+  return { status: 200, body: { ok: true, case_id: req.case_id, files: [], derivatives } };
 }

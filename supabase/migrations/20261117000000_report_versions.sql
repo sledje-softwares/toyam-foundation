@@ -37,12 +37,14 @@ comment on column public.case_templates.report_layout is
 -- ---------------------------------------------------------------------
 -- B. Shrunk image copies (made by the field app only; no server-side shrinking)
 -- ---------------------------------------------------------------------
-create or replace function private.derivative_path(p_case_id uuid, p_sha256 text, p_width int) returns text
+-- Content-addressed: the key carries the hash of the copy itself, so a re-upload with other bytes can
+-- never overwrite a recorded copy.
+create or replace function private.derivative_path(p_case_id uuid, p_original_sha256 text, p_width int, p_copy_sha256 text) returns text
 language sql immutable set search_path = '' as $$
-    select 'derived/' || p_case_id::text || '/' || p_sha256 || '/w' || p_width::text || '.jpg';
+    select 'derived/' || p_case_id::text || '/' || p_original_sha256 || '/w' || p_width::text || '-' || p_copy_sha256 || '.jpg';
 $$;
-revoke all on function private.derivative_path(uuid, text, int) from public, anon;
-grant execute on function private.derivative_path(uuid, text, int) to authenticated, service_role;
+revoke all on function private.derivative_path(uuid, text, int, text) from public, anon;
+grant execute on function private.derivative_path(uuid, text, int, text) to authenticated, service_role;
 
 create table public.evidence_derivatives (
     evidence_id  uuid        not null references public.evidence(id),
@@ -57,7 +59,7 @@ create table public.evidence_derivatives (
 );
 comment on table public.evidence_derivatives is
     'D51: shrunk JPEG copies (384 labelling, 1600 reports) the field app made of its own photos, stored at '
-    'derived/{case_id}/{original_sha256}/w{width}.jpg. Not evidence; set once (no update / delete). '
+    'derived/{case_id}/{original_sha256}/w{width}-{copy_sha256}.jpg. Not evidence; set once (no update / delete). '
     'Files without a copy (insurer attachments, a phone that failed to make one) are used as the original.';
 
 -- Path scheme and image-only for every writer; rows are set once. Security definer: reads the evidence
@@ -74,8 +76,8 @@ begin
     if v_ev.evidence_type is distinct from 'photo' or v_ev.sha256 is null then
         raise exception 'Only images have shrunk copies' using errcode = '22023';
     end if;
-    if new.storage_path <> private.derivative_path(v_ev.case_id, v_ev.sha256, new.width) then
-        raise exception 'The shrunk copy must be stored at %', private.derivative_path(v_ev.case_id, v_ev.sha256, new.width)
+    if new.storage_path <> private.derivative_path(v_ev.case_id, v_ev.sha256, new.width, new.sha256) then
+        raise exception 'The shrunk copy must be stored at %', private.derivative_path(v_ev.case_id, v_ev.sha256, new.width, new.sha256)
             using errcode = '22023';
     end if;
     return new;
@@ -89,6 +91,18 @@ create policy p_derivatives_staff_r on public.evidence_derivatives for select to
     using (public.is_staff() and private.can_manage_evidence(evidence_id));
 revoke all on public.evidence_derivatives from anon, authenticated;
 grant select on public.evidence_derivatives to authenticated;
+
+-- One rule for recording a copy and for presigning its upload (evidence-upload, device_derivative_target):
+-- the operator still sees the case, or is inside the D43 late window of a task they held there.
+create or replace function private.field_derivative_access(p_case_id uuid, p_uid uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+    select private.field_can_see_case(p_case_id)
+           or exists (select 1 from public.task_holds h join public.tasks t on t.id = h.task_id
+                       where t.case_id = p_case_id and h.profile_id = p_uid
+                         and (h.held_until is null
+                              or now() <= h.held_until + make_interval(hours => private.setting_int('late_upload_grace_hours', 72))));
+$$;
+revoke all on function private.field_derivative_access(uuid, uuid) from public, anon, authenticated;
 
 -- Field app: records a shrunk copy (384 or 1600) it made of its own photo and uploaded next to the
 -- original. The photo (case_id, sha256) must exist, be captured by the caller, be an image and not
@@ -118,8 +132,8 @@ begin
        or p_sha256 is null or p_sha256 !~ '^[0-9a-f]{64}$' then
         raise exception 'SHA-256 values must be 64 lower-case hex characters' using errcode = '22023';
     end if;
-    if p_storage_path is null or p_storage_path <> private.derivative_path(p_case_id, p_original_sha256, p_width) then
-        raise exception 'The shrunk copy must be stored at %', private.derivative_path(p_case_id, p_original_sha256, p_width)
+    if p_storage_path is null or p_storage_path <> private.derivative_path(p_case_id, p_original_sha256, p_width, p_sha256) then
+        raise exception 'The shrunk copy must be stored at %', private.derivative_path(p_case_id, p_original_sha256, p_width, p_sha256)
             using errcode = '22023';
     end if;
     if p_size_bytes <= 0 or p_pixel_width <= 0 or p_pixel_height <= 0 then
@@ -135,11 +149,7 @@ begin
     if v_ev.withdrawn_at is not null then
         raise exception 'This photo was withdrawn' using errcode = '55000';
     end if;
-    if not (private.field_can_see_case(p_case_id)
-            or exists (select 1 from public.task_holds h join public.tasks t on t.id = h.task_id
-                        where t.case_id = p_case_id and h.profile_id = v_uid
-                          and (h.held_until is null
-                               or now() <= h.held_until + make_interval(hours => private.setting_int('late_upload_grace_hours', 72))))) then
+    if not private.field_derivative_access(p_case_id, v_uid) then
         raise exception 'You no longer work on this case' using errcode = '42501';
     end if;
 

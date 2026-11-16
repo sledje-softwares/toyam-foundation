@@ -6,7 +6,7 @@
 -- version. Self-contained; rolled back at the end.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(111);
+select plan(112);
 
 -- ---------------------------------------------------------------------
 -- Fixture: a1 admin, c1 orchestrator, b1 office (owns R1–R6), b2 office (owns R7), f1 / f2 field.
@@ -97,9 +97,9 @@ update public.tasks set assignee_id = '23000000-0000-4000-8000-0000000000f2' whe
 
 create temp table tok (k text primary key, v text) on commit drop;
 grant select, insert, update on tok to authenticated;
-create function pg_temp.dpath(p_case text, p_k text, p_w int) returns text language sql as $$
-  select 'derived/' || p_case || '/' || (select sha from ev where k = p_k) || '/w' || p_w || '.jpg' $$;
-grant execute on function pg_temp.dpath(text, text, int) to authenticated, service_role;
+create function pg_temp.dpath(p_case text, p_k text, p_w int, p_copy text default 'd') returns text language sql as $$
+  select 'derived/' || p_case || '/' || (select sha from ev where k = p_k) || '/w' || p_w || '-' || repeat(p_copy, 64) || '.jpg' $$;
+grant execute on function pg_temp.dpath(text, text, int, text) to authenticated, service_role;
 create function pg_temp.files(p_case text, p_report text, p_formats text[], p_size int default 1234) returns jsonb language sql as $$
   select jsonb_agg(jsonb_build_object('format', f, 'storage_path', p_case || '/' || p_report || '/report.' || f,
                                       'sha256', repeat('c', 64), 'size_bytes', p_size)) from unnest(p_formats) f $$;
@@ -123,40 +123,43 @@ select ok(not has_function_privilege('anon', 'public.create_report_version(uuid,
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"23000000-0000-4000-8000-0000000000f1","role":"authenticated"}';
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 800,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 800), repeat('d', 64), 1000, 800, 600)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 800, 'd'), repeat('d', 64), 1000, 800, 600)$$,
                  '22023', null, 'device: only 384 or 1600');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
                    'derived/elsewhere/w1600.jpg', repeat('d', 64), 1000, 1600, 1200)$$,
                  '22023', null, 'device: the path must follow the scheme');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600), 'NOT-HEX', 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'), 'NOT-HEX', 1000, 1600, 1200)$$,
                  '22023', null, 'device: the copy needs a SHA-256');
 select is((public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
-           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600), repeat('d', 64), 250000, 1600, 1200)) ->> 'recorded',
+           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'), repeat('d', 64), 250000, 1600, 1200)) ->> 'recorded',
           'true', 'device: the operator records the 1600 copy of their photo');
 select is((public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 384,
-           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 384), repeat('e', 64), 30000, 384, 288)) ->> 'recorded',
+           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 384, 'e'), repeat('e', 64), 30000, 384, 288)) ->> 'recorded',
           'true', 'device: and the 384 copy');
 select is((public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
-           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600), repeat('d', 64), 250000, 1600, 1200)) ->> 'recorded',
+           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'), repeat('d', 64), 250000, 1600, 1200)) ->> 'recorded',
           'false', 'device: the same call again is accepted and changes nothing');
 select is((public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
-           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600), repeat('f', 64), 260000, 1600, 1200)) ->> 'sha256',
+           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'f'), repeat('f', 64), 260000, 1600, 1200)) ->> 'sha256',
           repeat('d', 64), 'device: a recorded copy is never replaced (returns the stored one)');
+select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e2'), 384,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 384, 'd'), repeat('e', 64), 1000, 384, 288)$$,
+                 '22023', null, 'device: the key carries the hash of the copy (another hash, another key)');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e5'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e5', 1600), repeat('d', 64), 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e5', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,
                  '22023', null, 'device: documents have no shrunk copies');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e6'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e6', 1600), repeat('d', 64), 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e6', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,
                  '55000', null, 'device: a withdrawn photo gets no copy');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e9'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600), repeat('d', 64), 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,
                  'P0002', null, 'device: only for photos the operator captured');
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', repeat('0', 64), 1600,
-                   'derived/23300000-0000-4000-8000-000000000001/' || repeat('0', 64) || '/w1600.jpg', repeat('d', 64), 1000, 1600, 1200)$$,
+                   'derived/23300000-0000-4000-8000-000000000001/' || repeat('0', 64) || '/w1600-' || repeat('d', 64) || '.jpg', repeat('d', 64), 1000, 1600, 1200)$$,
                  'P0002', null, 'device: unknown original');
 select is((public.record_device_derivative('23300000-0000-4000-8000-000000000006', (select sha from ev where k = 'e61'), 1600,
-           pg_temp.dpath('23300000-0000-4000-8000-000000000006', 'e61', 1600), repeat('d', 64), 1000, 1600, 1200)) ->> 'recorded',
+           pg_temp.dpath('23300000-0000-4000-8000-000000000006', 'e61', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)) ->> 'recorded',
           'true', 'device: allowed in the late window after the task moved to someone else (D43)');
 reset role;
 update public.task_holds set held_from = now() - interval '200 hours', held_until = now() - interval '100 hours'
@@ -164,23 +167,23 @@ update public.task_holds set held_from = now() - interval '200 hours', held_unti
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"23000000-0000-4000-8000-0000000000f1","role":"authenticated"}';
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000006', (select sha from ev where k = 'e61'), 384,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000006', 'e61', 384), repeat('d', 64), 1000, 384, 288)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000006', 'e61', 384, 'd'), repeat('d', 64), 1000, 384, 288)$$,
                  '42501', null, 'device: refused once the late window has passed');
 select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, storage_path, sha256)
                    values ('23800000-0000-4000-8000-000000000002', 1600,
-                           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 1600), repeat('d', 64))$$,
+                           pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 1600, 'd'), repeat('d', 64))$$,
                  '42501', null, 'device: no direct insert');
 select is((select count(*)::int from public.evidence_derivatives), 0, 'field users read no copies');
 set local request.jwt.claims to '{"sub":"23000000-0000-4000-8000-0000000000f2","role":"authenticated"}';
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600), repeat('d', 64), 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,
                  'P0002', null, 'device: another operator cannot record copies of f1''s photo');
 set local request.jwt.claims to '{"sub":"23000000-0000-4000-8000-0000000000b1","role":"authenticated"}';
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e9'), 1600,
-                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600), repeat('d', 64), 1000, 1600, 1200)$$,
+                   pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,
                  '42501', null, 'device: staff do not record device copies');
 select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, storage_path, sha256)
-                   values ('23800000-0000-4000-8000-000000000009', 1600, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600), repeat('d', 64))$$,
+                   values ('23800000-0000-4000-8000-000000000009', 1600, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e9', 1600, 'd'), repeat('d', 64))$$,
                  '42501', null, 'staff: no direct insert');
 select throws_ok($$update public.evidence_derivatives set sha256 = repeat('0', 64)$$, '42501', null, 'staff: no direct update');
 
@@ -197,10 +200,10 @@ select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, 
                    values ('23800000-0000-4000-8000-000000000002', 1600, 'derived/wrong.jpg', repeat('d', 64))$$,
                  '22023', null, 'trigger: the path scheme holds for every writer');
 select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, storage_path, sha256)
-                   values ('23800000-0000-4000-8000-000000000005', 1600, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e5', 1600), repeat('d', 64))$$,
+                   values ('23800000-0000-4000-8000-000000000005', 1600, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e5', 1600, 'd'), repeat('d', 64))$$,
                  '22023', null, 'trigger: documents have no copies');
 select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, storage_path, sha256)
-                   values ('23800000-0000-4000-8000-000000000002', 800, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 800), repeat('d', 64))$$,
+                   values ('23800000-0000-4000-8000-000000000002', 800, pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 800, 'd'), repeat('d', 64))$$,
                  '23514', null, 'check: width 384 or 1600');
 
 -- staff read on the cases they manage only
@@ -246,7 +249,7 @@ select is((select jsonb_path_query_array(j, '$.photos[*].position') from prep), 
 select is((select j #>> '{photos,3,caption}' from prep), 'Driving licence front', 'prepare: caption from the label description');
 select is((select j #>> '{photos,0,caption}' from prep), 'Vehicle photo', 'prepare: else the category name');
 select is((select jsonb_path_query_array(j, '$.photos[0].derivatives[*].width') from prep), '[384, 1600]'::jsonb, 'prepare: derivatives of each photo');
-select is((select j #>> '{photos,0,derivatives,1,storage_path}' from prep), pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600),
+select is((select j #>> '{photos,0,derivatives,1,storage_path}' from prep), pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'),
           'prepare: derivative path');
 select is((select j #>> '{photos,0,storage_path}' || '|' || (j #>> '{photos,0,storage_backend}') || '|' || (j #>> '{photos,0,mime_type}') from prep),
           (select storage_path || '|r2|image/jpeg' from public.evidence where id = '23800000-0000-4000-8000-000000000001'),

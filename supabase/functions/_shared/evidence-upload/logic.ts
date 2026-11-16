@@ -70,10 +70,23 @@ export interface UploadFile {
   ext: string;
   device_captured_at: string;
 }
+/** A shrunk JPEG copy of an image the same user uploaded (D51). */
+export interface DerivativeFile {
+  original_sha256: string;
+  width: 384 | 1600;
+  sha256: string;
+  size: number;
+}
+export const DERIVATIVE_WIDTHS: readonly number[] = [384, 1600];
+export const MAX_DERIVATIVES = 60;
+/** Largest accepted copy (a 1600 px JPEG at quality 0.8 is well below this). */
+export const MAX_DERIVATIVE_BYTES = 3 * MB;
+
 export interface UploadRequest {
   task_id: string;
   case_id: string;
   files: UploadFile[];
+  derivatives: DerivativeFile[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -94,8 +107,17 @@ export function parseRequest(body: unknown): Parsed {
   const b = body as Record<string, unknown>;
   if (typeof b.task_id !== 'string' || !UUID.test(b.task_id)) return bad('task_id', 'task_id must be a UUID.');
   if (typeof b.case_id !== 'string' || !UUID.test(b.case_id)) return bad('case_id', 'case_id must be a UUID.');
-  if (!Array.isArray(b.files) || b.files.length === 0 || b.files.length > MAX_FILES) {
-    return bad('files', `files must hold 1-${MAX_FILES} entries.`);
+  const rawDerivs = b.derivatives === undefined ? [] : b.derivatives;
+  if (!Array.isArray(rawDerivs) || rawDerivs.length > MAX_DERIVATIVES) {
+    return bad('derivatives', `derivatives must hold 0-${MAX_DERIVATIVES} entries.`);
+  }
+  // files may be empty only when copies are sent on their own (after the message is posted)
+  const minFiles = rawDerivs.length > 0 ? 0 : 1;
+  if (!Array.isArray(b.files) || b.files.length < minFiles || b.files.length > MAX_FILES) {
+    return bad('files', `files must hold ${minFiles}-${MAX_FILES} entries.`);
+  }
+  if (rawDerivs.length > 0 && b.files.length > 0) {
+    return bad('derivatives', 'Send copies in their own request, after the files.');
   }
   const files: UploadFile[] = [];
   const seen = new Set<string>();
@@ -122,7 +144,32 @@ export function parseRequest(body: unknown): Parsed {
     }
     files.push({ sha256: f.sha256, size: f.size, mime, ext, device_captured_at: t });
   }
-  return { ok: true, value: { task_id: b.task_id.toLowerCase(), case_id: b.case_id.toLowerCase(), files } };
+  const derivatives: DerivativeFile[] = [];
+  const seenD = new Set<string>();
+  const originals = new Set<string>();
+  for (let i = 0; i < rawDerivs.length; i++) {
+    const d = rawDerivs[i] as Record<string, unknown>;
+    const at = `derivatives[${i}]`;
+    if (typeof d !== 'object' || d === null || Array.isArray(d)) return bad(at, 'Each copy must be an object.');
+    if (typeof d.original_sha256 !== 'string' || !HEX64.test(d.original_sha256)) {
+      return bad(`${at}.original_sha256`, 'original_sha256 must be 64 lower-case hex characters.');
+    }
+    if (typeof d.width !== 'number' || !DERIVATIVE_WIDTHS.includes(d.width)) return bad(`${at}.width`, 'width must be 384 or 1600.');
+    if (typeof d.sha256 !== 'string' || !HEX64.test(d.sha256)) return bad(`${at}.sha256`, 'sha256 must be 64 lower-case hex characters.');
+    if (typeof d.size !== 'number' || !Number.isInteger(d.size) || d.size <= 0) {
+      return bad(`${at}.size`, 'size must be a positive whole number of bytes.');
+    }
+    if (d.size > MAX_DERIVATIVE_BYTES) {
+      return bad(`${at}.size`, `A copy is larger than ${MAX_DERIVATIVE_BYTES / MB} MB.`, 413, 'file_too_large');
+    }
+    const key = `${d.original_sha256}/${d.width}`;
+    if (seenD.has(key)) return bad(at, 'The same copy is listed twice.');
+    seenD.add(key);
+    originals.add(d.original_sha256);
+    derivatives.push({ original_sha256: d.original_sha256, width: d.width as 384 | 1600, sha256: d.sha256, size: d.size });
+  }
+  if (originals.size > MAX_FILES) return bad('derivatives', `Copies of at most ${MAX_FILES} photos per request.`);
+  return { ok: true, value: { task_id: b.task_id.toLowerCase(), case_id: b.case_id.toLowerCase(), files, derivatives } };
 }
 
 /** PostgREST error from an rpc call made with the caller's JWT. */
