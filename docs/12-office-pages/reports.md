@@ -74,7 +74,7 @@ IGI General · Claim CL/77/2026 · IGI Motor OD v3 · Owner N Office · Due 18 N
 | Panel | Source |
 |---|---|
 | Header | `cases` + `insurers` + owner `profiles` + `case_templates` (name, version, `is_active`, `requires_approval`, `output_formats`); last `submissions` row |
-| Versions and approval | `reports` (version, origin, created) + `report_files` (format, size) + `report_approvals` (requester / decider names); `approvalModel()` decides what is offered |
+| Versions and approval | `reports` (version, origin, created, `field_values` snapshot) + `report_files` (format, size) + `report_approvals` (requester / decider names); `approvalModel()` decides what is offered |
 | Sections | `case_template_sections`, `case_template_fields` of the case's template version, `case_field_values` (value, source, updated_at) → `buildWorkspace()`; focus = `?section=` else first section with a required gap |
 | Field controls | by `template_field_type`: text, long_text (textarea), number / currency (normalised, `₹` and commas removed), date (stored `yyyy-mm-dd`, dd/mm/yyyy accepted), datetime (`yyyy-mm-ddThh:mm`), choice / boolean (select; boolean stored `Yes` / `No`), multi_choice (checkboxes; JSON array). A stored value the native input cannot show is rendered as text so nothing is lost |
 | Source badge | `case_field_values.source`: From email / Entered / Suggestion / AI |
@@ -101,6 +101,53 @@ The form posts every rendered field (`p:` present, `f:` value, `o:` value as loa
 **Claim and policy number (G6).** `insurer_claim_no` and `policy_no` are editable in the workspace; trigger `case_field_values_sync_case` copies them onto `cases` (the claim no. is the key follow-up mail is matched on, so a wrong parse must be correctable). A claim no. already used by another case of the same insurer is refused (`23505`, "Another case of this insurer already has claim number …", shown under the field); the claim no. cannot be cleared (`23514`, also checked in the form). Clients can no longer change those two case columns directly when the template carries the field (`cases_mirror_guard`). Chosen over read-only fields because only the workspace shows the source email beside the value, and keeping the case copy in step in the database covers every writer.
 
 **Approval request (G5).** `report_approvals_guard` on insert: caller must pass `can_manage_case` (system jobs without a user are allowed); case in `assigned` (desk-only case) or `office_review`, with no open task (`Field work is still open`, `55000`); every required field of the template filled (`23514`, "2 required fields are empty: Insured name, Odometer"). The UI shows the same reasons on the disabled button (`approvalModel`).
+
+## Generating a version (7.7, D51)
+
+The edge function `report-generate` runs with the staff user's JWT: (1) `prepare_report_version(p_case_id)`, (2) renders the insurer layout as PDF and/or DOCX, using the 1600 px copy (`evidence_derivatives`, made by the field app) of each chosen photo, or the original when there is none (insurer attachments, a phone that failed to make one), (3) picks `report_id` (uuid v4) and uploads `{case_id}/{report_id}/report.pdf` / `.docx` to bucket `reports` (no upsert), (4) `create_report_version(...)`. A changed value between (1) and (4) fails with `RV409`: prepare again and regenerate. Both functions refuse a case outside the editable statuses (`55000`) exactly like saving values.
+
+`prepare_report_version(p_case_id uuid) returns jsonb`:
+
+```json
+{
+  "prepared_at": "timestamptz", "prepared_by": {"id": "uuid", "name": "text"},
+  "case": {"id", "case_ref", "status", "claim_type", "insurer_claim_no", "policy_no", "claim_amount", "incident_date",
+           "received_at", "due_at", "created_at",
+           "insurer": {"id", "code", "name"},
+           "office_owner": {"id", "name"} | null, "orchestrator": {"id", "name"} | null},
+  "template": {"id", "key", "name", "version", "variant", "claim_type", "requires_approval",
+               "output_formats": ["pdf", "docx"], "default_output_format", "docx_template_path"},
+  "report_layout": {} | null,
+  "values_token": "v1:<md5>",
+  "next_version": 1,
+  "latest_version": {"report_id", "version", "origin", "created_at", "values_token"} | null,
+  "sections": [{"key", "title", "position", "guidance",
+                "categories": [{"code", "name", "position"}],
+                "fields": [{"key", "label", "type", "required", "options", "help_text", "position",
+                            "field_source": "intake|office",
+                            "value": "text|null", "source": "email_parser|llm|office|suggestion|null", "updated_at"}]}],
+  "photos": [{"evidence_id", "section_key", "position", "caption", "category_code", "category_name", "label_description",
+              <file>}],
+  "unplaced_photos": [{"evidence_id", <file>}],
+  "annexure_files": [{"evidence_id", "section_key|null", "category_code|null", "category_name|null", <file>}]
+}
+<file> = "evidence_type", "mime_type", "original_filename", "capture_source", "storage_backend", "storage_path", "sha256",
+         "size_bytes", "server_received_at", "device_captured_at", "latitude", "longitude", "relevance",
+         "labels": ["<category code>"],
+         "derivatives": [{"width": 384|1600, "storage_path", "sha256", "size_bytes", "pixel_width", "pixel_height"}]   (empty when the phone made none)
+```
+
+`template.key` is the config file name (`icl-motor-od`), else `<insurer code>-<claim type>-<variant>` in lower case. Values follow O1 (boolean `Yes` / `No`, multi_choice a JSON array string). **Default photo selection:** image (`photo`) evidence of the case, not withdrawn, relevance not `not_relevant`, placed in the first section (by position) whose categories contain one of its active labels; within a section ordered by that category's position, then `server_received_at`; `position` 1, 2, … per section; caption = the label's description if any, else the category name. Images with no matching label are `unplaced_photos`; documents, audio and video are `annexure_files` (same placement for `section_key`).
+
+`create_report_version(p_case_id uuid, p_report_id uuid, p_values_token text, p_files jsonb, p_photos jsonb, p_notes text default null) returns jsonb`:
+
+```json
+p_files:  [{"format": "pdf", "storage_path": "{case_id}/{report_id}/report.pdf", "sha256": "<64 hex>", "size_bytes": 123456}]
+p_photos: [{"evidence_id": "uuid", "section_key": "vehicle", "position": 1, "caption": "text (optional, ≤ 500)"}]
+returns   {"report_id": "uuid", "version": 2, "created": true}
+```
+
+Files: 1–2, distinct formats the template allows, exact path, the object must exist in `reports` with that size. Photos: ≤ 500, each once, image or document of the case, not withdrawn / not relevant, `section_key` a section of the template, `position` integer ≥ 1 and unique per section. Notes ≤ 2000. Errcodes: `42501` not allowed, `P0002` case not found, `55000` status, `RV409` values changed, `22023` invalid input, `23505` the report id belongs to another case. Calling again with a recorded `report_id` returns `created: false` (safe retry). The version is `origin = generated`, `storage_path` the PDF (else the DOCX), `uploaded_by` the caller; audit `REPORT_GENERATED`; staff-only thread event "Report version n generated by …". Generated versions, their files and annexures cannot be changed or deleted through the API.
 
 ### Empty and error states
 
@@ -143,18 +190,23 @@ Empty: "Nothing sent yet". Errors from actions come back as a flash message on t
 
 | # | Gap |
 |---|---|
-| G1 | Nothing creates `reports` versions yet (generator 7.7), so approval request and sending cannot be exercised end to end |
-| G2 | Versions do not snapshot the field values they were generated from; an approved version and the current values can only be compared once 7.7 stores them |
 | — | A new task on an `orchestrator_review` case moves it to field work while an approval may be pending |
 
 G9 (self-approval) is closed by D47 (`20261115900000_submitted_case_rules`): orchestrators and admins approve their own reports in one step (`approve_own_report`); office reports still need an orchestrator's or admin's decision; no four-eyes rule. Re-investigation on a submitted case is closed by D46 (same migration): no field work on a submitted case until it is reopened from Submissions on the insurer's request.
 
 G3 (staff view of R2 files) is closed by the `evidence-view` function.
 
+G1 (nothing creates versions) and G2 (no value snapshot per version) are closed by `20261117000000_report_versions` (pgTAP `23_report_versions`): `prepare_report_version` / `create_report_version` below; each generated version keeps the field values it was made from in `reports.field_values` and its `values_token`.
+
+## Answered
+
+| # | Answer |
+|---|---|
+| O1 | Kept (D51): boolean values are stored as `Yes` / `No`, multi_choice as a JSON array of strings (e.g. `["Front","Rear"]`). The generator, the intake parser and the workspace rely on these forms |
+
 ## Open questions
 
 | # | Question |
 |---|---|
-| O1 | Storage format for multi_choice (JSON array of strings today) and boolean (`Yes` / `No` today): confirm before the generator (7.7) and the intake parser rely on them, or switch to `true` / `false` and a delimiter list |
 | O3 | Should "Record portal / other submission" also accept emails sent outside the system until the sender (8.2) is built? |
 | O4 | Does reopening require a new approval even when only the insurer's query is answered without changing the report? (Today: yes, the case returns to office review.) |

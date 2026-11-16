@@ -306,7 +306,8 @@ select is((select status::text from public.cases where id = '37000000-0000-4000-
           'all field work done: case moves to office review');
 insert into public.reports (id, case_id, version, storage_path, uploaded_by, origin)
 values ('57000000-0000-4000-8000-000000000001', '37000000-0000-4000-8000-000000000001', 1,
-        'cases/37000000-0000-4000-8000-000000000001/report-v1.pdf', '17000000-0000-4000-8000-0000000000b1', 'generated');
+        'cases/37000000-0000-4000-8000-000000000001/report-v1.pdf', '17000000-0000-4000-8000-0000000000b1', 'uploaded');
+-- (an uploaded version: generated versions are recorded only by create_report_version, 20261117000000)
 select throws_ok($$insert into public.report_annexures (report_id, evidence_id, position)
                    values ('57000000-0000-4000-8000-000000000001', (select id from public.evidence where sha256 = repeat('a1', 32)), 1)$$,
     '23514', null::text, 'withdrawn evidence cannot be annexed');
