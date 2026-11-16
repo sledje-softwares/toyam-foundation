@@ -68,10 +68,12 @@ end $$;
 comment on function private.filename_label_variants(text) is
     'Normalised variants of a file name for filename_patterns matching (extension, (n) counters and identifier tokens removed).';
 
--- Categories whose filename_patterns match a file name. An invalid regex is skipped with a warning.
+-- Categories whose filename_patterns match a file name (each once). Invalid regexes are skipped with a warning.
+-- Patterns are written PCRE/JS style in config; \b is translated to PostgreSQL's \y. _categories.yaml uses no
+-- other PCRE-only syntax (no lookarounds; \d, \s, \w are valid in PostgreSQL).
 create or replace function private.match_filename_categories(p_name text) returns setof uuid
 language plpgsql stable set search_path = '' as $$
-declare v_variants text[] := private.filename_label_variants(p_name); c record; p text; v_hit boolean;
+declare v_variants text[] := private.filename_label_variants(p_name); c record; p text; v_hit boolean; v_seen uuid[] := '{}';
 begin
     if coalesce(array_length(v_variants, 1), 0) = 0 or v_variants[1] = '' then return; end if;
     for c in select ec.id, ec.code, ec.filename_patterns from public.evidence_categories ec
@@ -79,12 +81,14 @@ begin
         v_hit := false;
         foreach p in array c.filename_patterns loop
             begin
+                -- config patterns are JS/PCRE style; PostgreSQL's \b is a backspace, its word boundary is \y
+                p := replace(p, '\b', '\y');
                 if exists (select 1 from unnest(v_variants) v where v ~* p) then v_hit := true; exit; end if;
             exception when others then
                 raise warning 'filename_patterns of category % skipped: %', c.code, sqlerrm;
             end;
         end loop;
-        if v_hit then return next c.id; end if;
+        if v_hit and not (c.id = any (v_seen)) then v_seen := v_seen || c.id; return next c.id; end if;
     end loop;
 end $$;
 

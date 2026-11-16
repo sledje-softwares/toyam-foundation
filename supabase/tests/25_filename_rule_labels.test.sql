@@ -1,7 +1,7 @@
 -- Piece H: insurer attachments are labelled from their file names when the evidence row is inserted.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(36);
 
 insert into auth.users (instance_id, id, aud, role, email, phone, raw_app_meta_data, raw_user_meta_data)
 values
@@ -28,6 +28,7 @@ select public.load_evidence_categories($j$[
  {"code":"policy_document","name":"Policy copy","default_evidence_type":"document","filename_patterns":["policy"]},
  {"code":"claim_form","name":"Claim form","default_evidence_type":"document","filename_patterns":["eclaim","claim form","intimation"]},
  {"code":"estimate","name":"Repair estimate","default_evidence_type":"document","filename_patterns":["estimate","quotation"]},
+ {"code":"proof_of_dispatch","name":"POD","default_evidence_type":"document","filename_patterns":["\\bpod\\b","dispatch","speed ?post"]},
  {"code":"id_document","name":"Identity document","default_evidence_type":"document","filename_patterns":["aadhaar","aadhar","\\bpan\\b","aml documents","kyc","voter"]}]$j$::jsonb);
 
 -- One evidence row per call. Email attachments get an email_attachments row first (the evidence link is required).
@@ -51,7 +52,7 @@ begin
     return v_id;
 end $$;
 create function pg_temp.codes(p_prefix text) returns text language sql as $$
-    select coalesce(string_agg(c.code, ',' order by c.code), '')
+    select coalesce(string_agg(distinct c.code, ',' order by c.code), '')
       from public.evidence e
       join public.evidence_labels l on l.evidence_id = e.id and l.is_active and l.source = 'filename_rule'
       join public.evidence_categories c on c.id = l.category_id
@@ -70,7 +71,8 @@ select pg_temp.add_file(n, i) from (values
   ('ESTIMATE(1)_1699999999_123465_MOT00000001_17-11-2026.jpg', 10),
   ('ECLAIM_MOT00000001_123456789.PDF', 11),
   ('image001.png', 12),
-  ('Policy and RC.pdf', 13)) v(n, i);
+  ('Policy and RC.pdf', 13),
+  ('RC.pdf', 17), ('DL extract.pdf', 18), ('POD.pdf', 19), ('ARCADE.jpg', 20), ('Gym.jpg', 21)) v(n, i);
 
 -- A. each sample name maps to its category
 select is(pg_temp.codes('Front View'), 'vehicle_photo', 'Front View -> vehicle_photo');
@@ -86,6 +88,13 @@ select is(pg_temp.codes('ESTIMATE'), 'estimate', 'ESTIMATE -> estimate');
 select is(pg_temp.codes('ECLAIM'), 'claim_form', 'ECLAIM pdf -> claim_form');
 select is(pg_temp.codes('image001'), '', 'unmatched name gets no label');
 select is(pg_temp.codes('Policy and RC'), 'policy_document,rc_document', 'several categories can match');
+
+select is(pg_temp.codes('RC.pdf'), 'rc_document', 'RC.pdf matches \brc\b (translated to \y)');
+select is(pg_temp.codes('DL extract'), 'dl_document', 'DL extract.pdf -> dl_document');
+select is(pg_temp.codes('POD.pdf'), 'proof_of_dispatch', 'POD.pdf -> proof_of_dispatch');
+select is(pg_temp.codes('ARCADE'), '', 'ARCADE.jpg does not hit rc by accident');
+select is(pg_temp.codes('Odometer('), 'odometer_photo', 'Odometer does not hit pod or rc');
+select is(pg_temp.codes('Gym'), '', 'unrelated name stays unlabelled');
 
 -- B. the LLM label job is skipped for rule-labelled files only
 select is((select j.status::text from public.processing_jobs j join public.evidence e on e.id = j.evidence_id
