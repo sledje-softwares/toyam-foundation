@@ -43,10 +43,38 @@ export function imageSize(b: Uint8Array): { width: number; height: number } | nu
   return null;
 }
 
+// Table-driven base64 (12 bits → two output bytes per lookup). About 7x less CPU than
+// String.fromCharCode + btoa, which matters inside the edge function's 2 s CPU limit
+// (30 photos of 500 kB: ~220 ms instead of ~2 s, measured in report-generate-cpu.test.ts).
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const B64_1 = new Uint8Array(64).map((_, i) => B64.charCodeAt(i));
+const LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+const B64_2 = new Uint16Array(4096).map((_, i) =>
+  LITTLE_ENDIAN ? B64_1[i >> 6] | (B64_1[i & 63] << 8) : (B64_1[i >> 6] << 8) | B64_1[i & 63]);
+const ascii = new TextDecoder();
+
 export function toBase64(b: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
-  return btoa(s);
+  const n = b.length;
+  const out = new Uint8Array(Math.ceil(n / 3) * 4);
+  const o16 = new Uint16Array(out.buffer);
+  const whole = n - (n % 3);
+  let o = 0;
+  let i = 0;
+  for (; i < whole; i += 3) {
+    const x = (b[i] << 16) | (b[i + 1] << 8) | b[i + 2];
+    o16[o++] = B64_2[x >>> 12];
+    o16[o++] = B64_2[x & 4095];
+  }
+  if (i < n) {
+    const two = i + 1 < n;
+    const x = (b[i] << 16) | ((two ? b[i + 1] : 0) << 8);
+    let k = o * 2;
+    out[k++] = B64_1[x >>> 18];
+    out[k++] = B64_1[(x >>> 12) & 63];
+    out[k++] = two ? B64_1[(x >>> 6) & 63] : 61; // '='
+    out[k] = 61;
+  }
+  return ascii.decode(out);
 }
 
 export function fromBase64(s: string): Uint8Array {
