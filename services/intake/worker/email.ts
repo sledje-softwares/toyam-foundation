@@ -37,8 +37,14 @@ async function bytesOf(raw: InboundEmail['raw']): Promise<Uint8Array> {
 
 /** Gmail's "confirm forwarding" mail: surface the code / link in the logs, never relay it. */
 export function confirmationDetails(text: string): { code: string | null; link: string | null } {
-  const code = /confirmation code:\s*(\d{6,12})/i.exec(text)?.[1] ?? null;
-  const link = /(https:\/\/mail(?:-settings)?\.google\.com\/mail\/[^\s"'<>]+)/i.exec(text)?.[1]?.replace(/=\r?\n/g, '') ?? null;
+  // The body is usually quoted-printable and/or HTML: undo soft line breaks and =XX escapes, drop tags.
+  const decoded = text
+    .replace(/=\r?\n/g, '')
+    .replace(/=([0-9A-F]{2})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+  const plain = decoded.replace(/<[^>]*>/g, ' ');
+  const code = /^Subject:[^\r\n]*\(#(\d{6,12})\)/im.exec(text)?.[1]      // "(#123456789) Gmail Forwarding Confirmation"
+    ?? /confirmation code\W{0,20}(\d{6,12})/i.exec(plain)?.[1] ?? null;
+  const link = /(https:\/\/mail(?:-settings)?\.google\.com\/mail\/[^\s"'<>]+)/i.exec(decoded)?.[1] ?? null;   // before tags go (href)
   return { code, link };
 }
 

@@ -103,6 +103,50 @@ describe('IMAP client', () => {
     assert.ok(g.log.some((l) => /BODY\.PEEK\[\]/.test(l)));
     await c.logout();
   });
+  // Server output pre-scripted for the deterministic tags A0001 (LOGIN), A0002 (FETCH), split into
+  // fixed-size chunks so lines, CRLFs and literals straddle chunk boundaries.
+  function chunkedServer(message: Uint8Array, chunk: number) {
+    const head = enc(`* OK Gimap ready\r\nA0001 OK authenticated\r\n* 1 FETCH (X-GM-THRID 11 X-GM-MSGID 12 UID 9 BODY[] {${message.length}}\r\n`);
+    const tail = enc(')\r\nA0002 OK Success\r\n');
+    const all = new Uint8Array(head.length + message.length + tail.length);
+    all.set(head); all.set(message, head.length); all.set(tail, head.length + message.length);
+    let pos = 0;
+    let reads = 0;
+    const readable = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (pos >= all.length) { c.close(); return; }
+        c.enqueue(all.slice(pos, pos + chunk)); pos += chunk; reads++;
+      },
+    });
+    const writable = new WritableStream<Uint8Array>({ write() { /* commands ignored */ } });
+    return { io: { readable, writable }, reads: () => reads };
+  }
+  it('reassembles lines and literals split across 1-byte chunks', async () => {
+    const s = chunkedServer(m1.raw, 1);
+    const c = new ImapClient(s.io);
+    await c.greeting();
+    await c.login('u', 'app-pass');
+    const f = await c.fetchMessage(9);
+    assert.ok(f);
+    assert.deepEqual(f.raw, m1.raw);
+    assert.equal(f.gmailThreadId, '11');
+  });
+  it('reads a 15 MB message in 16 KB chunks in linear time', async () => {
+    const big = new Uint8Array(15 * 1024 * 1024);
+    for (let i = 0; i < big.length; i++) big[i] = i % 78 === 76 ? 13 : i % 78 === 77 ? 10 : 65 + (i % 26);
+    const s = chunkedServer(big, 16 * 1024);
+    const c = new ImapClient(s.io);
+    await c.greeting();
+    await c.login('u', 'app-pass');
+    const t0 = performance.now();
+    const f = await c.fetchMessage(9);
+    const ms = performance.now() - t0;
+    assert.ok(f);
+    assert.equal(f.raw.length, big.length);
+    assert.deepEqual(f.raw.subarray(big.length - 100), big.subarray(big.length - 100));
+    assert.ok(s.reads() > 900);
+    assert.ok(ms < 400, `fetch took ${ms.toFixed(0)} ms`);   // linear: ~40 ms; the old copy-everything buffer took ~1.1 s
+  });
   it('quotes passwords and does not leak them in errors', async () => {
     const g = fakeGmail({ uidValidity: 7, uidNext: 1, messages: [], password: 'p"a\\ss' });
     const c = new ImapClient(g.open());

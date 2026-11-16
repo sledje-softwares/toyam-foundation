@@ -73,6 +73,18 @@ describe('push intake (email handler)', () => {
     assert.equal(r.calls.length, 0);
   });
 
+  it('reads the code from the subject and the link from a quoted-printable HTML body', () => {
+    const mail = 'From: forwarding-noreply@google.com\r\nSubject: (#987654321) Gmail Forwarding Confirmation - Receive Mail from x@gmail.com\r\n'
+      + 'Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n'
+      + '<p>Confirmation code: <b>98765=\r\n4321</b></p><a href=3D"https://mail-settings.google.com/mail/vf-%5BAN=\r\nGjdJ%5D-abc">link</a>\r\n';
+    assert.deepEqual(confirmationDetails(mail), { code: '987654321', link: 'https://mail-settings.google.com/mail/vf-%5BANGjdJ%5D-abc' });
+  });
+
+  it('finds the code in a quoted-printable HTML body when the subject has none', () => {
+    const body = 'Subject: Gmail Forwarding Confirmation\r\n\r\n<td>Confirmation code:</td><td><b>1234=\r\n56789</b></td>';
+    assert.equal(confirmationDetails(body).code, '123456789');
+  });
+
   it('confirmationDetails returns nulls on unrelated text', () => {
     assert.deepEqual(confirmationDetails('hello'), { code: null, link: null });
   });

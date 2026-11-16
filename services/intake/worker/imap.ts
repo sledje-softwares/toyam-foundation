@@ -31,7 +31,12 @@ export class ImapClient {
   private io: Duplex;
   private reader: ReadableStreamDefaultReader<Uint8Array>;
   private writer: WritableStreamDefaultWriter<Uint8Array>;
+  // Unread bytes are buf[start, end). The buffer grows by doubling, so reading a message of n bytes
+  // copies O(n) bytes, not O(n²) (the free Workers plan allows 10 ms CPU per invocation).
   private buf = new Uint8Array(0);
+  private start = 0;
+  private end = 0;
+  private scanned = 0;             // bytes after `start` already searched for CRLF
   private tagNo = 0;
 
   constructor(io: Duplex) {
@@ -44,29 +49,45 @@ export class ImapClient {
   private async fill(): Promise<void> {
     const { value, done } = await this.reader.read();
     if (done) throw new ImapError('Connection closed by server');
-    const next = new Uint8Array(this.buf.length + value.length);
-    next.set(this.buf);
-    next.set(value, this.buf.length);
-    this.buf = next;
+    const unread = this.end - this.start;
+    if (this.end + value.length > this.buf.length) {
+      const need = unread + value.length;
+      if (need * 2 <= this.buf.length) {
+        this.buf.copyWithin(0, this.start, this.end);                 // room enough: compact in place
+      } else {
+        const next = new Uint8Array(Math.max(this.buf.length * 2, need * 2, 65536));
+        next.set(this.buf.subarray(this.start, this.end));
+        this.buf = next;
+      }
+      this.start = 0;
+      this.end = unread;
+    }
+    this.buf.set(value, this.end);
+    this.end += value.length;
   }
 
   private indexOfCrlf(): number {
-    for (let i = 0; i + 1 < this.buf.length; i++) if (this.buf[i] === 13 && this.buf[i + 1] === 10) return i;
+    for (let i = this.start + Math.max(this.scanned - 1, 0); i + 1 < this.end; i++) {
+      if (this.buf[i] === 13 && this.buf[i + 1] === 10) return i - this.start;
+    }
+    this.scanned = this.end - this.start;
     return -1;
   }
 
   private async readLine(): Promise<string> {
     let i: number;
     while ((i = this.indexOfCrlf()) < 0) await this.fill();
-    const line = latin1.decode(this.buf.subarray(0, i));
-    this.buf = this.buf.subarray(i + 2);
+    const line = latin1.decode(this.buf.subarray(this.start, this.start + i));
+    this.start += i + 2;
+    this.scanned = 0;
     return line;
   }
 
   private async readBytes(n: number): Promise<Uint8Array> {
-    while (this.buf.length < n) await this.fill();
-    const out = this.buf.slice(0, n);
-    this.buf = this.buf.subarray(n);
+    while (this.end - this.start < n) await this.fill();
+    const out = this.buf.slice(this.start, this.start + n);
+    this.start += n;
+    this.scanned = 0;
     return out;
   }
 
