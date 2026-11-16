@@ -83,6 +83,7 @@ Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, 
 | `field_suggestions` | Proposed field values from OCR with block reference; accepted / rejected |
 | `claim_processing_jobs`, `complete_processing_job`, `enqueue_reprocessing` | Worker API, service role only |
 | `set_evidence_labels(evidence, categories[])` | Office correction → human labels |
+| `private.apply_filename_labels(evidence)`, trigger `trg_evidence_filename_label`, `backfill_filename_labels(limit)` | File-name rule labels for email attachments at arrival (docs/10); backfill is service-role only |
 | `v_evidence_processing`, `v_case_checklist` | Read models for ticks and checklist progress |
 
 ### Approval, sending, notifications
