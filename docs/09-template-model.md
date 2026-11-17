@@ -34,7 +34,8 @@ name: IndusInd (Reliance) — Motor OD investigation
 requires_approval: true           # D23
 output_formats: [pdf, docx]       # allowed at send time (D22)
 default_output_format: pdf
-docx_template_path: report-templates/igi-motor-od.docx
+docx_template_path: report-templates/igi-motor-od.docx   # not used by the generator (D51)
+report_layout: layouts/igi-motor-od.yaml                 # report layout (D51, docs/13-report-layouts.md)
 
 intake_rules:
   sender_domains: [indusindinsurance.com]
@@ -82,6 +83,7 @@ YAML  ──(loader script, M2 2.5)──►  JSON  ──►  public.load_evide
 - The SHA-256 of the JSON is stored; loading identical config is a no-op. Any change creates a new version and (with `activate = true`) makes it the active one.
 - Cases keep the template version they started with, so editing a template never changes a report in progress.
 - Categories are upserted by `code`; never rename a `code` once used.
+- `report_layout` (D51): the loader reads the named file from `config/templates/layouts/`, embeds its asset images, validates it against this template's fields and sections, and sends it inside the JSON; `load_case_template()` stores it in `case_templates.report_layout`. The layout is part of the hashed config, so a layout change is a new version. Format: `docs/13-report-layouts.md`.
 
 ## Checklist and investigation points
 
@@ -94,4 +96,4 @@ YAML  ──(loader script, M2 2.5)──►  JSON  ──►  public.load_evide
 2. Add missing categories to `_categories.yaml` (with file-name / text patterns seen in the samples).
 3. Copy the closest template, adjust `intake_rules` against real subjects, then sections and fields against the report layout.
 4. Load on the local stack; run the intake parser on the samples; fix until required fields fill without review.
-5. Upload the insurer's Word layout to `report-templates` and set `docx_template_path`.
+5. Transcribe the insurer's sample report into `config/templates/layouts/<template>.yaml` (docs/13) and set `report_layout`.

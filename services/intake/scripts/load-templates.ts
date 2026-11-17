@@ -5,8 +5,13 @@
 //
 // Categories are upserted first, then each template is loaded with public.load_case_template();
 // identical configs are no-ops, changed configs become a new active version.
+// A template's report layout (`report_layout: layouts/<x>.yaml`, docs/13-report-layouts.md) is validated, its
+// asset files are embedded, and it is loaded as part of the template JSON: load_case_template() stores it in
+// case_templates.report_layout (migration 20261117400000) and a layout change is a new template version.
 import { basename } from 'node:path';
-import { TEMPLATES_DIR, type TemplateYaml, readYaml, templateFiles, validateTemplate } from '../src/template-config.ts';
+import {
+  TEMPLATES_DIR, type TemplateYaml, readYaml, resolveTemplateLayout, templateFiles, validateTemplate,
+} from '../src/template-config.ts';
 
 interface Category { code: string }
 
@@ -22,11 +27,12 @@ const targets = files.length ? files : templateFiles();
 let failed = false;
 const loaded: Array<{ file: string; config: TemplateYaml }> = [];
 for (const file of targets) {
-  const config = readYaml<TemplateYaml>(file);
-  const errors = validateTemplate(config, codes);
+  const { config, errors: layoutErrors } = resolveTemplateLayout(readYaml<TemplateYaml>(file), file);
+  const errors = [...validateTemplate(config, codes), ...layoutErrors];
   const fields = config.sections.flatMap((s) => s.fields ?? []);
   const intake = fields.filter((f) => f.source === 'intake').length;
-  console.log(`${basename(file)}: ${config.insurer_code}/${config.claim_type}/${config.variant ?? 'general'} — ${config.sections.length} sections, ${fields.length} fields (${intake} intake)`);
+  const layout = config.report_layout ? ', report layout' : ', no report layout';
+  console.log(`${basename(file)}: ${config.insurer_code}/${config.claim_type}/${config.variant ?? 'general'} — ${config.sections.length} sections, ${fields.length} fields (${intake} intake)${layout}`);
   for (const e of errors) console.log(`  ✖ ${e}`);
   if (errors.length) failed = true;
   loaded.push({ file, config });

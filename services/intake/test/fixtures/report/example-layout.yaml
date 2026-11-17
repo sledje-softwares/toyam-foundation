@@ -1,0 +1,160 @@
+# Fictional example layout exercising every block type (tests only; all text invented).
+version: 1
+name: Example investigation report
+page: {size: A4, margin_mm: {top: 32, right: 15, bottom: 18, left: 15}, header_mm: 6, footer_mm: 6}
+font: {family: Cambria, fallback: 'Caladea, Liberation Serif, serif', size_pt: 10, color: '#111111', line_height: 1.15}
+paragraph_spacing_pt: 6
+date_format: dd.MM.yyyy
+datetime_format: "dd.MM.yyyy 'at' hh:mm a"
+empty_value: ''
+
+styles:
+  label: {bold: true, color: '#1F3864'}
+  label_shaded: {use: label, background: '#DCE6F2'}
+  narrative: {align: justify}
+  brand: {font: Arial, size_pt: 16, bold: true, color: '#E36C0A'}
+  heading1: {size_pt: 13, align: center, underline: true}
+
+table_styles:
+  grid:
+    border: {width_pt: 0.5, color: '#000000'}
+    padding_x_mm: 1.5
+    padding_y_mm: 0.6
+    label_style: label_shaded
+    heading_style: {bold: true, align: center, background: '#D9D9D9'}
+    space_after_pt: 8
+  plain: {border: none, padding_x_mm: 0, padding_y_mm: 0}
+
+assets:
+  letterhead: {file: letterhead.png}
+  seal: {runtime: true, description: Seal and signature (supplied by the generator)}
+
+header:
+  - type: table
+    columns: [30, 70]
+    style: plain
+    rows:
+      - cells:
+          - blocks: [{type: image, asset: letterhead, width_mm: 40}]
+          - runs:
+              - {text: 'EXAMPLE ', style: brand}
+              - {text: INVESTIGATION SERVICES, style: {font: Arial, size_pt: 12, bold: true}}
+            valign: middle
+  - type: paragraph
+    text: 'Case {{case.case_ref}} · Claim {{case.claim_no|default:"—"}}'
+    style: {size_pt: 8, align: right, color: '#555555'}
+  - type: rule
+    color: '#E36C0A'
+    width_pt: 1.5
+
+footer:
+  - type: paragraph
+    text: 'Page {{page}} of {{pages}}'
+    style: {size_pt: 8, align: center}
+
+body:
+  - type: heading
+    text: Motor OD Investigation Report
+    level: 1
+  - type: paragraph
+    text: "Prepared for {{case.insurer_name|upper}} on {{case.generated_at|date:\"d MMMM yyyy\"}}.\n\nThis paragraph keeps **bold markers** from values: {{field.remarks|default:\"no remarks\"}}."
+    markup: true
+    style: narrative
+  - type: table
+    columns: [35, 30, 35]
+    style: grid
+    rows:
+      - {heading: Claim details, header: true}
+      - {field: insurer_claim_no}
+      - {field: policy_no, label: Policy number}
+      - {field: insured_name, value: '{{field.insured_name|title}}'}
+      - {field: loss_date}
+      - {field: loss_datetime, label: Loss date and time (as reported)}
+      - {field: vehicle_burnt, value: '{{field.vehicle_burnt|yesno:"Burnt|Not burnt"}}'}
+      - {field: damaged_parts, value: '{{field.damaged_parts|join:" / "}}'}
+      - {field: estimate_amount, value: '{{field.estimate_amount|currency:"Rs. "}}'}
+      - {field: odometer, value: '{{field.odometer|number|suffix:" km"}}'}
+      - {field: remarks, when: {field: remarks, filled: true}, markup: true}
+      - cells:
+          - {text: Merged value, rowspan: 2, style: label_shaded, valign: middle}
+          - {text: First line, background: '#F2F2F2'}
+          - {text: '{{field.garage_name|default:"NA"}}', rowspan: 2, valign: middle}
+      - cells:
+          - {text: Second line, border: none}
+      - cells:
+          - {text: Loss date, style: label_shaded}
+          - {text: Intimation, style: label_shaded}
+          - {text: Garage, style: label_shaded}
+      - cells:
+          - '{{field.loss_date|date:"dd/MM/yyyy"}}'
+          - '{{field.loss_datetime|date:"hh:mm a"}}'
+          - {runs: [{text: 'Name: ', style: label}, {text: '{{field.garage_name}}'}]}
+      - heading: Garage photos
+        when: {photos: garage}
+      - cells:
+          - colspan: 3
+            blocks:
+              - {type: photos, section: garage, columns: 2, max_height_mm: 60, captions: true}
+        when: {photos: garage}
+        keep_together: true
+  - type: table
+    columns: [30, 70]
+    style: grid
+    rows:
+      - {heading: Written statements}
+      - repeat: {field: statements, split: sections}
+        cells:
+          - {text: '{{item|first_line}}', style: label}
+          - {text: '{{item|rest_lines}}', style: narrative}
+        empty:
+          - {text: No statements recorded, colspan: 2}
+      - {heading: Documents collected}
+      - cells: [{text: Sr. no., style: label}, {text: Document, style: label}]
+      - repeat: {field: documents_collected, split: auto}
+        cells: ['{{index}}.', '{{item}}']
+  - type: heading
+    text: Observations
+    level: 2
+  - type: list
+    field: findings
+    ordered: true
+    style: narrative
+    empty_text: No findings recorded.
+  - type: list
+    items: ['Claim no. {{field.insurer_claim_no}}', '{{field.reminder_date|prefix:"Reminder sent on "}}', 'Report version {{case.report_version}}']
+  - type: spacer
+    height_mm: 4
+  - type: group
+    keep_together: true
+    when: {any: [{field: investigation_status, equals: repudiate}, {not: {field: conclusion, filled: false}}]}
+    blocks:
+      - {type: heading, text: Conclusion, level: 2}
+      - {type: paragraph, text: '{{field.conclusion}}', style: narrative}
+  - type: photos
+    section: garage
+    columns: 3
+    captions: false
+    limit: 3
+    border: {width_pt: 0.5, color: '#999999', style: dashed}
+  - type: photos
+    section: statements
+    empty_text: No photos for statements.
+  - type: page_break
+  - type: table
+    columns: [30, 70]
+    style: grid
+    rows:
+      - {field: investigation_status}
+      - cells:
+          - {text: Seal and Stamp, style: label}
+          - blocks: [{type: image, asset: seal, max_height_mm: 30}]
+        height_mm: 35
+  - type: table
+    columns: [50, 50]
+    style: plain
+    rows:
+      - cells: ['Yours sincerely', {text: 'Compiled by: {{case.office_owner_name}}', style: {align: right}}]
+  - type: image
+    asset: letterhead
+    align: center
+    width_mm: 60
