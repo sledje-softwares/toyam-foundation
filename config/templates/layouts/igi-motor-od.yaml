@@ -1,0 +1,377 @@
+# Reliance / IndusInd — Motor OD investigation report. Structure and fixed wording copied from the firm's sample
+# (docs/13-report-layouts.md); every case value is a placeholder. Letterhead band, logo, seal and signature are
+# runtime assets (the firm supplies the files; without them the layout draws dashed boxes).
+version: 1
+name: OD Investigation Report
+page:
+  size: A4
+  margin_mm: {top: 39, right: 13, bottom: 20, left: 14}
+  header_mm: 3
+  footer_mm: 6
+font: {family: Calibri, fallback: 'Carlito, Calibri, Arial, sans-serif', size_pt: 10, color: '#000000', line_height: 1.15}
+paragraph_spacing_pt: 8
+date_format: dd.MM.yyyy
+datetime_format: dd.MM.yyyy hh:mm a
+empty_value: NA
+
+styles:
+  justify: {align: justify}
+  bold: {bold: true}
+  title: {bold: true, align: center, space_after_pt: 4}
+  label: {bold: true, color: '#1D3C74', background: '#D2EAF1'}
+  label_italic: {use: label, italic: true}
+  label_lavender: {bold: true, color: '#403151', background: '#DFD8E8'}
+  label_center: {use: label, align: center}
+  brand_orange: {font: Arial, size_pt: 22, bold: true, color: '#E36C0A'}
+  brand_rest: {font: Arial, size_pt: 12, bold: true, color: '#000000'}
+  reg_line: {size_pt: 8, bold: true, underline: true}
+  foot: {size_pt: 10, align: center}
+  center: {align: center}
+  heading3: {size_pt: 10, bold: true, align: center, space_before_pt: 0, space_after_pt: 3}
+  right: {align: right}
+
+table_styles:
+  blue:
+    border: {width_pt: 0.5, color: '#2F5597'}
+    padding_x_mm: 1.2
+    padding_y_mm: 0.5
+    label_style: label
+    heading_style: {bold: true, align: center}
+    space_after_pt: 14
+  lavender: {use: blue, label_style: label_lavender, border: {width_pt: 0.5, color: '#7030A0'}}
+  plain: {border: none, padding_x_mm: 0, padding_y_mm: 0, space_after_pt: 0}
+
+assets:
+  band_top: {runtime: true, description: Orange band across the top edge (firm letterhead)}
+  logo: {runtime: true, description: Firm logo (firm letterhead)}
+  seal: {runtime: true, description: Seal and signature of the authorised signatory}
+
+header:
+  - {type: image, asset: band_top, width_mm: 183, height_mm: 7, align: center}
+  - {type: paragraph, text: 'Reg.No.U74999JH2018PTC010897', style: reg_line}
+  - type: table
+    columns: [14, 86]
+    style: plain
+    rows:
+      - cells:
+          - blocks: [{type: image, asset: logo, width_mm: 30, height_mm: 13}]
+          - runs:
+              - {text: 'TOYAM ', style: brand_orange}
+              - {text: INVESTIGATION AND VALUATION PVT. LTD, style: brand_rest}
+            valign: middle
+
+footer:
+  - {type: paragraph, text: '{{page}}', style: foot}
+
+body:
+  - {type: paragraph, text: OD Investigation Report, style: title}
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Insured Details}
+      - {field: insured_name, label: Insured Name}
+      - {field: insurer_claim_no, label: Claim No}
+      - {field: policy_no, label: Policy Number}
+      - {field: present_address, label: Present Address}
+      - {field: permanent_address, label: Permanent address}
+      - {field: policy_address, label: Policy address}
+      - {field: insured_mobile, label: Insured Contact Number}
+      - {field: insured_email, label: Insured Email ID}
+      - {field: vehicle_no, label: Vehicle Number}
+      - {field: vehicle_class, label: Vehicle Type}
+      - cells:
+          - {text: RCU Trigger, style: label}
+          - blocks: [{type: list, field: investigation_points, split: auto, ordered: true, indent_mm: 9, empty_text: NA}]
+
+  - type: table
+    columns: [33, 33, 34]
+    style: blue
+    rows:
+      - cells:
+          - {text: Loss date and time, style: label_italic}
+          - {text: Intimation to IGICL date Time, style: label_italic}
+          - {text: Delay in intimation days, style: label_italic}
+      - cells:
+          - '{{field.loss_datetime|date:"dd.MM.yyyy ''at around'' hh:mm a"}}'
+          - '{{field.intimation_datetime|date:"dd.MM.yyyy ''at'' hh:mm a"}}'
+          - '{{field.intimation_delay_days|suffix:" days"}}'
+      - {field: delay_reason, label: Reason for Delay in intimation}
+      - {field: policy_no, label: Policy no.}
+      - {field: policy_type, label: Policy Type}
+      - {field: policy_period, label: Policy period}
+      - {field: within_policy_period, label: Is the accident within policy period}
+      - {field: rollover_policy_no, label: 'If rollover, then Policy Number'}
+      - {field: previous_year_claim, label: Any claim lodged in previous year over policy’s}
+      - {field: close_proximity, label: Claim is in close proximity}
+
+  - type: table
+    columns: [33, 33, 34]
+    style: blue
+    rows:
+      - {heading: Basic Details}
+      - cells:
+          - {text: Loss date and time as per claim form, style: label_italic}
+          - {text: Loss date and time as per intimation / Written statement, style: label_italic}
+          - {text: Loss date and time as per FIR / GD, style: label_italic}
+      - cells: ['{{field.loss_dt_claim_form}}', '{{field.loss_dt_statement}}', '{{field.loss_dt_fir}}']
+      - {field: mismatch_reason, label: 'If Mismatching, then reason'}
+      - {field: brief_remarks, label: 'Brief Remarks of the Accident:', value_style: justify}
+
+  - type: table
+    columns: [33, 33, 34]
+    style: blue
+    rows:
+      - {heading: Accident Details}
+      - cells: [{text: Loss Type Desc, style: label}, {text: Vehicle Burnt, style: label}, {text: Origin of Fire, style: label}]
+      - cells: ['{{field.loss_type}}', '{{field.vehicle_burnt}}', '{{field.origin_of_fire}}']
+      - cells: [{text: No of Vehicle Involved, style: label}, {text: No of Occupants, style: label}, {text: Relation Desc, style: label}]
+      - cells: ['{{field.vehicles_involved}}', '{{field.occupants}}', '{{field.occupant_relation}}']
+      - cells: [{text: Is Insured Travelling?, style: label}, {text: Purpose of Travel, style: label}, {text: Is Any TP Accident Involved, style: label}]
+      - cells: ['{{field.insured_travelling}}', '{{field.purpose_of_travel}}', '{{field.tp_involved}}']
+      - cells: [{text: Travelling from Date, style: label}, {text: Travelling to Date, style: label}, {text: Is anyone travelling in vehicle Injured/Dead, style: label}]
+      - cells: ['{{field.travel_from_date|date:"dd-MM-yyyy"}}', '{{field.travel_to_date|date:"dd-MM-yyyy"}}', '{{field.anyone_injured}}']
+      - cells: [{text: Travelling from Location, style: label}, {text: Travelling to Location, style: label}, {text: If Possession other than self, style: label}]
+      - cells: ['{{field.travel_from_location}}', '{{field.travel_to_location}}', '{{field.possession_other}}']
+      - {field: cause_of_loss_intimated, label: Cause of loss as intimated, value_style: justify, when: {field: cause_of_loss_intimated}}
+
+  # FIR / GD: when the office recorded an FIR, label / value rows; otherwise the sample's label list beside one
+  # merged value (the narration, normally "no FIR was lodged ...").
+  - type: table
+    columns: [27, 73]
+    style: blue
+    when: {field: fir_no_date}
+    rows:
+      - {heading: FIR / GD Details}
+      - {field: fir_no_date, label: FIR / GD date and No}
+      - {field: fir_delay, label: Any Delay in FIR / GD and reason}
+      - {field: police_station, label: Police Station Name and address}
+      - {field: io_details, label: Investigation office Name and contact number of IO}
+      - {field: fir_narration, label: Brief FIR / GD Narration, value_style: justify}
+  - type: table
+    columns: [27, 73]
+    style: blue
+    when: {field: fir_no_date, filled: false}
+    rows:
+      - {heading: FIR / GD Details}
+      - cells:
+          - 'Accident Date'
+          - {text: '{{field.fir_narration}}', rowspan: 11, valign: middle}
+      - cells: ['FIR / GD date and No']
+      - cells: ['Any Delay in FIR / GD']
+      - cells: ['Reason for delay']
+      - cells: ['Accused Name']
+      - cells: ['Complainant']
+      - cells: ['Police Station Name']
+      - cells: ['Address of Police station with Pin code']
+      - cells: ['Investigation office Name']
+      - cells: ['Contact number of IO']
+      - cells: ['Brief FIR / GD Narration']
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Driver Details}
+      - {field: driver_name, label: Driver Name}
+      - {field: driver_dob, label: Driver DOB as per DL}
+      - {field: driver_address, label: Driver Resident Address}
+      - {field: driver_contact, label: Driver contact number}
+      - {field: driver_relation, label: Relation with the Insured}
+      - {field: dl_number, label: DL Number of the Driver}
+      - {field: dl_authority, label: DL Issuing Authority}
+      - {field: dl_type, label: Type of License}
+      - {field: dl_classes, label: Which vehicle authorized to Drive}
+      - {field: dl_validity, label: License Validity Date}
+      - {field: dl_valid_at_loss, label: At the time of Accident License was valid}
+      - {field: driver_remarks, label: Any Other Remarks regarding the Driver}
+
+  - type: table
+    columns: [100]
+    style: blue
+    when: {photos: driver}
+    rows:
+      - {heading: DL Extract of Driver}
+      - cells:
+          - blocks: [{type: photos, section: driver, columns: 1, max_height_mm: 120, captions: false}]
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Garage Details}
+      - {field: garage_name, label: Garage Name}
+      - {field: garage_address, label: Garage Address}
+      - {field: garage_contact, label: Garage Contact Number}
+      - {field: garage_entry, label: Vehicle Entry Date and Time}
+      - {field: job_card_no, label: Job Card Number}
+      - {field: odometer_at_entry, label: ODO meter reading at the time of entry}
+      - {field: loss_to_entry_gap, label: The Difference between loss date and garage entry date}
+      - {field: garage_gap_reason, label: Reason}
+      - {field: not_reported_reason, label: 'If not reported to any garage till date, please mention the reason.'}
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Vehicle Registration Details}
+      - {field: reg_number, label: Registration Number}
+      - {field: reg_date, label: Registration Date}
+      - {field: reg_rto, label: Registration RTO}
+      - {field: vehicle_class, label: Vehicle Type}
+      - {field: vehicle_make, label: Vehicle Make}
+      - {field: vehicle_model, label: Vehicle Model}
+      - {field: fuel_type, label: Fuel Type}
+      - {field: seating_capacity, label: Seating Capacity}
+      - {field: engine_no, label: Engine Number}
+      - {field: chassis_no, label: Chassis Number}
+      - {field: modifications, label: Any Modifications in Vehicle}
+      - {field: hypothecation, label: Any Other observation during Investigation, value_style: justify}
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: If Vehicle Commercial}
+      - cells:
+          - 'Vehicle Loaded'
+          - {text: '{{field.commercial_details}}', rowspan: 13, valign: middle, style: center}
+      - cells: ['Invoice Date']
+      - cells: ['GCV Details']
+      - cells: ['PCV Details']
+      - cells: ['Permit Available']
+      - cells: ['Permit Valid Till']
+      - cells: ['Fitness Certificate Available']
+      - cells: ['Fitness Certificate Valid Till']
+      - cells: ['Vehicle loaded- LR/Bilty details']
+      - cells: ['Nature of consignment']
+      - cells: ['Transporter Details']
+      - cells: ['Transporter Verification details']
+      - cells: ['Any Other observation during Investigation']
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Spot Verification}
+      - {field: spot_matches, label: Intimation / Claim form spot location matching??}
+      - {field: actual_spot, label: If No kindly provide the proper Loss location details.}
+      - {field: spot_witness, label: Spot Witness Name _1}
+      - {field: spot_details, label: Any Other details regarding the Spot, value_style: justify}
+
+  - type: table
+    columns: [100]
+    style: blue
+    when: {photos: spot}
+    rows:
+      - keep_together: true
+        cells:
+          - blocks: [{type: heading, text: SPOT PHOTOS, level: 3}, {type: photos, section: spot, columns: 2, max_height_mm: 58, gap_mm: 0, captions: false, border: {width_pt: 0.5, color: '#2F5597'}}]
+
+  - {type: page_break, when: {photos: garage}}
+  - type: table
+    columns: [100]
+    style: blue
+    when: {photos: garage}
+    rows:
+      - keep_together: true
+        cells:
+          - blocks: [{type: heading, text: VEHICLE PHOTOS, level: 3}, {type: photos, section: garage, columns: 2, max_height_mm: 58, gap_mm: 0, captions: false, border: {width_pt: 0.5, color: '#2F5597'}}]
+  - {type: page_break, when: {photos: garage}}
+
+  - type: table
+    columns: [27, 73]
+    style: lavender
+    rows:
+      - {heading: Injured Details}
+      - cells:
+          - 'Name'
+          - {text: '{{field.injured_details}}', rowspan: 9, valign: middle, style: center}
+      - cells: ['Age']
+      - cells: ['Marital Status']
+      - cells: ['Occupation']
+      - cells: ['Nature of Injury']
+      - cells: ['Treatment Detail']
+      - cells: ['Hospitalization Date / Time']
+      - cells: ['Hospital Name']
+      - cells: ['Discharge Date / Time']
+      - {field: injury_observation, label: Any observation during investigation., value_style: justify}
+
+  - type: table
+    columns: [30, 70]
+    style: blue
+    rows:
+      - {heading: Written Statement Collect}
+      - cells:
+          - {text: Name and Relation with the insured, style: label}
+          - {text: Statement Version, style: label_center}
+      - repeat: {field: statements, split: sections}
+        cells:
+          - {text: '{{item|first_line}}', style: bold}
+          - {text: '{{item|rest_lines}}', style: justify}
+        empty:
+          - {text: NA, colspan: 2}
+
+  - type: table
+    columns: [100]
+    style: blue
+    rows:
+      - {heading: Observation / Findings During investigation}
+      - cells:
+          - blocks: [{type: list, field: findings, split: auto, ordered: true, indent_mm: 9, style: justify, empty_text: NA}]
+
+  - type: table
+    columns: [10, 90]
+    style: blue
+    rows:
+      - {heading: Documents Collection}
+      - cells: [{text: Sr. no., style: label}, {text: Documents Name, style: label}]
+      - repeat: {field: documents_collected, split: auto}
+        cells: [{text: '{{index}}.', style: right}, '{{item}}']
+        empty:
+          - {text: NA, colspan: 2}
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {heading: Reminder Letter / Document Deficiency Letter}
+      - cells: [{text: 1st Letter Date, style: label}, '{{field.reminder_1_date}}']
+        height_mm: 9
+      - cells: [{text: 2nd Letter Date, style: label}, '{{field.reminder_2_date}}']
+        height_mm: 9
+      - cells: [{text: Document Deficiency List, style: label}, '{{field.deficiency_list}}']
+        height_mm: 9
+
+  - type: table
+    columns: [100]
+    style: blue
+    rows:
+      - {heading: Conclusion}
+      - cells:
+          - {text: '{{field.conclusion}}', style: justify, markup: true}
+
+  - type: table
+    columns: [27, 73]
+    style: blue
+    rows:
+      - {field: investigation_status, label: Investigation Status}
+      - {field: repudiate_ground, label: Repudiate Ground, value_style: bold}
+      - cells: [{text: Investigation Agency Name, style: label}, 'Toyam Investigation and Valuation Pvt. Ltd']
+      - {field: submission_date, label: Report Submission Date}
+      - cells:
+          - {text: Seal and Stamp, style: label}
+          - blocks: [{type: image, asset: seal, max_height_mm: 28}]
+        height_mm: 32
+
+  - {type: paragraph, text: 'The report is being issued strictly without Prejudice, Strictly Confidential and Strictly for the purpose of Insurance Company’s claim settlement purpose only.', style: justify}
+  - {type: paragraph, text: 'Our bill for the services rendered is being enclosed herewith for your early clearance.', style: justify}
+  - {type: paragraph, text: Thanking you}
+  - type: table
+    columns: [50, 50]
+    style: plain
+    rows:
+      - cells:
+          - Yours Sincerely
+          - {text: 'Compiled by: {{field.compiled_by}}', style: right}

@@ -12,6 +12,7 @@ requires_approval: true
 output_formats: [pdf, docx]
 default_output_format: pdf
 docx_template_path: report-templates/icl-motor-od.docx
+report_layout: layouts/icl-motor-od.yaml   # structured copy of the insurer layout (docs/13-report-layouts.md)
 
 intake_rules:
   sender_domains: [icicilombard.com]
@@ -54,7 +55,7 @@ sections:
       - {key: insured_name, label: Name of insured, source: intake, required: true, extract: {labels: [Name of Insured]}}
       - {key: insured_registration_no, label: Registration no (GST / firm)}
       - {key: insured_profession, label: Insured profession}
-      - {key: insured_actual_address, label: Address — actual, not as per policy, type: long_text, source: intake, extract: {labels: [Address, City/Dist, State, Pin], within: Insured Details}}
+      - {key: insured_actual_address, label: 'Address — actual, not as per policy', type: long_text, source: intake, extract: {labels: [Address, City/Dist, State, Pin], within: Insured Details}}
       - {key: negative_area, label: Address pertains to negative area, type: choice, options: ['Yes', 'No']}
       - {key: contact_person, label: Contact person and number, source: intake, extract: {labels: [Registered Mobile No, Contact No -1], within: Insured Details}}
 
@@ -72,9 +73,10 @@ sections:
       - {key: policy_period, label: Policy period, source: intake, extract: {labels: [Period from, Period to]}}
       - {key: policy_type, label: Policy type}
       - {key: agent_dealer, label: Name of agent / dealer, source: intake, extract: {labels: [Agent Name]}}
-      - {key: previous_insurer, label: Previous insurer and policy no. (if rollover)}
+      - {key: previous_insurer, label: Previous insurer (if rollover)}
+      - {key: previous_policy_no, label: Previous policy no.}
       - {key: previous_claim, label: Any claim in previous policy}
-      - {key: break_in, label: Break-in details (date, odometer, discrepancy), type: long_text}
+      - {key: break_in, label: 'Break-in details (date, odometer, discrepancy)', type: long_text, help: 'Printed in one merged cell beside the five break-in rows of the report'}
 
   - key: driver
     title: Driver details
@@ -97,7 +99,7 @@ sections:
     title: Written statement
     categories: [written_statement, avr_recording]
     fields:
-      - {key: written_statement, label: Written statement of insured, type: long_text, required: true}
+      - {key: written_statement, label: Written statement of insured, type: long_text, required: true, help: 'Blank line between paragraphs'}
 
   - key: timeline
     title: GPS timeline
@@ -141,13 +143,14 @@ sections:
       - {key: rehabilitation, label: How insured / driver left the loss location (towing), type: long_text}
       - {key: first_contact, label: After accident first contact details}
       - {key: police_clarification, label: Police intimation clarification}
+      - {key: discrepancy_observed, label: Discrepancy observed, type: long_text, help: 'Printed in bold; blank line between paragraphs'}
 
   - key: summary
     title: Case summary and observations
     categories: [echallan_check, location_timeline, cctv_footage]
     fields:
       - {key: case_summary, label: Case summary and observation, type: long_text, required: true}
-      - {key: observations, label: Observations (bullets), type: long_text, required: true}
+      - {key: observations, label: Observations (bullets), type: long_text, required: true, help: 'One observation per line (or numbered); printed as bullets'}
 
   - key: conclusion
     title: Final conclusion
