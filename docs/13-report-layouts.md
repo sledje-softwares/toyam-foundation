@@ -147,7 +147,7 @@ Structure only; the sample files hold real personal data — never copy values f
 - [ ] Damaged IV images: heading row, then a borderless 2-column photo grid without captions running over ~4 pages (≈ 4 photos per page, each ≈ 90 mm tall).
 - [ ] Insured visit block (no heading row): 12 rows; the "Discrepancy observed" value is **bold** (`value_style: {bold: true}`).
 - [ ] Observation and Conclusion: one row, label "Case summary and observation"; the value cell holds a centred bold sub-heading "Case Summary", justified paragraphs, a centred bold sub-heading "Observation" and a **bulleted list** (cell `blocks`: heading, paragraph, heading, list).
-- [ ] Final Conclusion: heading row (bold, underlined, centred) and a **full-width narrative cell** (`colspan: 2`, justified).
+- [ ] Final Conclusion: heading row (bold, underlined, centred) and a **full-width narrative cell** (`colspan: 2`, justified; `markup: true`, office types `**…**` for bold, same as the Reliance conclusion). The Case Summary paragraph supports the same markup.
 - [ ] Closing rows: Investigation status (narrative), Repudiate ground, Investigation agency name (static), Report submission date, "Seal and Stamp" with the **seal + signature image** (runtime asset) in the value cell, row ~25 mm tall.
 - [ ] After the table: 3 left-aligned lines ("Yours Truly", "For <firm>", blank, "Authorized Signatory").
 - [ ] A URL typed in a value prints as plain text (the sample shows a blue link).
@@ -173,7 +173,7 @@ Structure only; the sample files hold real personal data — never copy values f
 - [ ] Observation / findings: heading + one full-width cell with a **numbered list** (≈ 12 items; items have continuation paragraphs).
 - [ ] Documents collection: heading; header row "Sr. no. / Documents name"; one row per document (`repeat` over `documents_collected`, `{{index}}.`).
 - [ ] Reminder letter / document deficiency letter: heading + 3 rows (the sample label "1st" has a superscript — print plain "1st").
-- [ ] Conclusion: heading + full-width justified narrative; the last paragraph is bold (`markup: true`, office types `**…**`).
+- [ ] Conclusion: heading + full-width justified narrative; the last paragraph is bold (`markup: true`, office types `**…**`; the ICICI layout supports it too).
 - [ ] Closing table: Investigation status, Repudiate ground (bold value), Agency name (static), Report submission date, Seal and stamp (runtime image).
 - [ ] After the table: a disclaimer paragraph, a billing sentence, "Thanking you", then "Yours Sincerely" (left) and "Compiled by: <name>" (right) on one line — a borderless 2-column table; the compiler is the `compiled_by` field.
 
