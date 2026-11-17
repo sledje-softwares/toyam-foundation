@@ -469,3 +469,12 @@ verify_jwt = true
 [functions.evidence-view]
 enabled = true
 verify_jwt = true
+
+# Report generation (build plan 7.7, D51): PDF via Cloudflare Browser Rendering and Word, or an HTML
+# preview; called from the web server with the signed-in staff user's access token. Every database
+# and Storage call runs with that JWT (no service-role key). Contract: functions/report-generate/README.md.
+# Secrets R2_ACCOUNT_ID, R2_BUCKET, R2_READ_ACCESS_KEY_ID, R2_READ_SECRET_ACCESS_KEY, CF_ACCOUNT_ID,
+# CF_BROWSER_RENDERING_TOKEN (optional CF_BROWSER_MIN_INTERVAL_S, default 10).
+[functions.report-generate]
+enabled = true
+verify_jwt = true

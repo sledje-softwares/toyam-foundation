@@ -106,6 +106,8 @@ The form posts every rendered field (`p:` present, `f:` value, `o:` value as loa
 
 The edge function `report-generate` runs with the staff user's JWT: (1) `prepare_report_version(p_case_id)`, (2) renders the insurer layout as PDF and/or DOCX, using the 1600 px copy (`evidence_derivatives`, made by the field app) of each chosen photo, or the original when there is none (insurer attachments, a phone that failed to make one), (3) picks `report_id` (uuid v4) and uploads `{case_id}/{report_id}/report.pdf` / `.docx` to bucket `reports` (no upsert), (4) `create_report_version(...)`. A changed value between (1) and (4) fails with `RV409`: prepare again and regenerate. Both functions refuse a case outside the editable statuses (`55000`) exactly like saving values.
 
+Function contract (request, preview mode, photo fallbacks, error codes, Browser Rendering): `supabase/functions/report-generate/README.md`.
+
 `prepare_report_version(p_case_id uuid) returns jsonb`:
 
 ```json
