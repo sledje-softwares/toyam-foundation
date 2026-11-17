@@ -8,9 +8,10 @@ import { approvalModel, canManageCase, dueLabel, editLock, REPORT_STAGES, report
 import { Badge, ErrorState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 import { ApprovalCard } from "@/components/reports/approval-card";
 import { EvidencePanel } from "@/components/reports/evidence-panel";
-import { PlannedButton, PlannedNote } from "@/components/reports/planned";
+import { GenerateReport } from "@/components/reports/generate-report";
+import { PlannedNote } from "@/components/reports/planned";
 import { SectionEditor, SourceBadge, ValueText } from "@/components/reports/section-editor";
-import { approveOwnReport, correctLabels, decideApproval, evidenceLink, reportFileLink, requestApproval, saveSection, setRelevance } from "./actions";
+import { approveOwnReport, correctLabels, decideApproval, evidenceLink, generateReport, requestApproval, saveSection, setRelevance } from "./actions";
 import { loadWorkspace } from "./load";
 
 export const metadata = { title: "Report" };
@@ -76,7 +77,11 @@ export default async function ReportWorkspacePage({
             <StatusBadge kind="case_status" value={c.status} />
           </>
         }
-        actions={<PlannedButton piece="7.7">Generate report</PlannedButton>}
+        actions={
+          ws.template && lock.editable ? (
+            <GenerateReport caseId={c.id} caseRef={c.case_ref} previewHref={`${href}/preview`} action={generateReport} />
+          ) : undefined
+        }
       />
       <p className="-mt-4 mb-4 flex flex-wrap gap-x-2 text-sm text-text-muted">
         <span>{c.insurer?.name ?? "Unknown insurer"}</span>
@@ -132,7 +137,7 @@ export default async function ReportWorkspacePage({
             model={approval}
             versions={ws.versions}
             outputFormats={ws.template.output_formats}
-            actions={{ requestApproval, approveOwnReport, decideApproval, reportFileLink }}
+            actions={{ requestApproval, approveOwnReport, decideApproval }}
           />
 
           {ws.sections.length === 0 ? (

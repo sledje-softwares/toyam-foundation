@@ -7,7 +7,10 @@ import { Outbox } from './outbox';
 import { uuidV4 } from './sha256';
 import { signedInServer } from './signedInServer';
 import { openSqliteStore } from './sqliteStore';
-import { fileTransport, removeSandboxFile } from './transport';
+import { fileTransport, freeDiskBytes, removeSandboxFile } from './transport';
+import { makeCopies } from '../capture/copies';
+import { copyEngine } from '../capture/copiesNative';
+import { lowStorage } from './selectors';
 
 export const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 export const newUuid = (): string => uuidV4(randomBytes(16));
@@ -26,6 +29,15 @@ export function getOutbox(): Promise<Outbox> {
         deviceId: null, // outbox.setDeviceId() after ensureRegisteredDevice()
         uuid: newUuid,
         removeFile: removeSandboxFile,
+        // D51: shrunk copies are a nicety, never at the cost of the low-storage guard
+        makeCopies: async (f) => {
+          try {
+            if (lowStorage(await freeDiskBytes(), 0, 0).level !== 'ok') return [];
+          } catch {
+            return [];
+          }
+          return makeCopies(copyEngine, f, f.id);
+        },
         log: (m) => console.log(m),
       });
       await outbox.init();

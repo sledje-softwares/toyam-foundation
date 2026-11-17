@@ -1,0 +1,217 @@
+# ICICI Lombard — Motor OD investigation report. Structure and fixed wording copied from the firm's sample
+# (docs/13-report-layouts.md); every case value is a placeholder. Letterhead bands, logo, seal and signature are
+# runtime assets (the firm supplies the files; without them the layout draws dashed boxes).
+version: 1
+name: Investigation Report
+page:
+  size: Letter
+  margin_mm: {top: 38, right: 7.5, bottom: 22, left: 7.5}
+  header_mm: 3
+  footer_mm: 2
+font: {family: Cambria, fallback: 'Caladea, Cambria, Liberation Serif, Times New Roman, serif', size_pt: 10, color: '#000000', line_height: 1.1}
+paragraph_spacing_pt: 8
+date_format: dd.MM.yyyy
+datetime_format: dd.MM.yyyy hh:mm a
+empty_value: NA
+
+styles:
+  justify: {align: justify}
+  bold: {bold: true}
+  heading3: {size_pt: 10, bold: true, align: center, space_before_pt: 2, space_after_pt: 6}
+  brand_orange: {font: Arial, size_pt: 22, bold: true, color: '#E36C0A'}
+  brand_rest: {font: Arial, size_pt: 12, bold: true, color: '#000000'}
+  reg_line: {size_pt: 8, bold: true, underline: true}
+  foot: {size_pt: 9, align: right}
+
+table_styles:
+  grid:
+    border: {width_pt: 0.5, color: '#000000'}
+    padding_x_mm: 1.2
+    padding_y_mm: 0.35
+    heading_style: {bold: true, align: center, background: '#D7D7D7', size_pt: 9.5}
+    space_after_pt: 0
+  plain: {border: none, padding_x_mm: 0, padding_y_mm: 0, space_after_pt: 0}
+
+assets:
+  band_top: {runtime: true, description: Orange band across the top edge (firm letterhead)}
+  logo: {runtime: true, description: Firm logo (firm letterhead)}
+  band_bottom: {runtime: true, description: Orange band along the bottom edge (firm letterhead)}
+  seal: {runtime: true, description: Seal and signature of the authorised signatory}
+
+header:
+  - {type: image, asset: band_top, width_mm: 201, height_mm: 7, align: center}
+  - {type: paragraph, text: 'Reg.No.U74999JH2018PTC010897', style: reg_line}
+  - type: table
+    columns: [14, 86]
+    style: plain
+    rows:
+      - cells:
+          - blocks: [{type: image, asset: logo, width_mm: 30, height_mm: 13}]
+          - runs:
+              - {text: 'TOYAM ', style: brand_orange}
+              - {text: INVESTIGATION AND VALUATION PVT. LTD, style: brand_rest}
+            valign: middle
+
+footer:
+  - {type: paragraph, text: 'Address: B-325, Ashok Nagar, Road No. 4, Ranchi, Jharkhand 834002 (India)', style: foot}
+  - {type: paragraph, text: 'E-mail:-toyaminvestigation@gmail.com', style: foot}
+  - {type: image, asset: band_bottom, width_mm: 201, height_mm: 5, align: center}
+
+body:
+  - type: table
+    columns: [40, 60]
+    style: grid
+    rows:
+      - {heading: Investigation Report}
+      - {cells: ['Name of Investigator', 'Toyam Investigation and Valuation Pvt. Ltd']}
+      - {field: firm_case_ref, label: Case ref. no (to be provided by Investigator)}
+      - {cells: ['Contact Details of Investigator', "Address- H/N-B-325, Road No-4, Ashok Nagar,\nRanchi, Jharkhand-834002\nEmail Id – toyaminvestigation@gmail.com"]}
+      - {field: insurer_claim_no, label: Claim No, value_style: bold}
+      - {field: interaction_no, label: Interaction No.}
+      - {field: policy_no, label: Policy No.}
+      - {field: date_of_loss, label: Date of loss}
+      - {field: time_of_accident, label: Time of Accident}
+      - {field: national_holiday, label: 'Did accident happened on National holiday, if yes then state the name of Holiday'}
+      - {field: intimation_date, label: Date of claim intimated to call center}
+      - {field: late_intimation_reason, label: 'Reasons for late intimation to co. (in case delay is more than 10 days)'}
+
+      - {heading: Insured details}
+      - {field: insured_name, label: Name of Insured}
+      - {field: insured_registration_no, label: Registration no}
+      - {cells: ['Pan Card no.', 'As per KYC documents (annexure)']}
+      - {field: insured_profession, label: Insured Profession}
+      - {field: insured_actual_address, label: Address - Actual and not as per policy}
+      - {field: negative_area, label: Address pertains to negative area}
+      - {field: contact_person, label: Contact Person and contact no.}
+
+      - {heading: Vehicle Details}
+      - {field: vehicle_no, label: Vehicle Registration no.}
+      - {field: purchase_invoice, label: New Vehicle Invoice Details (Purchase)}
+      - {field: make_model, label: Make & Model}
+      - {field: registration_date, label: Registration Date}
+      - {field: hypothecation, label: HYP Details}
+      - {field: repayment, label: Repayment details till date}
+      - {field: tp_vehicle, label: TP Vehicle Details}
+      - {field: policy_no, label: Policy details}
+      - {field: policy_period, label: Policy period}
+      - {field: policy_type, label: Policy Type}
+      - {field: agent_dealer, label: Name of Agent/Dealer (Policy Issuing Authority)}
+      - {field: previous_insurer, label: Previous Insurer (if rollover)}
+      - {field: previous_policy_no, label: Previous Policy No.}
+      - {field: previous_claim, label: Any claim reported in previous policy}
+      # The last four rows share one value cell (break-in details).
+      - cells:
+          - 'Break in'
+          - {text: '{{field.break_in}}', rowspan: 4, valign: middle}
+      - cells: ['Break in Inspection date (if yes)']
+      - cells: ['Odometer reading at the time of break in']
+      - cells: ['Any discrepancy in break in and damaged photo']
+
+      - {heading: Driver details}
+      - {field: driver_name, label: Driver Name}
+      - {field: dl_number, label: DL No.}
+      - {field: dl_classes, label: DL details/ Any Endorsements}
+      - {field: dl_rto, label: Name of RTO (Licensing Authority) from DL is issued}
+      - {field: dl_observation, label: Observation}
+      - cells:
+          - colspan: 2
+            blocks: [{type: photos, section: driver, columns: 1, max_height_mm: 110, captions: false}]
+        when: {photos: driver}
+      - {field: driver_injured, label: Driver injured or not}
+      - {field: neighbour_enquiry, label: Enquiry from neighbors for accident confirmation}
+      - {field: driver_relationship, label: Driver relationship}
+      - {field: injuries_deaths, label: Need to take account of how many Injuries and death in the accident}
+      - {field: nearby_police_hospital, label: Nearest police station and hospitals to be checked near loss location}
+      - {field: discreet_enquiry, label: Discreet enquiry with the driver at the place of loss}
+      - {field: bluetooth_photos, label: Photos to be exchanged via Bluetooth or snapshot of insured mobile}
+
+      - {heading: Written Statement}
+      - cells:
+          - {text: 'Written Statement of Insured ({{field.insured_name}})', valign: middle}
+          - {text: '{{field.written_statement}}', style: justify}
+      - cells:
+          - colspan: 2
+            blocks: [{type: photos, section: statement, columns: 2, max_height_mm: 95, captions: false}]
+        when: {photos: statement}
+      - cells:
+          - {text: GPS timeline of insured, valign: middle}
+          - {text: '{{field.gps_timeline}}', style: justify}
+      - cells:
+          - colspan: 2
+            blocks: [{type: photos, section: timeline, columns: 2, max_height_mm: 95, captions: false}]
+        when: {photos: timeline}
+
+      - {heading: Police Intimation details}
+      - {field: fir_no, label: FIR No., label_style: {align: center}}
+      - {field: fir_details, label: FIR Details, label_style: {align: center}}
+      - {field: panchanama, label: Panchanama Details, label_style: {align: center}}
+      - {field: injury_details, label: "Injury Details\n(Insured/Driver/ TP)", label_style: {align: center}}
+      - {field: eye_witness, label: Eye witness, label_style: {align: center}}
+
+      - {heading: Garage Visit}
+      - {field: garage_visit, label: Garage Visit}
+      - {field: garage_name, label: Garage Name}
+      - {field: damage_correlation, label: Co-relating the damages on vehicle with the description of accident provided by driver in the claim form and the statement}
+      - {field: traces_inspection, label: Inspection of vehicle to find traces of blood/ hair/any other body parts}
+      - {field: odometer_service, label: Odometer reading and service history of vehicle}
+      - {field: gate_pass, label: Date and time of gate pass entry}
+      - {field: towing, label: 'Towing vendor details (towed from ______ to ____ by whom date and time)'}
+      - {field: job_card, label: Job card date and details}
+      - {field: garage_delay_status, label: Vehicle status if the difference between garage entry and date of loss is more than 24 hrs.}
+      - {heading: Damaged IV images, when: {photos: garage}}
+
+  # Damaged vehicle photos: borderless two-column grid without captions, outside the table so that it can flow
+  # over several pages.
+  - type: photos
+    section: garage
+    columns: 2
+    max_height_mm: 105
+    gap_mm: 2
+    captions: false
+    when: {photos: garage}
+
+  - type: table
+    columns: [40, 60]
+    style: grid
+    rows:
+      - {field: insured_visit, label: Insured visit}
+      - {field: fastag, label: Fast Tag Details}
+      - {cells: ['Vehicle information (make model/Reg no./purchase details)', "Make and model: {{field.make_model}}\nRegistration no.: {{field.vehicle_no}}\nPurchase details: {{field.purchase_invoice}}"]}
+      - {cells: ['Date and time of loss', '{{field.date_of_loss}} {{field.time_of_accident}}']}
+      - {field: travel_from_to, label: Travelling from where to where}
+      - {field: purpose_of_travel, label: Purpose of travel}
+      - {field: accident_version, label: Accident version-- exact loss location details}
+      - {field: rehabilitation, label: How Insured/driver rehabilitee from loss location to by? (if towed then needs towing details)}
+      - {field: tp_vehicle, label: TP vehicle details}
+      - {field: first_contact, label: After accident first contact details}
+      - {field: police_clarification, label: Police intimation details (clarification for delay in intimating FIR)}
+      - {field: bluetooth_photos, label: Photos to be exchanged via Bluetooth or snapshot of insured mobile}
+      - {field: discrepancy_observed, label: Discrepancy observed, value_style: {bold: true, align: justify}}
+
+      - {heading: Observation and Conclusion}
+      - cells:
+          - {text: Case Summary and observation, valign: middle}
+          - blocks:
+              - {type: heading, text: Case Summary, level: 3}
+              - {type: paragraph, text: '{{field.case_summary}}', style: justify}
+              - {type: heading, text: Observation, level: 3}
+              - {type: list, field: observations, split: auto, ordered: false, style: justify, indent_mm: 8}
+
+      - {heading: Final Conclusion, style: {underline: true}}
+      - cells:
+          - {text: '{{field.final_conclusion}}', colspan: 2, style: justify}
+      - cells:
+          - {text: Investigation Status, style: bold, valign: middle}
+          - {text: '{{field.investigation_status}}', style: justify}
+      - {field: repudiate_ground, label: Repudiate Ground, label_style: bold}
+      - cells: [{text: Investigation Agency Name, style: bold}, 'Toyam Investigation and Valuation Pvt Ltd']
+      - {field: submission_date, label: Report Submission Date, label_style: bold}
+      - cells:
+          - {text: Seal and Stamp, style: bold, valign: middle}
+          - blocks: [{type: image, asset: seal, max_height_mm: 22}]
+        height_mm: 25
+
+  - {type: spacer, height_mm: 6}
+  - {type: paragraph, text: "Yours Truly\nFor Toyam Investigation Agency", style: {space_after_pt: 12}}
+  - {type: spacer, height_mm: 4}
+  - {type: paragraph, text: Authorized Signatory}

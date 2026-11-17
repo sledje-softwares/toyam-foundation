@@ -80,9 +80,43 @@ export interface OutboxReport {
   oldest_pending_at: string | null;
 }
 
+/** Copies of one photo to presign (evidence-upload `derivatives`). */
+export interface DerivativePresignRequest {
+  case_id: string;
+  task_id: string;
+  original_sha256: string;
+  copies: { width: 384 | 1600; sha256: string; size_bytes: number }[];
+}
+
+export interface DerivativePresign {
+  width: number;
+  status: 'upload' | 'already_stored' | 'skipped';
+  storage_path?: string;
+  url?: string;
+  headers?: Record<string, string>;
+}
+
+export interface DerivativeRecord {
+  case_id: string;
+  original_sha256: string;
+  width: 384 | 1600;
+  storage_path: string;
+  sha256: string;
+  size_bytes: number;
+  pixel_width: number;
+  pixel_height: number;
+}
+
 export interface Server {
   /** Presigned R2 PUT for one file. */
   presign(req: PresignRequest): Promise<Presigned>;
+  /**
+   * Shrunk copies (D51). Optional: the drain server has neither, so copies are not sent after a
+   * remote sign-out.
+   */
+  presignDerivatives?(req: DerivativePresignRequest): Promise<DerivativePresign[]>;
+  /** `record_device_derivative`; idempotent. */
+  recordDerivative?(rec: DerivativeRecord): Promise<void>;
   /** Idempotent on client_message_id; returns the server message id. */
   postMessage(msg: PostMessage): Promise<string>;
   reportOutbox(report: OutboxReport): Promise<void>;

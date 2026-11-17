@@ -429,14 +429,14 @@ isOneToOne: false
                   ]
                 },"case_templates": {
                   Row: {
-                    "claim_type": Database["public"]['Enums']["claim_type"],"config_sha256": string | null,"created_at": string,"created_by": string | null,"default_output_format": string,"docx_template_path": string | null,"id": string,"insurer_id": string,"intake_rules": NonNullable<Json>,"is_active": boolean,"name": string,"output_formats": (string)[],"report_email": NonNullable<Json>,"requires_approval": boolean,"source_file": string | null,"updated_at": string,"variant": string,"version": number
+                    "claim_type": Database["public"]['Enums']["claim_type"],"config_sha256": string | null,"created_at": string,"created_by": string | null,"default_output_format": string,"docx_template_path": string | null,"id": string,"insurer_id": string,"intake_rules": NonNullable<Json>,"is_active": boolean,"name": string,"output_formats": (string)[],"report_email": NonNullable<Json>,"report_layout": Json | null,"requires_approval": boolean,"source_file": string | null,"updated_at": string,"variant": string,"version": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "claim_type": Database["public"]['Enums']["claim_type"],"config_sha256"?: string | null,"created_at"?: string,"created_by"?: string | null,"default_output_format"?: string,"docx_template_path"?: string | null,"id"?: string,"insurer_id": string,"intake_rules"?: NonNullable<Json>,"is_active"?: boolean,"name": string,"output_formats"?: (string)[],"report_email"?: NonNullable<Json>,"requires_approval"?: boolean,"source_file"?: string | null,"updated_at"?: string,"variant"?: string,"version"?: number
+                    "claim_type": Database["public"]['Enums']["claim_type"],"config_sha256"?: string | null,"created_at"?: string,"created_by"?: string | null,"default_output_format"?: string,"docx_template_path"?: string | null,"id"?: string,"insurer_id": string,"intake_rules"?: NonNullable<Json>,"is_active"?: boolean,"name": string,"output_formats"?: (string)[],"report_email"?: NonNullable<Json>,"report_layout"?: Json | null,"requires_approval"?: boolean,"source_file"?: string | null,"updated_at"?: string,"variant"?: string,"version"?: number
                   }
                   Update: {
-                    "claim_type"?: Database["public"]['Enums']["claim_type"],"config_sha256"?: string | null,"created_at"?: string,"created_by"?: string | null,"default_output_format"?: string,"docx_template_path"?: string | null,"id"?: string,"insurer_id"?: string,"intake_rules"?: NonNullable<Json>,"is_active"?: boolean,"name"?: string,"output_formats"?: (string)[],"report_email"?: NonNullable<Json>,"requires_approval"?: boolean,"source_file"?: string | null,"updated_at"?: string,"variant"?: string,"version"?: number
+                    "claim_type"?: Database["public"]['Enums']["claim_type"],"config_sha256"?: string | null,"created_at"?: string,"created_by"?: string | null,"default_output_format"?: string,"docx_template_path"?: string | null,"id"?: string,"insurer_id"?: string,"intake_rules"?: NonNullable<Json>,"is_active"?: boolean,"name"?: string,"output_formats"?: (string)[],"report_email"?: NonNullable<Json>,"report_layout"?: Json | null,"requires_approval"?: boolean,"source_file"?: string | null,"updated_at"?: string,"variant"?: string,"version"?: number
                   }
                   Relationships: [
                     {
@@ -804,6 +804,32 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"evidence_derivatives": {
+                  Row: {
+                    "created_at": string,"evidence_id": string,"pixel_height": number | null,"pixel_width": number | null,"sha256": string,"size_bytes": number | null,"storage_path": string,"width": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"evidence_id": string,"pixel_height"?: number | null,"pixel_width"?: number | null,"sha256": string,"size_bytes"?: number | null,"storage_path": string,"width": number
+                  }
+                  Update: {
+                    "created_at"?: string,"evidence_id"?: string,"pixel_height"?: number | null,"pixel_width"?: number | null,"sha256"?: string,"size_bytes"?: number | null,"storage_path"?: string,"width"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "evidence_derivatives_evidence_id_fkey"
+      columns: ["evidence_id"]
+isOneToOne: false
+      referencedRelation: "evidence"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "evidence_derivatives_evidence_id_fkey"
+      columns: ["evidence_id"]
+isOneToOne: false
+      referencedRelation: "v_evidence_processing"
+      referencedColumns: ["evidence_id"]
+    }
                   ]
                 },"evidence_field_matches": {
                   Row: {
@@ -1247,16 +1273,72 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"reports": {
+                },"report_sends": {
                   Row: {
-                    "case_id": string,"created_at": string,"id": string,"notes": string | null,"origin": string,"status": Database["public"]['Enums']["report_status"],"storage_path": string,"template_id": string | null,"template_version": number | null,"uploaded_by": string,"version": number
+                    "attachment_name": string,"attempts": number,"body": string,"case_id": string,"cc_addresses": (string)[],"claimed_at": string | null,"delivery": string | null,"error": string | null,"formats": (string)[],"gmail_thread_id": string | null,"id": string,"in_reply_to": string | null,"link_expires_at": string | null,"message_id": string | null,"pack_path": string | null,"references_ids": (string)[],"report_id": string,"requested_at": string,"requested_by": string,"sent_at": string | null,"source_email_id": string | null,"status": string,"subject": string,"submission_id": string | null,"to_addresses": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "case_id": string,"created_at"?: string,"id"?: string,"notes"?: string | null,"origin"?: string,"status"?: Database["public"]['Enums']["report_status"],"storage_path": string,"template_id"?: string | null,"template_version"?: number | null,"uploaded_by": string,"version": number
+                    "attachment_name": string,"attempts"?: number,"body": string,"case_id": string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats": (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id": string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject": string,"submission_id"?: string | null,"to_addresses": (string)[]
                   }
                   Update: {
-                    "case_id"?: string,"created_at"?: string,"id"?: string,"notes"?: string | null,"origin"?: string,"status"?: Database["public"]['Enums']["report_status"],"storage_path"?: string,"template_id"?: string | null,"template_version"?: number | null,"uploaded_by"?: string,"version"?: number
+                    "attachment_name"?: string,"attempts"?: number,"body"?: string,"case_id"?: string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id"?: string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject"?: string,"submission_id"?: string | null,"to_addresses"?: (string)[]
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "report_sends_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "cases"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "report_sends_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "v_case_dashboard"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "report_sends_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "v_report_progress"
+      referencedColumns: ["case_id"]
+    },{
+      foreignKeyName: "report_sends_report_id_fkey"
+      columns: ["report_id"]
+isOneToOne: false
+      referencedRelation: "reports"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "report_sends_requested_by_fkey"
+      columns: ["requested_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "report_sends_source_email_id_fkey"
+      columns: ["source_email_id"]
+isOneToOne: false
+      referencedRelation: "emails"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "report_sends_submission_id_fkey"
+      columns: ["submission_id"]
+isOneToOne: false
+      referencedRelation: "submissions"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"reports": {
+                  Row: {
+                    "case_id": string,"created_at": string,"field_values": Json | null,"id": string,"notes": string | null,"origin": string,"status": Database["public"]['Enums']["report_status"],"storage_path": string,"template_id": string | null,"template_version": number | null,"uploaded_by": string,"values_token": string | null,"version": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "case_id": string,"created_at"?: string,"field_values"?: Json | null,"id"?: string,"notes"?: string | null,"origin"?: string,"status"?: Database["public"]['Enums']["report_status"],"storage_path": string,"template_id"?: string | null,"template_version"?: number | null,"uploaded_by": string,"values_token"?: string | null,"version": number
+                  }
+                  Update: {
+                    "case_id"?: string,"created_at"?: string,"field_values"?: Json | null,"id"?: string,"notes"?: string | null,"origin"?: string,"status"?: Database["public"]['Enums']["report_status"],"storage_path"?: string,"template_id"?: string | null,"template_version"?: number | null,"uploaded_by"?: string,"values_token"?: string | null,"version"?: number
                   }
                   Relationships: [
                     {
@@ -1610,8 +1692,16 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"claim_report_send":
+{ Args: { "p_id": string,"p_message_id": string }; Returns: {
+              "attachment_name": string,"body": string,"case_id": string,"case_ref": string,"cc_addresses": (string)[],"formats": (string)[],"id": string,"in_reply_to": string,"message_id": string,"references_ids": (string)[],"report_id": string,"subject": string,"to_addresses": (string)[]
+            }[]
+                           },
 "complete_processing_job":
 { Args: { "p_error"?: string,"p_job_id": number,"p_status": Database["public"]['Enums']["job_status"] }; Returns: undefined
+                           },
+"complete_report_send":
+{ Args: { "p_delivery": string,"p_id": string,"p_link_expires": string,"p_pack_path": string }; Returns: string
                            },
 "confirm_intake":
 { Args: { "p_extraction_id": string,"p_template_id": string,"p_values": Json }; Returns: string
@@ -1623,6 +1713,12 @@ isOneToOne: false
                            },
 "create_field_task":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_checklist_template_id"?: string,"p_due_at"?: string,"p_instructions"?: string,"p_kind"?: Database["public"]['Enums']["task_kind"],"p_location_text"?: string,"p_parent_task_id"?: string,"p_reason"?: string,"p_title": string }; Returns: string
+                           },
+"create_report_version":
+{ Args: { "p_case_id": string,"p_files": Json,"p_notes"?: string,"p_photos": Json,"p_report_id": string,"p_values_token": string }; Returns: Json
+                           },
+"device_derivative_target":
+{ Args: { "p_originals": (string)[],"p_task_id": string }; Returns: Json
                            },
 "drain_authorize_upload":
 { Args: { "p_device_captured_at": string,"p_device_id": string,"p_secret": string,"p_sha256": string,"p_task_id": string }; Returns: string
@@ -1666,6 +1762,9 @@ isOneToOne: false
 { Args: { "p_sha256": (string)[],"p_task_id": string }; Returns: {
               "case_id": string,"stored_sha256": (string)[]
             }[]
+                           },
+"fail_report_send":
+{ Args: { "p_ambiguous"?: boolean,"p_error": string,"p_id": string }; Returns: undefined
                            },
 "field_case_list":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -1719,11 +1818,17 @@ isOneToOne: false
 "post_thread_message":
 { Args: { "p_body"?: string,"p_case_id": string,"p_client_message_id": string,"p_items"?: Json,"p_kind": Database["public"]['Enums']["message_kind"],"p_reply_to"?: string,"p_task_id"?: string }; Returns: string
                            },
+"prepare_report_version":
+{ Args: { "p_case_id": string }; Returns: Json
+                           },
 "reassign_case":
 { Args: { "p_assignee_id": string,"p_case_id": string,"p_reason": string }; Returns: undefined
                            },
 "reassign_field_task":
 { Args: { "p_assignee_id": string,"p_reason": string,"p_task_id": string }; Returns: undefined
+                           },
+"record_device_derivative":
+{ Args: { "p_case_id": string,"p_original_sha256": string,"p_pixel_height": number,"p_pixel_width": number,"p_sha256": string,"p_size_bytes": number,"p_storage_path": string,"p_width": number }; Returns: Json
                            },
 "record_manual_submission":
 { Args: { "p_case_id": string,"p_channel": Database["public"]['Enums']["submission_channel"],"p_formats": (string)[],"p_insurer_reference": string,"p_note": string,"p_report_id"?: string,"p_submitted_at"?: string }; Returns: string
@@ -1743,11 +1848,28 @@ isOneToOne: false
 "report_outbox_status":
 { Args: { "p_device_id": string,"p_oldest_pending_at"?: string,"p_pending_bytes": number,"p_pending_count": number }; Returns: undefined
                            },
+"report_send_target":
+{ Args: { "p_case_id": string }; Returns: {
+              "cc_addresses": (string)[],"email_id": string,"gmail_thread_id": string,"in_reply_to": string,"original_subject": string,"references_ids": (string)[],"to_addresses": (string)[]
+            }[]
+                           },
 "request_intake_retry":
 { Args: { "p_email_id": string }; Returns: string
                            },
+"request_portal_pack":
+{ Args: { "p_case_id": string,"p_formats": (string)[] }; Returns: string
+                           },
+"request_report_send":
+{ Args: { "p_attachment_name": string,"p_body": string,"p_case_id": string,"p_cc": (string)[],"p_formats": (string)[],"p_subject": string,"p_to": (string)[] }; Returns: string
+                           },
+"resolve_report_send":
+{ Args: { "p_id": string,"p_sent_at"?: string,"p_was_sent": boolean }; Returns: undefined
+                           },
 "retry_auto_assign":
 { Args: { "p_case_id": string }; Returns: string
+                           },
+"retry_report_send":
+{ Args: { "p_id": string }; Returns: undefined
                            },
 "save_case_field_values":
 { Args: { "p_case_id": string,"p_expected": Json,"p_values": Json }; Returns: Json

@@ -571,6 +571,8 @@ export type VersionLite = { id: string; version: number; approval: VersionApprov
 export type VersionRow = VersionLite & {
   origin: string;
   created_at: string;
+  notes: string | null;
+  creator: string | null;
   files: { format: string; size_bytes: number | null }[];
   approvalDetail: {
     requested_at: string;
@@ -630,7 +632,7 @@ export function approvalModel(input: {
   if (state === "no_version" || state === "not_requested" || state === "changes_requested") {
     if (!oneStep && !REQUESTER_ROLES.includes(input.role)) requestBlocked = "Office staff request approval.";
     else if (input.role === "office" && !input.ownsCase) requestBlocked = "Only the case owner requests approval.";
-    else if (state === "no_version") requestBlocked = "Generate a report version first (7.7, not built yet).";
+    else if (state === "no_version") requestBlocked = "Generate a report version first.";
     else if (state === "changes_requested") requestBlocked = "Changes were requested on the latest version. Generate a new version first.";
     else if (input.requiredMissing > 0)
       requestBlocked = `${input.requiredMissing} required ${input.requiredMissing === 1 ? "field is" : "fields are"} empty.`;

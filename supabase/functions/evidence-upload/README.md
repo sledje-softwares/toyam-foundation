@@ -39,6 +39,46 @@ Order of checks, all made **with the caller's JWT** (no service-role key, rule 4
   `storage_path`. `post_thread_message()` skips a file already stored on the case (no 23505), like the
   late / drain path, and still stores the message.
 
+## Shrunk copies of photos (`derivatives`, D51)
+
+The app makes two JPEG copies of every image it sends (1600 px for reports, 384 px for labelling), uploads
+them **after** the original is stored and `post_thread_message()` has succeeded, and records each with
+`record_device_derivative()`. Copies are a rebuildable cache, not evidence; the server never decodes images.
+They travel in their own request (`files` is `[]` or absent; mixing is a 400):
+
+```
+{ "task_id": uuid, "case_id": uuid, "files": [],
+  "derivatives": [ { "original_sha256": 64 hex, "width": 384 | 1600, "sha256": 64 hex (of the copy), "size": bytes } ] }   up to 60,
+                                                                                   at most 30 distinct originals, one entry per (original, width)
+```
+
+Checks, again with the caller's JWT only: `device_derivative_target(task, originals[])` (migration
+`20261117300000_device_derivative_target.sql`) says whether the caller may upload copies on this case
+(same rule as `record_device_derivative`: the operator still sees the case, or is inside the D43 late window
+of a task they held there) and which originals are usable (a photo on the case, captured by the caller, not
+withdrawn) with the widths already recorded. Staff and deactivated phones are refused (`field-drain` does not
+handle copies).
+
+```json
+{ "ok": true, "case_id": "…", "files": [],
+  "derivatives": [
+    { "original_sha256": "…", "width": 1600, "sha256": "…", "status": "upload",
+      "storage_path": "derived/{case_id}/{original_sha256}/w1600-{copy_sha256}.jpg", "method": "PUT",
+      "url": "https://…", "headers": { "x-amz-content-sha256": "<copy hash>" }, "expires_in": 600 },
+    { "…": "…", "status": "already_stored", "storage_path": "…" },
+    { "…": "…", "status": "skipped" } ] }
+```
+
+- `upload`: PUT the copy with exactly `headers`; `content-length` (= `size`) and the hash are signed (600 s).
+  Then call `record_device_derivative(case_id, original_sha256, width, storage_path, sha256, size_bytes,
+  pixel_width, pixel_height)` (`recorded: false` = already recorded, fine).
+- `already_stored`: the copy of that width is already recorded: nothing to do.
+- `skipped`: the original is not usable here (not the caller's photo, a document, withdrawn): drop the copy.
+- The key contains the copy's own hash, so a re-upload with different bytes gets another key and can never
+  overwrite a recorded copy.
+- Image JPEG only, at most 3 MB per copy (`MAX_DERIVATIVE_BYTES`; 413 `file_too_large`). Closed window or no
+  access: 403 `upload_window_closed` / `forbidden`; the app drops its copies silently.
+
 ## Errors `{ok:false, error:{code, message, field?}}`
 
 | Status | `code` | Outbox class |

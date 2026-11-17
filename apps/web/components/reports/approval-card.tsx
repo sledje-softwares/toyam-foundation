@@ -1,7 +1,8 @@
 import { formatDateTime } from "@/lib/format";
-import { APPROVAL_DECISIONS, type ApprovalModel, type LinkResult, type VersionRow } from "@/lib/reports";
+import { APPROVAL_DECISIONS, type ApprovalModel, type VersionRow } from "@/lib/reports";
+import { FORMAT_LABEL, isReportFormat, reportFileHref } from "@/lib/report-generate-core";
 import { Badge, InlineAlert } from "@/components/ui";
-import { ApproveReportButton, DecideApproval, ReportFileButton, RequestApprovalButton } from "./approval-actions";
+import { ApproveReportButton, DecideApproval, RequestApprovalButton } from "./approval-actions";
 import { PlannedButton } from "./planned";
 
 type VoidAction = (fd: FormData) => Promise<void>;
@@ -33,7 +34,6 @@ export function ApprovalCard({
     requestApproval: VoidAction;
     approveOwnReport: VoidAction;
     decideApproval: VoidAction;
-    reportFileLink: (id: string, format: string) => Promise<LinkResult>;
   };
 }) {
   const latest = versions.find((v) => v.id === model.latest?.id) ?? null;
@@ -98,7 +98,7 @@ export function ApprovalCard({
       <details className="mt-3">
         <summary className="min-h-8 cursor-pointer text-sm font-medium">Versions ({versions.length})</summary>
         {versions.length === 0 ? (
-          <p className="mt-2 text-sm text-text-muted">Versions appear here once the report is generated (7.7).</p>
+          <p className="mt-2 text-sm text-text-muted">No version yet. Use Generate report above to make the first one.</p>
         ) : (
           <div className="mt-2 overflow-x-auto">
             <table className="w-full border-collapse text-sm">
@@ -108,6 +108,8 @@ export function ApprovalCard({
                   <th scope="col" className="px-3 py-2 font-medium">Version</th>
                   <th scope="col" className="px-3 py-2 font-medium">Created</th>
                   <th scope="col" className="px-3 py-2 font-medium">Origin</th>
+                  <th scope="col" className="px-3 py-2 font-medium">By</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Notes</th>
                   <th scope="col" className="px-3 py-2 font-medium">Files</th>
                   <th scope="col" className="px-3 py-2 font-medium">Approval</th>
                 </tr>
@@ -118,10 +120,16 @@ export function ApprovalCard({
                     <td className="px-3 py-2 tabular-nums">v{v.version}</td>
                     <td className="px-3 py-2">{formatDateTime(v.created_at)}</td>
                     <td className="px-3 py-2">{v.origin === "generated" ? "Generated" : "Uploaded"}</td>
+                    <td className="px-3 py-2">{v.creator ?? "—"}</td>
+                    <td className="max-w-64 px-3 py-2 whitespace-pre-wrap break-words">{v.notes ?? "—"}</td>
                     <td className="px-3 py-2">
                       <span className="flex gap-3">
                         {v.files.length
-                          ? v.files.map((f) => <ReportFileButton key={f.format} reportId={v.id} format={f.format} link={actions.reportFileLink} />)
+                          ? v.files.filter((f) => isReportFormat(f.format)).map((f) => (
+                              <a key={f.format} href={reportFileHref(v.id, f.format)} className="min-h-8 text-sm text-primary underline hover:no-underline">
+                                {isReportFormat(f.format) ? FORMAT_LABEL[f.format] : f.format}
+                              </a>
+                            ))
                           : "—"}
                       </span>
                     </td>

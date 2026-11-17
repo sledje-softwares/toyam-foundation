@@ -101,7 +101,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     supabase
       .from("reports")
       .select(
-        "id, version, origin, created_at, report_files(format, size_bytes), report_approvals(id, decision, requested_by, requested_at, decided_at, comments, requester:profiles!report_approvals_requested_by_fkey(full_name), decider:profiles!report_approvals_decided_by_fkey(full_name))",
+        "id, version, origin, created_at, notes, creator:profiles!reports_uploaded_by_fkey(full_name), report_files(format, size_bytes), report_approvals(id, decision, requested_by, requested_at, decided_at, comments, requester:profiles!report_approvals_requested_by_fkey(full_name), decider:profiles!report_approvals_decided_by_fkey(full_name))",
       )
       .eq("case_id", c.id)
       .order("version", { ascending: false }),
@@ -179,6 +179,8 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       version: r.version,
       origin: r.origin,
       created_at: r.created_at,
+      notes: r.notes,
+      creator: one(r.creator)?.full_name ?? null,
       files: (r.report_files ?? []).map((f) => ({ format: f.format, size_bytes: f.size_bytes })),
       approval: a ? { id: a.id, decision: a.decision, requested_by: a.requested_by, requested_at: a.requested_at } : null,
       approvalDetail: a

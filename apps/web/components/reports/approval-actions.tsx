@@ -1,9 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
-import type { LinkResult } from "@/lib/reports";
 import { ConfirmDialog, FormField, Textarea } from "@/components/ui";
-import { toast } from "@/components/ui/toaster";
 
 type VoidAction = (fd: FormData) => Promise<void>;
 
@@ -89,26 +86,5 @@ export function DecideApproval({ approvalId, caseRef, version, action }: { appro
         </div>
       </ConfirmDialog>
     </div>
-  );
-}
-
-/** Downloads a generated version file through a 60-second signed link. */
-export function ReportFileButton({ reportId, format, link }: { reportId: string; format: string; link: (id: string, format: string) => Promise<LinkResult> }) {
-  const [pending, start] = useTransition();
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      className="min-h-8 text-sm text-primary underline hover:no-underline disabled:opacity-60"
-      onClick={() =>
-        start(async () => {
-          const r = await link(reportId, format);
-          if (r.url) window.location.assign(r.url);
-          else toast(r.error ?? "The file could not be downloaded.", "error");
-        })
-      }
-    >
-      {pending ? "Preparing…" : format.toUpperCase()}
-    </button>
   );
 }

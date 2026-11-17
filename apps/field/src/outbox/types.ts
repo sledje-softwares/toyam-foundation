@@ -32,6 +32,29 @@ export interface DeviceOcr {
   mean_confidence?: number;
 }
 
+/**
+ * A shrunk JPEG copy of an image (D51): 1600 px for reports, 384 px for labelling. A rebuildable cache,
+ * not evidence: no EXIF / GPS, never shown to the operator, dropped silently when it cannot be made or
+ * uploaded (the report then uses the original). Present on the file only while it still has to be sent.
+ */
+export interface OutboxCopy {
+  width: 384 | 1600;
+  /** file:// URI inside the outbox sandbox. */
+  local_path: string;
+  /** SHA-256 hex of the copy's own bytes. */
+  sha256: string;
+  size_bytes: number;
+  pixel_width: number;
+  pixel_height: number;
+  /** Set once the PUT to R2 succeeded (only the record call is left). */
+  storage_path: string | null;
+  /** Failed tries; the copy is dropped after MAX_COPY_ATTEMPTS. */
+  attempts: number;
+}
+
+/** A copy is tried this many times (each failure counts) before it is dropped silently. */
+export const MAX_COPY_ATTEMPTS = 6;
+
 export interface OutboxFile {
   /** Local id (uuid). */
   id: string;
@@ -56,6 +79,8 @@ export interface OutboxFile {
   exif?: Record<string, unknown>;
   device_info?: Record<string, unknown>;
   ocr?: DeviceOcr | null;
+  /** Shrunk copies still to send (images only); absent on items saved before copies existed. */
+  copies?: OutboxCopy[];
   /** Set once the PUT to R2 succeeded; a stored file is never uploaded again. */
   storage_path: string | null;
   /** Upload progress of the current attempt (not persisted mid-file). */

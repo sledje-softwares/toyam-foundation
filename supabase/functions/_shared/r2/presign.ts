@@ -7,6 +7,14 @@ export function evidenceKey(caseId: string, taskId: string, sha256: string, ext:
   return `cases/${caseId}/tasks/${taskId}/${sha256}.${ext}`;
 }
 
+/**
+ * Key of a shrunk copy the field app made (D51); the database enforces the same scheme
+ * (private.derivative_path). Content-addressed by the copy's own hash: other bytes, other key.
+ */
+export function derivativeKey(caseId: string, originalSha256: string, width: number, copySha256: string): string {
+  return `derived/${caseId}/${originalSha256}/w${width}-${copySha256}.jpg`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // AWS Signature V4, query-string presigning (S3 / R2)
 // ---------------------------------------------------------------------------------------------

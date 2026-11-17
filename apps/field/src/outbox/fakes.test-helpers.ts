@@ -1,8 +1,11 @@
 // Test fakes for the outbox (not a test file itself).
 import { Outbox } from './outbox';
-import { type OutboxReport, type PostMessage, type Presigned, type PresignRequest, type Server, ServerError, type Transport } from './server';
+import {
+  type DerivativePresign, type DerivativePresignRequest, type DerivativeRecord, type OutboxReport, type PostMessage, type Presigned, type PresignRequest,
+  type Server, ServerError, type Transport,
+} from './server';
 import { MemoryStore } from './store';
-import type { NewItem } from './types';
+import type { NewItem, OutboxCopy, OutboxFile } from './types';
 
 export class FakeServer implements Server {
   /** Server-side messages by client_message_id (what the database would hold). */
@@ -56,6 +59,36 @@ export class FakeServer implements Server {
   }
 }
 
+/** A signed-in server that also takes shrunk copies (D51). */
+export class FakeDerivServer extends FakeServer {
+  derivPresigns: DerivativePresignRequest[] = [];
+  recorded: DerivativeRecord[] = [];
+  /** Errors for the next presign / record calls (undefined = succeed). */
+  derivPresignErrors: (ServerError | undefined)[] = [];
+  recordErrors: (ServerError | undefined)[] = [];
+  /** Per width: answer this status instead of upload. */
+  statusByWidth: Partial<Record<number, 'already_stored' | 'skipped'>> = {};
+
+  async presignDerivatives(req: DerivativePresignRequest): Promise<DerivativePresign[]> {
+    this.derivPresigns.push(req);
+    const e = this.derivPresignErrors.shift();
+    if (e) throw e;
+    return req.copies.map((c) => {
+      const storage_path = `derived/${req.case_id}/${req.original_sha256}/w${c.width}-${c.sha256}.jpg`;
+      const s = this.statusByWidth[c.width];
+      if (s === 'skipped') return { width: c.width, status: 'skipped' as const };
+      if (s === 'already_stored') return { width: c.width, status: 'already_stored' as const, storage_path };
+      return { width: c.width, status: 'upload' as const, storage_path, url: `https://r2.example/${storage_path}`, headers: { 'x-amz-content-sha256': c.sha256 } };
+    });
+  }
+
+  async recordDerivative(rec: DerivativeRecord): Promise<void> {
+    const e = this.recordErrors.shift();
+    if (e) throw e;
+    this.recorded.push(rec);
+  }
+}
+
 export class FakeTransport implements Transport {
   puts: string[] = [];
   errors: (Error | undefined)[] = [];
@@ -78,7 +111,22 @@ export class Clock {
   }
 }
 
-export function setup(opts: { store?: MemoryStore; server?: FakeServer; clock?: Clock; deviceId?: string | null } = {}) {
+/** Two copies of a file like capture/copies.ts makes them; the local paths are recorded in `made`. */
+export function fakeMakeCopies(made: string[] = [], fail = false) {
+  return async (f: OutboxFile): Promise<OutboxCopy[]> => {
+    if (fail) return [];
+    return ([1600, 384] as const).map((width) => {
+      const local_path = `file:///data/outbox/copy-${f.id}-w${width}.jpg`;
+      made.push(local_path);
+      return {
+        width, local_path, sha256: (f.sha256.slice(0, 2) + width.toString(16)).padEnd(64, 'e').slice(0, 64), size_bytes: width * 100,
+        pixel_width: width, pixel_height: Math.round(width * 0.75), storage_path: null, attempts: 0,
+      };
+    });
+  };
+}
+
+export function setup(opts: { store?: MemoryStore; server?: FakeServer; clock?: Clock; deviceId?: string | null; makeCopies?: (f: OutboxFile) => Promise<OutboxCopy[]> } = {}) {
   const store = opts.store ?? new MemoryStore();
   const server = opts.server ?? new FakeServer();
   const transport = new FakeTransport();
@@ -91,6 +139,7 @@ export function setup(opts: { store?: MemoryStore; server?: FakeServer; clock?: 
     server,
     transport,
     deviceId: opts.deviceId === undefined ? 'dev-1' : opts.deviceId,
+    makeCopies: opts.makeCopies,
     now: clock.now,
     random: () => 0.5,
     uuid: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,

@@ -22,6 +22,12 @@ import {
   type LinkResult,
   type SectionState,
 } from "@/lib/reports";
+import {
+  callReportGenerate,
+  INITIAL_GENERATE_STATE,
+  stateFromResult,
+  type GenerateState,
+} from "@/lib/report-generate";
 import { mapDbError } from "@/lib/validation/db-errors";
 
 const Id = z.guid();
@@ -310,18 +316,6 @@ export async function decideApproval(fd: FormData): Promise<void> {
 // ---------------------------------------------------------------------
 // Short-lived links (files are never public)
 // ---------------------------------------------------------------------
-/** 60-second signed link to a generated report file (bucket `reports`, staff read). */
-export async function reportFileLink(reportId: string, format: string): Promise<LinkResult> {
-  await requireRole(STAFF_ROLES);
-  if (!Id.safeParse(reportId).success || !["pdf", "docx"].includes(format)) return { error: RELOAD, url: null };
-  const supabase = await createClient();
-  const { data } = await supabase.from("report_files").select("storage_path").eq("report_id", reportId).eq("format", format).maybeSingle();
-  if (!data?.storage_path) return { error: "This file is not available.", url: null };
-  const signed = await supabase.storage.from("reports").createSignedUrl(data.storage_path, 60);
-  if (signed.error || !signed.data) return { error: "The download link could not be created. Try again.", url: null };
-  return { error: null, url: signed.data.signedUrl };
-}
-
 /** 5-minute link to any evidence file (R2 or insurer attachment) via the evidence-view function; RLS decides. */
 export async function evidenceLink(evidenceId: string): Promise<LinkResult> {
   await requireRole(STAFF_ROLES);
@@ -330,4 +324,25 @@ export async function evidenceLink(evidenceId: string): Promise<LinkResult> {
   if (!r.ok) return { error: r.message, url: null };
   const link = r.links.get(linkKey("evidence", evidenceId));
   return link ? { error: null, url: link.url } : { error: linkErrorMessage(r.errors.get(linkKey("evidence", evidenceId)) ?? "unavailable"), url: null };
+}
+
+// ---------------------------------------------------------------------
+// 7.7 Generate a report version (edge function report-generate, the user's own session)
+// ---------------------------------------------------------------------
+/**
+ * Generates a new version (PDF / Word per the template). The access token never leaves the server: supabase-js adds the
+ * signed-in user's JWT to the function call. The database refuses non-owners and non-editable statuses; its message is
+ * shown. Takes up to ~60 s (PDF rendering).
+ */
+export async function generateReport(prev: GenerateState, fd: FormData): Promise<GenerateState> {
+  await requireRole(EDITOR_ROLES);
+  const caseId = String(fd.get("case_id") ?? "");
+  const caseRef = String(fd.get("case_ref") ?? "");
+  const notes = String(fd.get("notes") ?? "").trim();
+  const fail = (message: string): GenerateState => ({ ...INITIAL_GENERATE_STATE, seq: prev.seq + 1, status: "error", message });
+  if (!Id.safeParse(caseId).success || !CaseRef.safeParse(caseRef).success) return fail(RELOAD);
+  if (notes.length > 2000) return fail("Keep the notes under 2000 characters.");
+  const r = await callReportGenerate({ caseId, mode: "generate", notes: notes || null });
+  if (r.ok) revalidateReports(caseRef);
+  return stateFromResult(prev, r);
 }

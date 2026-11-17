@@ -1,8 +1,10 @@
 // config/templates/*.yaml → JSON for public.load_case_template(), and → IntakeTemplate for tests.
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { parse } from 'yaml';
 import type { IntakeConfig, IntakeTemplate } from '../../../supabase/functions/_shared/intake/types.ts';
+import { imageSize, sniffImage, toBase64 } from '../../../supabase/functions/_shared/report/image.ts';
+import { templateInfo, validateLayout } from '../../../supabase/functions/_shared/report/validate.ts';
 
 export interface TemplateYaml {
   insurer_code: string;
@@ -97,4 +99,67 @@ export function configFromYaml(extra?: Partial<IntakeConfig>): IntakeConfig {
     templates,
     ...extra,
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Report layouts (D51, docs/13-report-layouts.md). A template names its layout file:
+//   report_layout: layouts/icl-motor-od.yaml        (relative to the template file)
+// Asset files in the layout (`assets: {letterhead: {file: assets/letterhead.png}}`, relative to the layout file)
+// are embedded as base64 with their pixel size. The resolved layout travels inside the template JSON, so a layout
+// change makes a new template version (cases keep theirs).
+
+function safeRelative(base: string, rel: unknown, what: string): string {
+  if (typeof rel !== 'string' || rel === '' || isAbsolute(rel) || normalize(rel).split(/[\\/]/).includes('..')) {
+    throw new Error(`${what} must be a relative path inside config/templates (got ${JSON.stringify(rel)})`);
+  }
+  return join(base, rel);
+}
+
+/** Reads a layout object's `{file: …}` assets and embeds them. Returns errors instead of throwing. */
+export function embedLayoutAssets(layout: unknown, baseDir: string): string[] {
+  const errors: string[] = [];
+  const assets = (layout as { assets?: Record<string, unknown> } | null)?.assets;
+  if (!assets || typeof assets !== 'object') return errors;
+  for (const [name, a] of Object.entries(assets)) {
+    if (!a || typeof a !== 'object' || !('file' in a)) continue;
+    try {
+      const keys = Object.keys(a);
+      if (keys.length !== 1) throw new Error('a file asset has only the key file');
+      const path = safeRelative(baseDir, (a as { file: unknown }).file, `assets.${name}.file`);
+      const bytes = new Uint8Array(readFileSync(path));
+      const mime = sniffImage(bytes);
+      const size = imageSize(bytes);
+      if (!mime || !size) throw new Error(`${path} is not a readable JPEG or PNG`);
+      assets[name] = { mime, width: size.width, height: size.height, data_base64: toBase64(bytes) };
+    } catch (e) {
+      errors.push(`$.assets.${name}: ${(e as Error).message}`);
+    }
+  }
+  return errors;
+}
+
+/**
+ * Resolves `report_layout` of a template (a file name, or an inline object), embeds assets and validates it against
+ * the template's fields and sections. Returns the config with the layout object in place, plus errors.
+ */
+export function resolveTemplateLayout(t: TemplateYaml, templateFile: string): { config: TemplateYaml; errors: string[] } {
+  const ref = t.report_layout;
+  if (ref === undefined || ref === null) return { config: t, errors: [] };
+  let layout: unknown;
+  let baseDir = dirname(templateFile);
+  const errors: string[] = [];
+  try {
+    if (typeof ref === 'string') {
+      const path = safeRelative(baseDir, ref, 'report_layout');
+      layout = readYaml<unknown>(path);
+      baseDir = dirname(path);
+    } else layout = structuredClone(ref);
+  } catch (e) {
+    return { config: t, errors: [`report_layout: ${(e as Error).message}`] };
+  }
+  errors.push(...embedLayoutAssets(layout, baseDir));
+  if (errors.length === 0) {
+    errors.push(...validateLayout(layout, templateInfo(t.sections ?? [])));
+  }
+  return { config: { ...t, report_layout: layout }, errors: errors.map((e) => `report_layout ${e}`) };
 }
