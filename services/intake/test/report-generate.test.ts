@@ -167,6 +167,8 @@ describe('report-generate flow', () => {
     assert.match(b.html, /Content-Security-Policy/);
     assert.deepEqual(fns(calls, 'fetchImage').map((c) => c.args[1]), [copyKey(1, 384), copyKey(2, 384)]);
     assert.equal(fns(calls, 'renderPdf').length + fns(calls, 'upload').length + fns(calls, 'createVersion').length, 0);
+    // the preview asks the database for the preview variant (no editable-status check); generate does not
+    assert.deepEqual(fns(calls, 'prepare').map((c) => c.args), [[CASE, 'preview']]);
     // preview does not need Browser Rendering
     const { gw: gw2 } = fakeGateway();
     assert.equal((await post(gw2, { case_id: CASE, mode: 'preview' }, env({ pdfConfigured: false }))).status, 200);

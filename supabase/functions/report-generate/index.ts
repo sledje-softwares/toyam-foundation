@@ -78,8 +78,8 @@ function gateway(authHeader: string): Gateway {
       const { data, error } = await caller.auth.getUser(token);
       return error || !data.user ? null : data.user.id;
     },
-    async prepare(caseId) {
-      const { data, error } = await caller.rpc('prepare_report_version', { p_case_id: caseId });
+    async prepare(caseId, preview) {
+      const { data, error } = await caller.rpc(preview ? 'prepare_report_preview' : 'prepare_report_version', { p_case_id: caseId });
       return { data, error };
     },
     async fetchImage(src: ImageSource, maxBytes) {

@@ -80,8 +80,8 @@ export function fakeGateway(o: FakeOpts = {}) {
     async verifyCaller() {
       return o.uid === undefined ? 'u-1' : o.uid;
     },
-    async prepare(caseId) {
-      calls.push({ fn: 'prepare', args: [caseId] });
+    async prepare(caseId, preview) {
+      calls.push({ fn: 'prepare', args: preview ? [caseId, 'preview'] : [caseId] });
       if (o.prepareError) return { data: null, error: o.prepareError };
       return { data: o.prepared === undefined ? prepared() : o.prepared, error: null };
     },

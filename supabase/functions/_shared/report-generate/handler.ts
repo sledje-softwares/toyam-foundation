@@ -30,8 +30,8 @@ export interface CreateVersionArgs {
 export interface Gateway {
   /** auth.getUser with the bearer token; the user id, or null when the session is not valid. */
   verifyCaller(): Promise<string | null>;
-  /** rpc prepare_report_version(p_case_id) with the caller's client. */
-  prepare(caseId: string): Promise<{ data: PreparedReport | null; error: DbErrorLike | null }>;
+  /** rpc prepare_report_version(p_case_id) with the caller's client; for a preview, prepare_report_preview (no editable-status check). */
+  prepare(caseId: string, preview: boolean): Promise<{ data: PreparedReport | null; error: DbErrorLike | null }>;
   /** Bytes of one image (R2 with the read token, Storage `email-raw` with the caller's client); null when missing, refused or larger than maxBytes. */
   fetchImage(src: ImageSource, maxBytes: number): Promise<Uint8Array | null>;
   /** POST {html, pdfOptions} to Browser Rendering /pdf. */
@@ -160,8 +160,8 @@ export async function handleReportGenerate(method: string, hasAuth: boolean, bod
     return err({ ...fail(429, 'rate_limited', `Too many ${what}. Try again in ${wait} s.`, { retry_after: wait }), retryAfter: wait });
   }
 
-  // 1. Everything the report needs, under the database's checks (staff, own case, editable status).
-  const prep = await gw.prepare(req.case_id);
+  // 1. Everything the report needs, under the database's checks (staff, own case; editable status unless previewing).
+  const prep = await gw.prepare(req.case_id, req.mode === 'preview');
   if (prep.error || !prep.data) {
     const f = prep.error ? mapDbError(prep.error) : fail(502, 'upstream_error', 'Something went wrong. Try again later.');
     if (f.status >= 500) gw.logError(`prepare failed: ${prep.error?.code ?? 'no data'} case ${req.case_id} user ${uid}`);
