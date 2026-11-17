@@ -193,13 +193,13 @@ body:
           - {text: Case Summary and observation, valign: middle}
           - blocks:
               - {type: heading, text: Case Summary, level: 3}
-              - {type: paragraph, text: '{{field.case_summary}}', style: justify}
+              - {type: paragraph, text: '{{field.case_summary}}', style: justify, markup: true}
               - {type: heading, text: Observation, level: 3}
               - {type: list, field: observations, split: auto, ordered: false, style: justify, indent_mm: 8}
 
       - {heading: Final Conclusion, style: {underline: true}}
       - cells:
-          - {text: '{{field.final_conclusion}}', colspan: 2, style: justify}
+          - {text: '{{field.final_conclusion}}', colspan: 2, style: justify, markup: true}
       - cells:
           - {text: Investigation Status, style: bold, valign: middle}
           - {text: '{{field.investigation_status}}', style: justify}

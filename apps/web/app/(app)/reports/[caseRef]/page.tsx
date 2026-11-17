@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import type { SearchParams } from "@/lib/list-params";
 import { approvalModel, canManageCase, dueLabel, editLock, REPORT_STAGES, reportStage, workspaceTotals } from "@/lib/reports";
-import { Badge, ErrorState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
+import { Badge, buttonClass, ErrorState, InlineAlert, PageHeader, StatusBadge } from "@/components/ui";
 import { ApprovalCard } from "@/components/reports/approval-card";
 import { EvidencePanel } from "@/components/reports/evidence-panel";
 import { GenerateReport } from "@/components/reports/generate-report";
@@ -80,6 +80,11 @@ export default async function ReportWorkspacePage({
         actions={
           ws.template && lock.editable ? (
             <GenerateReport caseId={c.id} caseRef={c.case_ref} previewHref={`${href}/preview`} action={generateReport} />
+          ) : ws.template ? (
+            // Read-only viewers may still open the preview; generating stays with editors.
+            <Link href={`${href}/preview`} className={buttonClass("secondary")}>
+              Preview
+            </Link>
           ) : undefined
         }
       />

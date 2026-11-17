@@ -112,6 +112,12 @@ for (const [file, name] of [['icl-motor-od.yaml', 'ICICI Lombard Motor OD'], ['i
       assert.ok((html.match(/data:image\/jpeg/g) ?? []).length >= 8, 'photos embedded');
     });
 
+    it('renders **bold** markup in the conclusion narrative (and never prints the asterisks)', () => {
+      const { html } = renderReportHtml(layout, dataFor(template, { withAssets: true }), { now: NOW });
+      assert.match(html, /font-weight:bold[^>]*>Invented bold closing sentence\.</);
+      assert.ok(!html.includes('**'), 'no literal ** left in the output');
+    });
+
     it('renders both writers with and without the runtime assets', async () => {
       for (const withAssets of [true, false]) {
         const data = dataFor(template, { withAssets });
