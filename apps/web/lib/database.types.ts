@@ -1637,6 +1637,9 @@ isOneToOne: false
 "approve_own_report":
 { Args: { "p_comment"?: string,"p_report_id": string }; Returns: string
                            },
+"backfill_filename_labels":
+{ Args: { "p_limit"?: number }; Returns: number
+                           },
 "can_upload_case_file":
 { Args: { "p_case_id": string }; Returns: boolean
                            },
@@ -1817,6 +1820,9 @@ isOneToOne: false
                            },
 "post_thread_message":
 { Args: { "p_body"?: string,"p_case_id": string,"p_client_message_id": string,"p_items"?: Json,"p_kind": Database["public"]['Enums']["message_kind"],"p_reply_to"?: string,"p_task_id"?: string }; Returns: string
+                           },
+"prepare_report_preview":
+{ Args: { "p_case_id": string }; Returns: Json
                            },
 "prepare_report_version":
 { Args: { "p_case_id": string }; Returns: Json

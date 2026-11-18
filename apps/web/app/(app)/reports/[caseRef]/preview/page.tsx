@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole, STAFF_ROLES } from "@/lib/auth";
-import { callReportGenerate } from "@/lib/report-generate";
 import { createClient } from "@/lib/supabase/server";
 import { InlineAlert, PageHeader } from "@/components/ui";
+import { ReportPreview } from "@/components/reports/report-preview";
 
 export const metadata = { title: "Report preview" };
 
 const CASE_REF = /^[A-Za-z0-9_\-/]{3,40}$/;
 
 /**
- * HTML preview of the report as it would be generated now (nothing is stored). The HTML comes from the
- * `report-generate` function with the user's own session and is shown in a sandboxed iframe: no `allow-scripts`, no
- * `allow-same-origin`, so it cannot run code or reach this app's cookies. It carries its own CSP (data: images only).
+ * PDF preview of the report as it would be generated now (nothing is stored). The page only finds the case (RLS); the
+ * PDF is built in the browser by ReportPreview from prepare_report_preview with the user's own session (the same
+ * access rules as generating, in any case status), so read-only viewers of a locked case can still look at it.
  */
 export default async function ReportPreviewPage({ params }: { params: Promise<{ caseRef: string }> }) {
   await requireRole(STAFF_ROLES);
@@ -37,8 +37,6 @@ export default async function ReportPreviewPage({ params }: { params: Promise<{ 
   if (!c) notFound();
 
   const href = `/reports/${encodeURIComponent(c.case_ref)}`;
-  const r = await callReportGenerate({ caseId: c.id, mode: "preview" });
-
   return (
     <>
       <PageHeader
@@ -50,27 +48,7 @@ export default async function ReportPreviewPage({ params }: { params: Promise<{ 
           </Link>
         }
       />
-      {!r.ok ? (
-        <InlineAlert tone="warning" title="No preview">
-          {r.message}
-        </InlineAlert>
-      ) : (
-        <>
-          <p className="mb-3 text-sm text-text-muted">This is a draft view of the current values. Nothing has been saved; use Generate report to make a version.</p>
-          {r.warnings.length > 0 && (
-            <div className="mb-3">
-              <InlineAlert tone="warning" title="Check before generating">
-                <ul className="list-disc pl-5">
-                  {r.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </InlineAlert>
-            </div>
-          )}
-          <iframe title={`Preview of the report for ${c.case_ref}`} sandbox="" srcDoc={r.html ?? ""} className="h-[80vh] w-full rounded border border-border bg-white" />
-        </>
-      )}
+      <ReportPreview caseId={c.id} caseRef={c.case_ref} />
     </>
   );
 }

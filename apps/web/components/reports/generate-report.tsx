@@ -1,80 +1,89 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
-import { generateButtonState, INITIAL_GENERATE_STATE, type GenerateState } from "@/lib/report-generate-core";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useFileCache } from "@/components/file-cache/provider";
 import { buttonClass } from "@/components/ui";
+import type { Attempt } from "@/lib/report-build/core";
+import { buttonState, doneText, IDLE, progressText, userMessage, type GenerateUi } from "@/lib/report-build/ui";
 
 /**
- * "Generate report" and "Preview" for the workspace header. One request at a time: the button is disabled while the
- * server action runs (up to ~60 s for the PDF) and during a rate-limit countdown. The result (version, warnings, or a
- * clear error) shows under the buttons; the versions list refreshes through revalidation.
+ * "Generate report" and "Preview" for the workspace header (7.7, D51). The report is built in this browser: the
+ * template, values and photo list come from prepare_report_version under the user's own session, photos from the
+ * hash-checked file cache, the PDF / Word files from the writers in a Web Worker; they are uploaded and recorded as
+ * a new version with the same session. The code for all that loads on the first click only. One run at a time; a
+ * transient failure keeps the built files for a retry. The versions list refreshes when the version is recorded.
  */
-export function GenerateReport({
-  caseId,
-  caseRef,
-  previewHref,
-  action,
-}: {
-  caseId: string;
-  caseRef: string;
-  previewHref: string;
-  action: (prev: GenerateState, fd: FormData) => Promise<GenerateState>;
-}) {
-  const [state, formAction, pending] = useActionState(action, INITIAL_GENERATE_STATE);
-  // Rate-limit countdown, restarted by every new answer (state adjusted during render, keyed by the answer's seq).
-  const [countdown, setCountdown] = useState({ seq: 0, left: 0 });
-  const busy = useRef(false);
-  if (countdown.seq !== state.seq) {
-    setCountdown({ seq: state.seq, left: state.status === "error" && state.retryAfter ? state.retryAfter : 0 });
-  }
-  const retryLeft = countdown.left;
-  useEffect(() => {
-    if (retryLeft <= 0) return;
-    const t = setTimeout(() => setCountdown((c) => ({ seq: c.seq, left: Math.max(0, c.left - 1) })), 1000);
-    return () => clearTimeout(t);
-  }, [retryLeft]);
-  useEffect(() => {
-    busy.current = pending;
-  }, [pending]);
+export function GenerateReport({ caseId, previewHref }: { caseId: string; previewHref: string }) {
+  const files = useFileCache();
+  const router = useRouter();
+  const [ui, setUi] = useState<GenerateUi>(IDLE);
+  const running = useRef(false);
+  const attempt = useRef<Attempt | null>(null);
 
-  const btn = generateButtonState({ pending, retryLeft });
+  // Leaving the page mid-run loses the work: ask first.
+  const busy = ui.status === "running";
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
+
+  async function generate() {
+    if (running.current || !files) return;
+    running.current = true;
+    setUi({ status: "running", progress: { phase: attempt.current ? "uploading" : "preparing" } });
+    try {
+      const { browserRunDeps, runGenerate } = await import("@/lib/report-build/browser");
+      const r = await runGenerate(browserRunDeps(files, caseId), { caseId, attempt: attempt.current }, (progress) =>
+        setUi({ status: "running", progress }),
+      );
+      if (r.ok) {
+        attempt.current = null;
+        setUi({ status: "done", version: r.version, warnings: r.warnings });
+        router.refresh();
+      } else {
+        attempt.current = r.attempt;
+        setUi({ status: "error", message: userMessage(r.failure, !!r.attempt), warnings: r.warnings, resumable: !!r.attempt });
+        if (r.failure.error.code === "values_changed" || r.failure.error.code === "not_editable") router.refresh();
+      }
+    } catch {
+      // the code chunk did not load (offline, new deployment): nothing was stored
+      attempt.current = null;
+      setUi({ status: "error", message: "The report could not be generated. Reload the page and try again.", warnings: [], resumable: false });
+    } finally {
+      running.current = false;
+    }
+  }
+
+  const btn = buttonState(ui, !!files);
+  const warnings = ui.status === "done" || ui.status === "error" ? ui.warnings : [];
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link href={previewHref} className={buttonClass("secondary")} aria-disabled={pending || undefined}>
+        <Link href={previewHref} className={buttonClass("secondary")} aria-disabled={busy || undefined}>
           Preview
         </Link>
-        <form
-          action={formAction}
-          onSubmit={(e) => {
-            if (busy.current) e.preventDefault();
-            busy.current = true;
-          }}
-        >
-          <input type="hidden" name="case_id" value={caseId} />
-          <input type="hidden" name="case_ref" value={caseRef} />
-          <button type="submit" disabled={btn.disabled} aria-busy={pending} className={buttonClass("primary")}>
-            {btn.label}
-          </button>
-        </form>
+        <button type="button" onClick={() => void generate()} disabled={btn.disabled} aria-busy={busy} className={buttonClass("primary")}>
+          {btn.label}
+        </button>
       </div>
       <div role="status" aria-live="polite" className="max-w-md text-right text-sm">
-        {pending && <p className="text-text-muted">This can take up to a minute. Keep this page open.</p>}
-        {!pending && state.status === "ok" && (
-          <div>
-            <p className="font-medium text-success">{state.message}</p>
-            {state.warnings.length > 0 && (
-              <ul className="mt-1 list-disc pl-5 text-left text-text-muted">
-                {state.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            )}
-          </div>
+        {ui.status === "running" && (
+          <p className="text-text-muted">
+            <span className="font-medium text-text">{progressText(ui.progress)}</span> Keep this page open.
+          </p>
         )}
-        {!pending && state.status === "error" && (
-          <p className="text-danger">{retryLeft > 0 && state.retryAfter ? `Too many requests. Try again in ${retryLeft} s.` : state.message}</p>
+        {ui.status === "done" && <p className="font-medium text-success">{doneText(ui.version)}</p>}
+        {ui.status === "error" && <p className="text-danger">{ui.message}</p>}
+        {warnings.length > 0 && (
+          <ul className="mt-1 list-disc pl-5 text-left text-text-muted">
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
         )}
       </div>
     </div>

@@ -162,6 +162,18 @@ Known differences from the HTML writer:
 - Line boxes: pdfmake puts the extra line height below the text (CSS splits it above and below): text sits ~0.03 em higher. Justified text, long-word breaking and the last line of a paragraph behave like CSS.
 - Borders are drawn per cell edge (an edge is drawn when either neighbour has one, close to CSS border-collapse); the table is one line width wider than in HTML (the outer half lines).
 - Superscript, links and a different first-page header are not supported (as in the HTML writer).
+- **₹ (U+20B9) is only in Carlito.** Caladea and Liberation Sans have no glyph for it, so a `currency` value (default prefix `₹ `) in a Cambria / Arial run prints a missing glyph. No current layout uses `currency`; a layout that does should give it the prefix `Rs. ` or a Calibri run.
+
+### Built in the browser (7.7 piece 3)
+
+The workspace's **Generate report** and **Preview** build the files in the office user's browser (`apps/web/lib/report-build`), as the signed-in user (browser Supabase client, anon key + session; no service-role key):
+
+1. `prepare_report_version` (generate) / `prepare_report_preview` (preview, any status) — the database checks staff, `can_manage_case` and, for generate, the editable status.
+2. `assemble.ts`: `preparedProblem` (no / invalid layout, no output format), `planReportPhotos(prepared, mode)` (sections shown by a `photos` block, `imageSources` order, byte budget), `loadReportPhotos(plans, fetcher)` — the fetcher is the hash-checked file cache (`fetchVerified` with the SHA-256 prepare returned for the 1600 px copy / 384 px copy / original); bytes that fail are never placed, the photo becomes a placeholder + warning — and `reportDataFrom`.
+3. `files.ts`: `createReportRenderer({pdfmake, loadFont}).render({layout, data, formats, now})` binds once, builds a fresh pdfmake definition per render, loads only the font files it uses into pdfmake's virtual file system (`/fonts/<file>` from the app's origin), switches pdfmake's URL and local-file access off, writes the PDF and (if the template allows) the Word file, and returns `placedKeys` for `placedPhotoRecords` (p_photos = photos actually embedded). It runs in a **Web Worker** (Turbopack bundles `new Worker(new URL('./worker.ts', import.meta.url))` as a classic worker with pdfmake in its own chunks); without a worker it runs on the page, yielding before each writer.
+4. SHA-256 (crypto.subtle), upload to `reports/{case_id}/{report_id}/report.{pdf|docx}` (`upsert: false`), `create_report_version`. A failed upload / record keeps the files and the report id for a retry (an "already exists" object of the same size counts as uploaded; `created: false` is success); RV409 or a refusal starts over with a new prepare and a new id.
+
+Measured (`services/intake/test/report-browser-build.test.ts`, Node 22, pdfmake **browser** build, 30 photos: 27 JPEG copies of 250–400 kB + 3 PNG 1600 × 1200 of 1.7 MB, both layouts): PDF ≈ 13.9 MB and Word ≈ 14 MB for 13.9 MB of photos; plan + photos + data ≈ 3 ms (bytes in memory), PDF + Word ≈ 1.2–1.3 s wall. First load of `/reports/[caseRef]` grows by ≈ 0.7 kB gzip; pdfmake (≈ 290 kB gzip), the writers (≈ 20 kB) and supabase-js (≈ 70 kB) load on the first Generate / Preview only; fonts 80–800 kB per file, 2–4 files per report, from the HTTP cache after the first time.
 
 ## What the two samples contain (for transcribing them)
 
