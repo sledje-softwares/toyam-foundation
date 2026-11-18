@@ -59,8 +59,8 @@ async function fetchContext(caseId: string): Promise<CaptureContext | null> {
   };
 }
 
-/** `taskId` from the caller wins when given (the thread screen may already know it). */
-export function useCaptureContext(caseId: string, taskId?: string | null) {
+/** `taskId` from the caller wins when given (the thread screen may already know it). A new `refreshKey` reloads (e.g. after "Mark task done"). */
+export function useCaptureContext(caseId: string, taskId?: string | null, refreshKey = 0) {
   const [ctx, setCtx] = useState<CaptureContext | null>(null);
 
   const reload = useCallback(async () => {
@@ -84,7 +84,7 @@ export function useCaptureContext(caseId: string, taskId?: string | null) {
     return () => {
       live = false;
     };
-  }, [caseId]);
+  }, [caseId, refreshKey]);
 
   const merged = ctx && taskId !== undefined ? { ...ctx, taskId } : ctx ?? (taskId ? { taskId, chips: [], loadedAt: '' } : null);
   return { ctx: merged, reload };

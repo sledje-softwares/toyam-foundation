@@ -178,6 +178,16 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 
 Approval, `approve_own_report`, `request_report_send`, `request_portal_pack` and `record_manual_submission` read the latest version as before and work unchanged with generated versions.
 
+### Completing field work and closing a case (`20261119100000_task_complete_case_close.sql`)
+
+| Object | Purpose |
+|---|---|
+| `complete_field_task(task, note)` | Security definer. The **assigned, active field operator** on their own task, or **staff who manage the case** (`can_manage_case`, D44; orchestrator / admin all). Task pending / in progress; case not `submitted` (left-over work there is cancelled, D46), `closed` or `cancelled`. Only `tasks.status` changes; the triggers set `completed_at` (server time), post the thread event, notify the owner, end the hold (the D43 late-upload window starts) and move the case `field_in_progress` → `office_review` when no open task is left. Optional note ≤ 1000: a system message visible on the case when the operator wrote it, staff-only when staff did (D32). Staff completion notifies the operator (`task_completed`). Audit `TASK_COMPLETED` (`by`: operator / office) |
+| `tasks_after_change` (changed) | The completion event names who acted: "&lt;operator&gt; marked field work complete: …" or "Field work marked complete by the office: …"; the owner is not notified of their own action |
+| `tasks_field_guard` (changed) | Field users cannot complete a task with a direct `UPDATE` (API roles); completion goes through `complete_field_task`. Starting a task (pending → in progress, `post_thread_message`) is unchanged, so `p_tasks_field_u` stays |
+| `close_case(case, note)` | Security definer; owner / orchestrator / admin. Only from `submitted`, no open field task, and the **latest submission acknowledged** (`record_submission_ack`). Orchestrator / admin may close without an acknowledgement with a reason of 3–500 characters (P7); office staff record the acknowledgement first. Status `closed` (history row and `closed_at` by the status trigger), note in the history ("Closed: …" / "Closed without acknowledgement: …"), staff-only thread event, owner notified `case_closed` when someone else closed, audit `CASE_CLOSED`. A closed case is final: `reopen_case` still accepts only `submitted` |
+| `cases_closed_guard` | API roles cannot move a case into or out of `closed` with a direct `UPDATE` (the staff case policy allows status writes); `close_case` and system jobs are not affected |
+
 ## Case status automation
 
 | Event | Status change |
@@ -185,11 +195,12 @@ Approval, `approve_own_report`, `request_report_send`, `request_portal_pack` and
 | Case created | `received` |
 | Office employee assigned | `received` → `assigned` |
 | Field task / request created | `assigned`, `office_review`, `orchestrator_review` → `field_in_progress` |
-| Last open task completed or cancelled | `field_in_progress` → `office_review` |
+| Last open task completed (`complete_field_task`, operator or office) or cancelled | `field_in_progress` → `office_review` |
 | Approval requested (no open task, required fields filled) | `assigned`, `office_review` → `orchestrator_review` |
 | Changes requested | `orchestrator_review` → `office_review` |
 | Submission recorded | → `submitted` |
 | Case reopened on an insurer query (`reopen_case`) | `submitted` → `office_review` |
+| Case closed after the insurer's acknowledgement (`close_case`) | `submitted` → `closed` (final) |
 
 Every change is written to `case_status_history` and shown in the thread as a system message where relevant.
 
@@ -202,7 +213,8 @@ Every change is written to `case_status_history` and shown in the thread as a sy
 | Trusted time | `server_received_at`, `created_at` set by the database; messages stamped on insert |
 | Files from gallery / share accepted, unmarked (D18) | `evidence_autoflag` no longer flags; origin kept in `capture_source` |
 | Thread consistency | Evidence message must be in the same case and sent by the uploader; replies and tasks in the same case |
-| Field users update task status only | `tasks_field_guard` |
+| Field users update task status only; completion only through `complete_field_task` | `tasks_field_guard` |
+| A case is closed only through `close_case` and stays closed | `cases_closed_guard` |
 | Template consistency | Field values must belong to the case's template version |
 | Annexures | Only non-withdrawn, not-irrelevant evidence of the same case |
 | Approval before sending | Submission guard |

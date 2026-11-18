@@ -19,6 +19,8 @@ One template drives a case (D20): the workspace shows the template version's rep
 | Approve report (one step, D47) | ✓ | ✓ | — |
 | Approve / request changes (on an office request) | ✓ | ✓ | — |
 | Record acknowledgement / portal or other submission / reopen | ✓ | ✓ | ✓ |
+| Close a submitted case after the acknowledgement | ✓ | ✓ | ✓ |
+| Close a submitted case without an acknowledgement (reason required; P7) | ✓ | ✓ | — |
 
 ## Report stages and editable statuses
 
@@ -26,7 +28,7 @@ One template drives a case (D20): the workspace shows the template version's rep
 |---|---|---|
 | In progress | `received`, `intake_confirmed`, `assigned`, `field_in_progress`, `office_review` | yes (`private.report_editable_status`) |
 | Awaiting approval / Approved | `orchestrator_review` (split by the latest approval) | no |
-| Sent | `submitted`, `closed` | no; `submitted` can be reopened |
+| Sent | `submitted`, `closed` | no; `submitted` can be reopened or closed; `closed` is final |
 | (not listed) | `cancelled` | no |
 
 Editable = every status before approval is requested (docs/06: "Approval requested → orchestrator_review"; "Changes requested → office_review" unlocks; "Submission recorded → submitted"). Field work may still be open while values are filled; approval needs it closed.
@@ -173,15 +175,17 @@ Submissions                                       Reports   [Record portal / oth
 ┌───────────────┬────────────────┬───────────┬─────┬────────┬────────┬───────────┬─────┬────────┬──────────┬─────────┬───────────────────────┐
 │ Sent          │ Case           │ Claim no. │ Ins.│ Channel│ Formats│ Recipients│ Ver.│ Sent by│ Ack.     │ State   │ Actions               │
 │ 15 Nov 11:20  │ INV-2026-000123│ CL/77/2026│ IGI │ Portal │ PDF    │ —         │ v2  │ N Off. │ Awaiting │ Sent    │ [Record ack…][Reopen…]│
+│ 12 Nov 16:05  │ INV-2026-000118│ CL/70/2026│ ICL │ Email  │ PDF    │ claims@…  │ v1  │ N Off. │ 13 Nov   │ Sent    │ [Close case…][Reopen…]│
 └───────────────┴────────────────┴───────────┴─────┴────────┴────────┴───────────┴─────┴────────┴──────────┴─────────┴───────────────────────┘
 ```
 
-Data: `submissions` + case (ref, claim no., status, owner, insurer) + report version + sender; state from `submissionState()` (Superseded when a later submission exists; Reopened when `reopened_at` is set or the case is active again; else Sent). Actions are shown to `can_manage_case` users only and checked again in the database.
+Data: `submissions` + case (ref, claim no., status, owner, insurer) + report version + sender; state from `submissionState()` (Superseded when a later submission exists; Reopened when `reopened_at` is set or the case is active again; Closed when the case is closed; else Sent). Actions are shown to `can_manage_case` users only and checked again in the database.
 
 | Action | Dialog | Database |
 |---|---|---|
 | Record acknowledgement | acknowledged at (India time, empty = now), insurer reference (optional), note | `record_submission_ack(p_submission_id, p_ack_at, p_note, p_insurer_reference)`: once (`55000` after); not in the future, not more than a day before sending; reference set once; staff-only thread event |
 | Record portal / other submission | case ref, channel (portal / other), formats, sent at, portal reference (required for portal), note (required for other) | `record_manual_submission(p_case_id, p_channel, p_formats, p_insurer_reference, p_note, p_submitted_at, p_report_id)`: latest report version; case in `assigned` / `office_review` / `orchestrator_review`; approval and formats checked by `submissions_guard`; case → `submitted`, staff-only thread event. Email is refused (the sender records it with message ids) |
+| Close case… (after the acknowledgement) / Close without ack… (orchestrator / admin) | note (optional) / reason (3–500, required) | `close_case(p_case_id, p_note)` (`20261119100000`): only `submitted`, no open field task, latest submission acknowledged — orchestrator / admin may close without one with a reason (P7); `submitted` → `closed`, `closed_at`; note in `case_status_history.note` ("Closed: …" / "Closed without acknowledgement: …"); staff-only thread event "Case closed by …"; owner notified (`case_closed`) when someone else closed; audit `CASE_CLOSED`. A closed case is final (`reopen_case` needs `submitted`; a direct status update into or out of `closed` is refused, `cases_closed_guard`) |
 | Reopen | reason (3–500) | `reopen_case(p_case_id, p_reason)`: `submitted` → `office_review`; reason in `case_status_history.note`; latest submission gets `reopened_at / by / reason`; staff-only thread event "Case reopened by …"; owner notified (`case_reopened`; orchestrators when unassigned) |
 
 Submissions are records: no update / delete for API roles except the set-once columns (acknowledgement, insurer reference, sender message / thread ids, reopen marks) — trigger `submissions_record_guard`; staff insert only as themselves on cases they manage (policy `p_subs_staff_i`).

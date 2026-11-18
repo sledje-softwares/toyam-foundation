@@ -25,19 +25,20 @@ export function isAckFilter(v: string | null | undefined): v is AckFilter {
   return v === "acknowledged" || v === "awaiting";
 }
 
-export type SubmissionState = "sent" | "resent" | "reopened";
+export type SubmissionState = "sent" | "resent" | "reopened" | "closed";
 
 export const SUBMISSION_STATES: Record<SubmissionState, { label: string; tone: Tone; hint: string }> = {
   sent: { label: "Sent", tone: "success", hint: "Latest report sent for this case." },
   resent: { label: "Superseded", tone: "neutral", hint: "A later submission exists for this case." },
   reopened: { label: "Reopened", tone: "warning", hint: "The case is being worked on again after this was sent." },
+  closed: { label: "Closed", tone: "neutral", hint: "The case is closed. A closed case is final." },
 };
 
 const ACTIVE: CaseStatus[] = ["received", "intake_confirmed", "assigned", "field_in_progress", "office_review", "orchestrator_review"];
 
 /**
  * A submission is superseded when its case has a later one; the latest is "reopened" when reopen_case() marked it
- * (or the case is active again after sending), else "sent".
+ * (or the case is active again after sending), "closed" when the case is closed, else "sent".
  */
 export function submissionState(
   row: { id: string; submitted_at: string; reopened_at?: string | null },
@@ -45,7 +46,8 @@ export function submissionState(
   latestByCase: string | undefined,
 ): SubmissionState {
   if (latestByCase && latestByCase !== row.id) return "resent";
-  return row.reopened_at || ACTIVE.includes(caseStatus) ? "reopened" : "sent";
+  if (row.reopened_at || ACTIVE.includes(caseStatus)) return "reopened";
+  return caseStatus === "closed" ? "closed" : "sent";
 }
 
 // ---------------------------------------------------------------------
@@ -55,15 +57,33 @@ export function submissionState(
 export const MANUAL_CHANNELS = ["portal", "other"] as const satisfies readonly Channel[];
 export const FORMATS = ["pdf", "docx"] as const;
 
-/** Actions on a row: acknowledgement while none is recorded; reopen on the latest submission of a submitted case. */
-export function rowActions(input: { canManage: boolean; acknowledged: boolean; state: SubmissionState; caseStatus: CaseStatus }): {
+/**
+ * Actions on a row: acknowledgement while none is recorded; reopen and close on the latest submission of a submitted
+ * case. Close needs the acknowledgement, except for orchestrators / admins (`canCloseWithoutAck`), who give a reason
+ * (close_case; the database re-checks all of it, including that no field work is open).
+ */
+export function rowActions(input: {
+  canManage: boolean;
+  acknowledged: boolean;
+  state: SubmissionState;
+  caseStatus: CaseStatus;
+  canCloseWithoutAck?: boolean;
+}): {
   ack: boolean;
   reopen: boolean;
+  close: false | "acknowledged" | "without_ack";
 } {
+  const latestSubmitted = input.canManage && input.state === "sent" && input.caseStatus === "submitted";
   return {
     ack: input.canManage && !input.acknowledged,
-    reopen: input.canManage && input.state === "sent" && input.caseStatus === "submitted",
+    reopen: latestSubmitted,
+    close: !latestSubmitted ? false : input.acknowledged ? "acknowledged" : input.canCloseWithoutAck ? "without_ack" : false,
   };
+}
+
+/** Orchestrators and admins may close a submitted case without the insurer's acknowledgement (with a reason). */
+export function canCloseWithoutAck(role: string): boolean {
+  return role === "orchestrator" || role === "admin";
 }
 
 const optionalText = (max: number, label: string) =>
@@ -112,6 +132,18 @@ export const ReopenInput = z.object({
   case_id: Guid,
   reason: z.string().trim().min(3, { message: "Say what the insurer asked for (at least 3 characters)." }).max(500, { message: "Keep the reason under 500 characters." }),
 });
+
+/** close_case(p_case_id, p_note): the note is optional with an acknowledgement, a 3-500 character reason without. */
+export const CloseInput = z
+  .object({
+    case_id: Guid,
+    without_ack: z.boolean(),
+    note: z.string().trim().max(500, { message: "Keep the note under 500 characters." }),
+  })
+  .refine((v) => !v.without_ack || v.note.length >= 3, {
+    message: "Say why the case is closed without the insurer's acknowledgement (at least 3 characters).",
+    path: ["note"],
+  });
 
 /** First validation message of a failed parse. */
 export function firstIssue(error: z.ZodError): string {

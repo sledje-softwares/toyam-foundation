@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase';
 import type { CaseRow } from '../lib/cases';
 import type { ChecklistRow } from '../ui-logic/offline';
+import type { OpenTaskRow, RpcErrorLike } from '../ui-logic/taskDone';
 import { MESSAGE_LIMIT, type OpenTask } from './logic';
 import type { CaseHeader, Msg } from './caseCache';
 
@@ -54,4 +55,25 @@ export async function fetchMessages(caseId: string): Promise<Msg[] | null> {
     .order('created_at', { ascending: false })
     .limit(MESSAGE_LIMIT);
   return error ? null : ((data ?? []) as Msg[]);
+}
+
+/** This operator's open tasks on one case (RLS: p_tasks_field_r, own tasks only). */
+export async function fetchCaseOpenTasks(caseId: string): Promise<OpenTaskRow[] | null> {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, title, status, created_at')
+    .eq('case_id', caseId)
+    .in('status', ['pending', 'in_progress']);
+  if (error) return null;
+  return (data ?? []).map((t) => ({ id: String(t.id), title: String(t.title), status: String(t.status), created_at: String(t.created_at) }));
+}
+
+/** complete_field_task(p_task_id): online only, never queued (docs/11 "Mark task done"). Null = done. */
+export async function completeTask(taskId: string): Promise<RpcErrorLike | null> {
+  try {
+    const { error } = await supabase.rpc('complete_field_task', { p_task_id: taskId });
+    return error ? { code: error.code, message: error.message } : null;
+  } catch (e) {
+    return { code: null, message: e instanceof Error ? e.message : 'Network request failed' };
+  }
 }

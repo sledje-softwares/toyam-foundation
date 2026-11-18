@@ -45,6 +45,49 @@ export function ReopenDialog({ caseId, caseRef, back, action }: { caseId: string
   );
 }
 
+/**
+ * Close a submitted case (close_case). With the insurer's acknowledgement the note is optional; an orchestrator / admin
+ * closing without one must say why.
+ */
+export function CloseDialog({
+  caseId,
+  caseRef,
+  withoutAck,
+  back,
+  action,
+}: {
+  caseId: string;
+  caseRef: string;
+  withoutAck: boolean;
+  back: string;
+  action: VoidAction;
+}) {
+  return (
+    <ConfirmDialog trigger={withoutAck ? "Close without ack…" : "Close case…"} title={`Close ${caseRef}?`} confirmLabel="Close case" action={action}>
+      {withoutAck ? (
+        <p>
+          The insurer&apos;s acknowledgement is not recorded. Close only when you are sure the insurer has the report (for
+          example, a portal that never confirms). A closed case is final: it cannot be reopened.
+        </p>
+      ) : (
+        <p>The insurer has acknowledged the report. Closing ends the case; a closed case cannot be reopened.</p>
+      )}
+      <input type="hidden" name="case_id" value={caseId} />
+      <input type="hidden" name="without_ack" value={withoutAck ? "1" : "0"} />
+      <input type="hidden" name="back" value={back} />
+      <div className="mt-4 text-text">
+        <FormField
+          label={withoutAck ? "Why close without the acknowledgement" : "Note"}
+          required={withoutAck}
+          hint={withoutAck ? "3 to 500 characters. Kept in the case history." : "Optional. Kept in the case history."}
+        >
+          {(p) => <Textarea {...p} name="note" required={withoutAck} minLength={withoutAck ? 3 : undefined} maxLength={500} rows={2} />}
+        </FormField>
+      </div>
+    </ConfirmDialog>
+  );
+}
+
 /** Record a report delivered on the insurer's portal or another way (record_manual_submission; latest version). */
 export function ManualSubmissionDialog({ back, action }: { back: string; action: VoidAction }) {
   return (

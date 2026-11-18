@@ -15,9 +15,9 @@ import {
   settingInt,
 } from "@/lib/tasks";
 import { DueText, TaskKindBadge } from "@/components/tasks/task-badges";
-import { CancelTaskButton, EditTaskForm, ReassignTaskForm } from "@/components/tasks/task-actions";
-import { canManageTask, canReassignOnCase, editDefaults } from "@/lib/tasks-actions";
-import { cancelTaskAction, reassignTaskAction, updateTaskAction } from "./actions";
+import { CancelTaskButton, CompleteTaskButton, EditTaskForm, ReassignTaskForm } from "@/components/tasks/task-actions";
+import { canCompleteOnCase, canManageTask, canReassignOnCase, editDefaults } from "@/lib/tasks-actions";
+import { cancelTaskAction, completeTaskAction, reassignTaskAction, updateTaskAction } from "./actions";
 import { loadOperators } from "../new/load";
 import { Badge, ButtonLink, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
 
@@ -107,6 +107,8 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   const manage = canManageTask({ role: me.role, userId: me.id, caseOwnerId: c.office_owner_id, taskStatus: t.status });
   // D46: on a submitted case an open task can only be cancelled (reopen the case to change its field work).
   const canReassign = manage && canReassignOnCase(c.status);
+  // Completing is refused on submitted / closed / cancelled cases too (left-over work there is cancelled).
+  const canComplete = manage && canCompleteOnCase(c.status);
   const operators = canReassign ? await loadOperators(supabase, now) : null;
   const operatorOptions = (operators ?? [])
     .filter((o) => o.id !== t.assignee?.id)
@@ -152,6 +154,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           {manage && (
             <Section title="Manage task">
               <div className="flex flex-wrap items-start gap-3">
+                {canComplete && <CompleteTaskButton taskId={t.id} title={t.title} action={completeTaskAction} />}
                 {canReassign && (
                   <EditTaskForm
                     taskId={t.id}

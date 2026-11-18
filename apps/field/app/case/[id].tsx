@@ -1,13 +1,16 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CaseHeader, Msg } from '../../src/cache/caseCache';
-import { fetchCaseList, fetchChecklist, fetchHeader, fetchMessages } from '../../src/cache/fetch';
+import { completeTask, fetchCaseList, fetchCaseOpenTasks, fetchChecklist, fetchHeader, fetchMessages } from '../../src/cache/fetch';
 import { trimMessages } from '../../src/cache/logic';
 import { relativeTime } from '../../src/lib/time';
 import { colors, s } from '../../src/theme';
 import { checklistView, clockSheetView, freshnessView, type ChecklistRow } from '../../src/ui-logic/offline';
+import {
+  OFFLINE_TEXT, OFFLINE_TITLE, taskDoneConfirm, taskDoneMenuItems, taskDoneOutcome, type OpenTaskRow,
+} from '../../src/ui-logic/taskDone';
 import { checklistMenuLabel } from '../../src/ui-logic/threadMenu';
 import { ChecklistSheet, ClockSheet, Fresh, Sheet } from '../../src/ui/components';
 import { Composer } from '../../src/ui/Composer';
@@ -30,6 +33,9 @@ export default function Thread() {
   const [checkOpen, setCheckOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [rows, setRows] = useState<ChecklistRow[]>([]);
+  const [openTasks, setOpenTasks] = useState<OpenTaskRow[] | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [contextKey, setContextKey] = useState(0);
 
   // the thread is open: no "all sent" notification for it
   useEffect(() => {
@@ -76,6 +82,8 @@ export default function Thread() {
       void cache?.putMessages(id, kept);
     }
     void loadChecklist();
+    const open = await fetchCaseOpenTasks(id);
+    if (open) setOpenTasks(open);
   }, [id, cache, markSynced, loadChecklist]);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount
@@ -84,6 +92,42 @@ export default function Thread() {
   const waiting = snapshot.items.filter((i) => i.case_id === id && ['queued', 'uploading', 'held'].includes(i.state));
   const clockItem = waiting.find((i) => i.client_message_id === clockId) ?? null;
   const check = checklistView(rows, snapshot.items.filter((i) => i.case_id === id), snapshot.online, syncedAt[`checklist:${id}`] ?? null, now);
+  const doneItems = taskDoneMenuItems(openTasks, snapshot.online);
+
+  // "Mark task done": online only (never queued), confirmed first; afterwards the thread, the composer's task and the
+  // cached case list are refreshed so the case shows under Completed when nothing is left open.
+  async function finishTask(taskId: string) {
+    setCompleting(true);
+    const error = await completeTask(taskId);
+    const left = await fetchCaseOpenTasks(id ?? '');
+    setCompleting(false);
+    const outcome = taskDoneOutcome(error, left?.length ?? 0);
+    if (outcome.kind === 'done') {
+      if (left) setOpenTasks(left);
+      setContextKey((k) => k + 1);
+      void load();
+      const list = await fetchCaseList();
+      if (list) void cache?.putList(list);
+    }
+    Alert.alert(outcome.title, outcome.text);
+  }
+
+  function askTaskDone(taskId: string) {
+    setMenuOpen(false);
+    if (completing) return;
+    if (!snapshot.online) {
+      Alert.alert(OFFLINE_TITLE, OFFLINE_TEXT);
+      return;
+    }
+    const t = openTasks?.find((x) => x.id === taskId);
+    if (!t) return;
+    const waitingFiles = waiting.reduce((n, w) => n + w.files.length, 0);
+    const c = taskDoneConfirm(t, { waitingFiles, checklist: rows });
+    Alert.alert(c.title, c.body, [
+      { text: c.cancel, style: 'cancel' },
+      { text: c.confirm, onPress: () => { void finishTask(taskId); } },
+    ]);
+  }
 
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
@@ -139,9 +183,20 @@ export default function Thread() {
         >
           <Text style={[s.text, { fontWeight: '600' }]}>{checklistMenuLabel(rows)}</Text>
         </Pressable>
+        {doneItems.map((d) => (
+          <Pressable
+            key={d.taskId} onPress={() => askTaskDone(d.taskId)} disabled={completing}
+            accessibilityRole="button" accessibilityState={{ disabled: completing }}
+            style={{ minHeight: 56, justifyContent: 'center', borderTopWidth: 1, borderTopColor: colors.border }}
+          >
+            <Text style={[s.text, { fontWeight: '600', color: completing ? colors.muted : colors.text }]}>
+              {completing ? 'Marking done…' : d.label}
+            </Text>
+          </Pressable>
+        ))}
       </Sheet>
       <ChecklistSheet view={checkOpen ? check : null} loading={false} onClose={() => setCheckOpen(false)} />
-      {id ? <Composer caseId={id} /> : null}
+      {id ? <Composer caseId={id} refreshKey={contextKey} /> : null}
     </SafeAreaView>
   );
 }
