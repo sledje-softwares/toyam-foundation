@@ -14,7 +14,7 @@ bind.ts (layout + ReportData → resolved document) ──► html.ts → Browse
                                                     └► docx.ts → .docx (OOXML, STORE zip)
 ```
 
-Code: `supabase/functions/_shared/report/` — `spec.ts` (types, placeholders, `defaultLayout()`), `validate.ts`, `format.ts`, `image.ts`, `bind.ts`, `html.ts`, `docx.ts`. Tests: `services/intake/test/report-*.test.ts`, fictional example `services/intake/test/fixtures/report/example-layout.yaml` (uses every block type — copy from it).
+Code: `supabase/functions/_shared/report/` — `spec.ts` (types, placeholders, `defaultLayout()`), `validate.ts`, `format.ts`, `image.ts`, `bind.ts`, `html.ts`, `docx.ts`, `pdfmake.ts` (browser PDF, see "PDF writer (pdfmake)"). Tests: `services/intake/test/report-*.test.ts`, fictional example `services/intake/test/fixtures/report/example-layout.yaml` (uses every block type — copy from it).
 
 ## Files and loading
 
@@ -124,6 +124,44 @@ const docx = await renderReportDocx(layout, data);         // application/vnd…
 - The HTML carries `Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'`, images only as `data:` URIs, no URLs: the renderer fetches nothing. `pdfOptions` is Puppeteer-style (`width`, `height`, `margin` in mm, `printBackground`, `displayHeaderFooter`, `headerTemplate`, `footerTemplate` with `pageNumber` / `totalPages` spans).
 - Photo pixel size: pass `width` / `height` (e.g. the derivative's `pixel_width` / `pixel_height`) or leave them out to read the JPEG header. Bytes are embedded as given; derivatives must already be upright (Word ignores EXIF orientation).
 - A template version without a layout: use `defaultLayout(sections)` from `spec.ts` (heading row per section, label / value rows, photo grid per section) or refuse.
+
+### PDF writer (pdfmake)
+
+`pdfmake.ts` translates the same resolved document into a **pdfmake 0.3** document definition, so the PDF can be built in the office user's browser (D51). Pure, no npm imports; the definition is a plain object plus a few functions (header / footer per page, table line styles, keep-with-next).
+
+```ts
+import { renderReportPdfDefinition, pdfmakeFonts } from '../_shared/report/pdfmake.ts';
+const { definition, fonts, warnings } = renderReportPdfDefinition(layout, data, { creator, now });
+pdfMake.setFonts(pdfmakeFonts(fonts, (file) => `/fonts/${file}`)); // only the files this report uses
+const pdf = await pdfMake.createPdf(definition).getBuffer();
+```
+
+Mapping (decisions follow `html.ts`, the preview the user approves):
+
+| Resolved model | pdfmake |
+|---|---|
+| page size, margins (mm) | `pageSize` / `pageMargins` in pt (× 72 / 25.4), orientation from the size |
+| header / footer | `header(page, pages)` / `footer(page, pages)` rebuilt per page with `{{page}}` / `{{pages}}` filled; header `header_mm` from the top inside the side margins; footer bottom-aligned `footer_mm` above the edge (a 1-cell table with `verticalAlignment: bottom`) |
+| paragraph | `text: [runs]`, `alignment`, `margin [indent, before, 0, after]`, `preserveLeadingSpaces`; adjacent vertical margins **collapse** like CSS (the larger wins, also into a group); `caps` upper-cased, tabs → 4 spaces; a list marker hangs in the indent (`columns`); a background shades the full width (1-cell table) |
+| run style | `font` (key below), `fontSize`, `color`, `bold`, `italics`, `decoration: underline`; `lineHeight` = CSS line height ÷ the font's em box (`REPORT_FONT_EM_HEIGHT`: Carlito 1.2207, Caladea 1.15, Liberation Sans 1.1172) so lines are as tall as in Chrome |
+| table | column `widths` = column − 2 × padding − line (pdfmake adds those), per-table `layout` (line width / colour / dash 3-2, padding); `colSpan` / `rowSpan` with the `{}` filler cells pdfmake needs; `fillColor`, `verticalAlignment`, `border: [false×4]` for `border: none` cells; leading `header` rows → `headerRows` |
+| image / photo | `images` dictionary of data URLs (one entry per byte array, MIME sniffed), `width` / `height` in pt from the resolved mm, capped to the cell's content width; a missing image is the same dashed `#888` box with the same 8 pt text as HTML ("Photo not available: caption") |
+| `keep_together` group | `unbreakable: true`; rows all `keep_together` → `dontBreakRows` |
+| heading (`keep_with_next`) | `headlineLevel: 1` + `pageBreakBefore`: a body heading with nothing after it on its page moves to the next page |
+| `page_break` | `pageBreak: 'before'` on the next block (a leading, trailing or repeated break adds no empty page) |
+| spacer / rule | empty text with a top margin / canvas line with 2 pt above and below |
+
+Fonts (`apps/web/public/fonts/`, see its README): `pdfFontKey(family, fallback)` maps case-insensitively Calibri → `Carlito`, Cambria → `Caladea`, Arial / Helvetica / sans-serif → `LiberationSans` (the substitutes map to themselves; serif / Times → `Caladea`, the only serif shipped); an unknown family tries the layout's fallback list, an unknown run font the layout's default family, finally `Carlito`. `REPORT_FONT_FILES` names the four files per key; `pdfFontsUsed(definition)` lists the keys **and variants** the text really uses (header / footer included) and `pdfmakeFonts(used, source)` builds the descriptors for just those, so the browser fetches e.g. 2–4 files instead of 12 (Carlito is ~650 kB per file).
+
+Measured in Node (test `report-pdfmake.test.ts`, 30 photos of 300 kB, 12 pages each layout): ~9.1 MB PDF, ~0.5–0.7 s wall, ~0.8–1 s CPU in pdfmake + ~0.07 s for the definition.
+
+Known differences from the HTML writer:
+
+- **Unbreakable blocks are guarded by an estimate.** pdfmake silently drops whatever does not fit an unbreakable block (group, `dontBreakRows` row) on one page, so `keep_together` is applied only when a deliberately high height estimate fits 95 % of the page body; a taller group or row breaks normally (Chrome does the same). `keep_together` on a single row of a table whose other rows are not kept is not expressible (pdfmake has no per-row option): such rows can break. `keep_together` groups inside table cells are not kept.
+- **Minimum row heights** (`height_mm`) are kept only when the table's rows can all be kept whole (`dontBreakRows`): pdfmake 0.3.13 corrupts the page when a fixed-height row is split at a page end. Otherwise the minimum is dropped. As a side effect, a table with a `height_mm` row moves a row that does not fit to the next page instead of splitting it (like Word's "cantSplit").
+- Line boxes: pdfmake puts the extra line height below the text (CSS splits it above and below): text sits ~0.03 em higher. Justified text, long-word breaking and the last line of a paragraph behave like CSS.
+- Borders are drawn per cell edge (an edge is drawn when either neighbour has one, close to CSS border-collapse); the table is one line width wider than in HTML (the outer half lines).
+- Superscript, links and a different first-page header are not supported (as in the HTML writer).
 
 ## What the two samples contain (for transcribing them)
 
