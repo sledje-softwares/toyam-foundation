@@ -8,21 +8,26 @@
 //   scheduled()  RETRY QUEUE (D39, cron */10): staff-queued retries of failed emails are claimed and
 //                reprocessed through the intake function; stuck ones alert in-app and by one email
 //                (ALERT_EMAIL=smtp: Gmail SMTP with the same app password, no DNS needed).
-//   fetch()      Manual poll for testing: POST / with header x-intake-secret (POST /retry: one retry run).
+//   scheduled()  REPORT SEND SWEEP (8.2, same */10 cron): asks the Supabase `report-send` function to
+//                settle expired claims and send queued report emails (off until REPORT_SEND_URL and
+//                SEND_SECRET are set).
+//   fetch()      Manual poll for testing: POST / with header x-intake-secret (POST /retry: one retry run,
+//                POST /send-sweep: one report send sweep).
 //
-// Secrets (wrangler secret put): GMAIL_USER, GMAIL_APP_PASSWORD, INTAKE_SECRET
+// Secrets (wrangler secret put): GMAIL_USER, GMAIL_APP_PASSWORD, INTAKE_SECRET, SEND_SECRET (optional)
 // Vars (wrangler.jsonc): INTAKE_URL, MAILBOX, MAX_PER_RUN, ONLY_FROM, ALLOWED_SENDERS, BACKFILL_SINCE,
-//                        RETRY_BATCH, ALERT_EMAIL, ALERT_TO, APP_URL
+//                        RETRY_BATCH, ALERT_EMAIL, ALERT_TO, APP_URL, REPORT_SEND_URL
 // KV binding STATE keeps the poll position { uidValidity, lastUid }.
 import { connect } from 'cloudflare:sockets';
 import { type EmailEnv, handleInbound } from './email.ts';
 import { pollOnce, type RelayEnv } from './relay.ts';
 import { type AlertSender, runRetryQueue, type RetryEnv } from './retry.ts';
+import { runSendSweep, type SendSweepEnv } from './send-sweep.ts';
 import { sendSmtp } from './smtp.ts';
 
 const RETRY_CRON = '*/10 * * * *';
 
-interface Env extends RelayEnv, EmailEnv, RetryEnv {
+interface Env extends RelayEnv, EmailEnv, RetryEnv, SendSweepEnv {
   STATE: { get(key: string): Promise<string | null>; put(key: string, value: string): Promise<void> };
 }
 
@@ -53,6 +58,12 @@ async function retryRun(env: Env) {
   return result;
 }
 
+async function sendSweep(env: Env) {
+  const result = await runSendSweep(env);
+  if (result.ran) console.log(JSON.stringify({ mode: 'send-sweep', ...result }));
+  return result;
+}
+
 async function poll(env: Env) {
   const result = await pollOnce(env, gmailSocket, env.STATE);
   console.log(JSON.stringify({ mode: 'poll', relayed: result.relayed.length, failedUid: result.failedUid, lastUid: result.state.lastUid, note: result.note }));
@@ -68,7 +79,7 @@ export default {
   },
 
   async scheduled(event: { cron: string }, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) {
-    ctx.waitUntil(event.cron === RETRY_CRON ? retryRun(env) : poll(env));
+    ctx.waitUntil(event.cron === RETRY_CRON ? Promise.all([retryRun(env), sendSweep(env)]) : poll(env));
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -76,6 +87,7 @@ export default {
       return new Response('Not found', { status: 404 });
     }
     if (new URL(req.url).pathname === '/retry') return Response.json(await retryRun(env));
+    if (new URL(req.url).pathname === '/send-sweep') return Response.json(await sendSweep(env));
     const result = await poll(env);
     return Response.json({ relayed: result.relayed, failedUid: result.failedUid, lastUid: result.state.lastUid, note: result.note });
   },

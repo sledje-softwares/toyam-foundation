@@ -11,8 +11,11 @@ import { EvidencePanel } from "@/components/reports/evidence-panel";
 import { GenerateReport } from "@/components/reports/generate-report";
 import { PlannedNote } from "@/components/reports/planned";
 import { SectionEditor, SourceBadge, ValueText } from "@/components/reports/section-editor";
+import { SendCard } from "@/components/reports/send-card";
+import { readReportEmail, REPORT_FORMATS, reportSenderMode, sendDefaults, sendModel } from "@/lib/report-send";
 import { approveOwnReport, correctLabels, decideApproval, evidenceLink, requestApproval, saveSection, setRelevance } from "./actions";
 import { loadWorkspace } from "./load";
+import { requestSend, retrySend, sendNow, settleSend } from "./send-actions";
 
 export const metadata = { title: "Report" };
 
@@ -65,6 +68,34 @@ export default async function ReportWorkspacePage({
   });
   const due = dueLabel(c.due_at);
   const sent = c.status === "submitted" || c.status === "closed";
+
+  // 8.2 Send to insurer: the latest version, in the formats the template allows and that were generated.
+  const latestVersion = ws.versions.find((v) => v.id === approval.latest?.id) ?? null;
+  const generated = latestVersion?.files.map((f) => f.format) ?? [];
+  const allowed = ws.template?.output_formats ?? [];
+  const usableFormats = REPORT_FORMATS.filter((f) => allowed.includes(f) && generated.includes(f));
+  const send = sendModel({
+    canManage: filesEditable,
+    caseStatus: c.status,
+    approvalState: approval.state,
+    latestReportId: latestVersion?.id ?? null,
+    sends: ws.sends,
+    hasTarget: !!ws.sendTarget,
+    usableFormats,
+  });
+  const defaults = send.canSend
+    ? sendDefaults({
+        target: ws.sendTarget,
+        reportEmail: readReportEmail(ws.template?.report_email),
+        values: ws.valuesByKey,
+        caseRef: c.case_ref,
+        allowedFormats: allowed,
+        generatedFormats: generated,
+        defaultFormat: ws.template?.default_output_format ?? null,
+      })
+    : null;
+  // Test / live notice: asked only when this user could send or settle something here.
+  const senderMode = filesEditable && (send.canSend || send.open) ? await reportSenderMode() : null;
 
   return (
     <>
@@ -143,6 +174,20 @@ export default async function ReportWorkspacePage({
             versions={ws.versions}
             outputFormats={ws.template.output_formats}
             actions={{ requestApproval, approveOwnReport, decideApproval }}
+          />
+
+          <SendCard
+            caseId={c.id}
+            caseRef={c.case_ref}
+            role={me.role}
+            canManage={filesEditable}
+            model={send}
+            defaults={defaults}
+            usableFormats={usableFormats}
+            sends={ws.sends}
+            latestReportId={latestVersion?.id ?? null}
+            mode={senderMode}
+            actions={{ requestSend, retrySend, sendNow, settleSend }}
           />
 
           {ws.sections.length === 0 ? (

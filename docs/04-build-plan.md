@@ -18,7 +18,7 @@ Status legend: ✅ done · 🟡 in progress · 🗄 database layer done (migrati
 | M5 | Field App (chat style, Android) | Threads, camera, gallery, share target, offline, ticks | 16 | 🟡 core screens built, not yet run on a device |
 | M6 | Processing Pipeline | Queue, OCR, labelling, suggestions, corrections | 6 | 🗄 / ⬜ workers |
 | M7 | Report Workspace | Sections, relevant images, tap-to-fill, generation (PDF/Word) | 10 | 🟡 workspace structure ✅ (docs/12); tap-to-fill, suggestions, annexures, generator pending |
-| M8 | Approval, Sending & Tracking | Approval, reply on thread, portal pack, submission records | 4 | 🟡 approval UI + submissions list ✅; sender pending |
+| M8 | Approval, Sending & Tracking | Approval, reply on thread, portal pack, submission records | 4 | 🟡 approval UI + submissions list ✅; sender built (8.2, not deployed); 8.3 links / 8.4 pack pending |
 | M9 | Dashboard & Alerts | Workload, ageing, turnaround, escalations | 3 | 🟡 dashboard structure ✅; cost tile after 6.10 |
 | M10 | Security, Audit & Compliance | Access tests, devices, backups, archive, retention | 2 | 🟡 RLS tested; archive jobs pending |
 | M11 | Testing, Pilot & Rollout | UAT, training, two-week pilot, go-live | 10 | ⬜ |
@@ -148,9 +148,9 @@ Contract: `docs/10-processing-pipeline.md`.
 | # | Piece | Output | Status |
 |---|---|---|---|
 | 8.1 | Approval | Request, approve / request changes (per template) | ✅ UI; orchestrator/admin one-step approve (D47); request disabled until 7.7 creates versions |
-| 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | 🗄 / ⬜ sender |
-| 8.3 | Size handling | Compressed annexures; secure link when over the limit | ⬜ |
-| 8.4 | Portal pack | Files named and ordered for the portal insurer | ⬜ |
+| 8.2 | Send on thread | Reply on the original thread with CC; formats allowed by template; Gmail SMTP | ✅ built, not deployed: edge function `report-send` (claim → SHA-256-checked files → SMTP 465 → complete / fail; test mode by default, `20261119210000_report_send_test_mode`, pgTAP 29), "Send to insurer" card on `/reports/[caseRef]`, Worker sweep on the */10 cron |
+| 8.3 | Size handling | Compressed annexures; secure link when over the limit | 🗄 / ⬜ — 8.2 fails cleanly (nothing sent) when the report files exceed `send_attach_max_mb`; annexure zip + R2 link not built |
+| 8.4 | Portal pack | Files named and ordered for the portal insurer | 🗄 / ⬜ — `request_portal_pack` + `packNames` exist; no download UI |
 | 8.5 | Submission & reopen | Record; acknowledgement; reopen on insurer query | ✅ `/submissions` with acknowledgement, portal / other record, reopen (`20261115800000`) |
 
 ### M9 — Dashboard & Alerts (3 days) 🟡 structure pass at `/dashboard` (docs/12)

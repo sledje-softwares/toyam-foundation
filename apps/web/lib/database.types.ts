@@ -1275,14 +1275,14 @@ isOneToOne: false
                   ]
                 },"report_sends": {
                   Row: {
-                    "attachment_name": string,"attempts": number,"body": string,"case_id": string,"cc_addresses": (string)[],"claimed_at": string | null,"delivery": string | null,"error": string | null,"formats": (string)[],"gmail_thread_id": string | null,"id": string,"in_reply_to": string | null,"link_expires_at": string | null,"message_id": string | null,"pack_path": string | null,"references_ids": (string)[],"report_id": string,"requested_at": string,"requested_by": string,"sent_at": string | null,"source_email_id": string | null,"status": string,"subject": string,"submission_id": string | null,"to_addresses": (string)[]
+                    "attachment_name": string,"attempts": number,"body": string,"case_id": string,"cc_addresses": (string)[],"claimed_at": string | null,"delivery": string | null,"error": string | null,"formats": (string)[],"gmail_thread_id": string | null,"id": string,"in_reply_to": string | null,"link_expires_at": string | null,"message_id": string | null,"pack_path": string | null,"references_ids": (string)[],"report_id": string,"requested_at": string,"requested_by": string,"sent_at": string | null,"source_email_id": string | null,"status": string,"subject": string,"submission_id": string | null,"test_recipient": string | null,"to_addresses": (string)[]
                   }
                   ComputedFields: never
                   Insert: {
-                    "attachment_name": string,"attempts"?: number,"body": string,"case_id": string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats": (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id": string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject": string,"submission_id"?: string | null,"to_addresses": (string)[]
+                    "attachment_name": string,"attempts"?: number,"body": string,"case_id": string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats": (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id": string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject": string,"submission_id"?: string | null,"test_recipient"?: string | null,"to_addresses": (string)[]
                   }
                   Update: {
-                    "attachment_name"?: string,"attempts"?: number,"body"?: string,"case_id"?: string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id"?: string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject"?: string,"submission_id"?: string | null,"to_addresses"?: (string)[]
+                    "attachment_name"?: string,"attempts"?: number,"body"?: string,"case_id"?: string,"cc_addresses"?: (string)[],"claimed_at"?: string | null,"delivery"?: string | null,"error"?: string | null,"formats"?: (string)[],"gmail_thread_id"?: string | null,"id"?: string,"in_reply_to"?: string | null,"link_expires_at"?: string | null,"message_id"?: string | null,"pack_path"?: string | null,"references_ids"?: (string)[],"report_id"?: string,"requested_at"?: string,"requested_by"?: string,"sent_at"?: string | null,"source_email_id"?: string | null,"status"?: string,"subject"?: string,"submission_id"?: string | null,"test_recipient"?: string | null,"to_addresses"?: (string)[]
                   }
                   Relationships: [
                     {
@@ -1696,7 +1696,7 @@ isOneToOne: false
         isSetofReturn: true
       } },
 "claim_report_send":
-{ Args: { "p_id": string,"p_message_id": string }; Returns: {
+{ Args: { "p_id": string,"p_message_id": string,"p_test_recipient"?: string }; Returns: {
               "attachment_name": string,"body": string,"case_id": string,"case_ref": string,"cc_addresses": (string)[],"formats": (string)[],"id": string,"in_reply_to": string,"message_id": string,"references_ids": (string)[],"report_id": string,"subject": string,"to_addresses": (string)[]
             }[]
                            },
