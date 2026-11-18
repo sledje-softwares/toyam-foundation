@@ -24,10 +24,13 @@
     "RETRY_BATCH": "10",
     "ALERT_EMAIL": "smtp",
     "ALERT_TO": "",
-    "APP_URL": ""
+    "APP_URL": "",
+    // Report send sweep (8.2) on the */10 cron: the report-send function URL, e.g.
+    // https://<ref>.supabase.co/functions/v1/report-send ; empty = off. Also needs secret SEND_SECRET.
+    "REPORT_SEND_URL": ""
   },
   "observability": { "enabled": true }
-  // secrets: npx wrangler secret put GMAIL_USER | GMAIL_APP_PASSWORD | INTAKE_SECRET
+  // secrets: npx wrangler secret put GMAIL_USER | GMAIL_APP_PASSWORD | INTAKE_SECRET | SEND_SECRET (report send sweep)
   // Email Routing (Cloudflare dashboard → the domain → Email → Routing rules):
   //   custom address intake@in.toyaminvestigation.in → action "Send to a Worker" → toyam-intake-relay
 }

@@ -478,3 +478,14 @@ verify_jwt = true
 [functions.report-generate]
 enabled = true
 verify_jwt = true
+
+# Report sender (build plan 8.2, D50): replies on the insurer's thread through Gmail SMTP (465, implicit
+# TLS). verify_jwt = false because the sweep caller (the intake Worker's */10 cron) has no user JWT and
+# authenticates with the shared SEND_SECRET header; the web app's "send" and "mode" calls carry the staff
+# user's access token, which the function checks itself (auth.getUser + an RLS read of the send row).
+# The service-role key stays inside the function (claim / complete / fail, queue, `reports` bucket).
+# Secrets SMTP_USER, SMTP_PASSWORD, SEND_MODE (test | live; absent = test), SEND_TEST_TO (test mode only),
+# SEND_SECRET, optional SEND_FROM_NAME, SEND_SWEEP_BATCH. Contract: functions/report-send/README.md.
+[functions.report-send]
+enabled = true
+verify_jwt = false

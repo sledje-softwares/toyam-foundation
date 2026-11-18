@@ -12,6 +12,7 @@ import {
 } from "@/lib/reports";
 import type { Enums } from "@/lib/database.types";
 import { toCachedFile } from "@/lib/file-cache/view-core";
+import type { SendRow, SendTarget } from "@/lib/report-send-core";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -37,6 +38,8 @@ export type Workspace = {
     version: number;
     requires_approval: boolean;
     output_formats: string[];
+    default_output_format: string;
+    report_email: unknown;
     is_active: boolean;
   } | null;
   sections: WorkspaceSection[];
@@ -47,6 +50,12 @@ export type Workspace = {
   pendingSuggestions: number;
   versions: VersionRow[];
   lastSubmission: { submitted_at: string; channel: Enums<"submission_channel"> } | null;
+  /** 8.2: report emails of the case, newest first. */
+  sends: SendRow[];
+  /** report_send_target(): the insurer's latest mail to reply to; null when none or not allowed. */
+  sendTarget: SendTarget | null;
+  /** Field values by key (subject / file name patterns). */
+  valuesByKey: Record<string, string>;
 };
 
 /** Everything the workspace shows, read with the user's session (RLS applies). null = not found, "error" = load failed. */
@@ -54,7 +63,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
   const { data: c, error } = await supabase
     .from("cases")
     .select(
-      "id, case_ref, status, insurer_claim_no, due_at, office_owner_id, template_id, insurers(name, code), owner:profiles!cases_office_owner_id_fkey(full_name), case_templates(id, name, variant, version, requires_approval, output_formats, is_active)",
+      "id, case_ref, status, insurer_claim_no, due_at, office_owner_id, template_id, insurers(name, code), owner:profiles!cases_office_owner_id_fkey(full_name), case_templates(id, name, variant, version, requires_approval, output_formats, default_output_format, report_email, is_active)",
     )
     .eq("case_ref", caseRef)
     .maybeSingle();
@@ -73,7 +82,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     insurer: one(c.insurers),
   };
 
-  const [sectionsRes, fieldsRes, valuesRes, sectionCatsRes, categoriesRes, evidenceRes, processingRes, reportsRes, submissionRes] = await Promise.all([
+  const [sectionsRes, fieldsRes, valuesRes, sectionCatsRes, categoriesRes, evidenceRes, processingRes, reportsRes, submissionRes, sendsRes, targetRes] = await Promise.all([
     tpl ? supabase.from("case_template_sections").select("id, key, title, position, guidance").eq("template_id", tpl.id) : null,
     tpl
       ? supabase.from("case_template_fields").select("id, section_id, key, label, field_type, source, is_required, options, help_text, position").eq("template_id", tpl.id)
@@ -106,6 +115,16 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       .eq("case_id", c.id)
       .order("version", { ascending: false }),
     supabase.from("submissions").select("submitted_at, channel").eq("case_id", c.id).order("submitted_at", { ascending: false }).limit(1),
+    supabase
+      .from("report_sends")
+      .select(
+        "id, report_id, status, formats, to_addresses, cc_addresses, subject, requested_at, sent_at, attempts, error, test_recipient, requester:profiles!report_sends_requested_by_fkey(full_name)",
+      )
+      .eq("case_id", c.id)
+      .order("requested_at", { ascending: false })
+      .limit(20),
+    // Raises 42501 for staff who do not manage the case: then there is simply no target.
+    supabase.rpc("report_send_target", { p_case_id: c.id }),
   ]);
   if (sectionsRes?.error || fieldsRes?.error || valuesRes.error || evidenceRes.error || reportsRes.error) return "error";
 
@@ -180,6 +199,27 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     };
   });
 
+  const sends: SendRow[] = (sendsRes.data ?? []).map((s) => ({
+    id: s.id,
+    report_id: s.report_id,
+    status: s.status,
+    formats: s.formats,
+    to_addresses: s.to_addresses,
+    cc_addresses: s.cc_addresses,
+    subject: s.subject,
+    requested_at: s.requested_at,
+    sent_at: s.sent_at,
+    attempts: s.attempts,
+    error: s.error,
+    test_recipient: s.test_recipient,
+    requester: one(s.requester)?.full_name ?? null,
+  }));
+  const t = targetRes.error ? null : (targetRes.data?.[0] ?? null);
+  const sendTarget: SendTarget | null = t
+    ? { to_addresses: t.to_addresses ?? [], cc_addresses: t.cc_addresses ?? [], original_subject: t.original_subject ?? null }
+    : null;
+  const valuesByKey = Object.fromEntries(sections.flatMap((s) => s.fields.map((f) => [f.key, f.value] as const)));
+
   return {
     case: base,
     template: tpl,
@@ -191,5 +231,8 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     pendingSuggestions: suggestionsRes?.count ?? 0,
     versions,
     lastSubmission: submissionRes.data?.[0] ?? null,
+    sends,
+    sendTarget,
+    valuesByKey,
   };
 }

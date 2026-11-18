@@ -3,7 +3,6 @@ import { APPROVAL_DECISIONS, type ApprovalModel, type VersionRow } from "@/lib/r
 import { FORMAT_LABEL, isReportFormat, reportFileHref } from "@/lib/report-generate-core";
 import { Badge, InlineAlert } from "@/components/ui";
 import { ApproveReportButton, DecideApproval, RequestApprovalButton } from "./approval-actions";
-import { PlannedButton } from "./planned";
 
 type VoidAction = (fd: FormData) => Promise<void>;
 
@@ -83,7 +82,6 @@ export function ApprovalCard({
               </span>
             </span>
           )}
-          {(model.state === "approved" || model.state === "not_required") && <PlannedButton piece="8.2">Send to insurer</PlannedButton>}
         </div>
       </div>
 

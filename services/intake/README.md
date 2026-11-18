@@ -77,6 +77,7 @@ Worker cron */10 ─► POST intake?op=claim-retries&limit=RETRY_BATCH   claim_i
 - **Alerts:** a retry still `retry_requested` after `app_settings.intake_retry_alert_minutes` (60) or `failed` again → one in-app notification (`kind = intake_retry_stuck`) per active orchestrator and admin, once per request (`retry_alerted_at`), then one email to the shared inbox: subject `[Toyam alert] Intake retry stuck`, body sender / subject / received / attempts / `/intake/failed` (prefixed with `APP_URL` if set).
 - **Alert email transport** (`ALERT_EMAIL` in `wrangler.jsonc`): `smtp` = Gmail submission at `smtp.gmail.com:465` with `GMAIL_USER` / `GMAIL_APP_PASSWORD` (the IMAP secrets; no DNS needed, sent from and to the shared inbox, `ALERT_TO` overrides the recipient); `off` = in-app alerts only, each skipped email is logged as `{"mode":"retry-alert","skipped":…}`. A failed send is logged and not repeated (the in-app alert stands). Cloudflare `send_email` could replace SMTP once Email Routing exists (Q14).
 - Manual run: `POST <worker>/retry` with `x-intake-secret`.
+- **Report send sweep (8.2)** on the same `*/10` cron (`worker/send-sweep.ts`): `POST REPORT_SEND_URL {action:"sweep"}` with header `x-send-secret: SEND_SECRET`. Off while `REPORT_SEND_URL` (var) or `SEND_SECRET` (secret) is empty. The Worker holds no service-role key and sends no report mail itself; contract in `supabase/functions/report-send/README.md`. Manual run: `POST <worker>/send-sweep` with `x-intake-secret`.
 
 ## Deployment
 
