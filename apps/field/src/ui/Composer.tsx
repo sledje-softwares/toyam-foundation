@@ -17,10 +17,10 @@ import { useOffline } from './OutboxProvider';
 
 const errorText = (e: unknown) => (e instanceof CaptureError ? e.message : 'This file could not be added. Please try again.');
 
-export function Composer({ caseId, taskId }: { caseId: string; taskId?: string | null }) {
+export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskId?: string | null; refreshKey?: number }) {
   const router = useRouter();
   const { outbox, guardCapture } = useOffline();
-  const { ctx } = useCaptureContext(caseId, taskId);
+  const { ctx } = useCaptureContext(caseId, taskId, refreshKey);
   const draft = useSyncExternalStore((cb) => drafts.subscribe(cb), () => drafts.get(caseId));
   const [menu, setMenu] = useState(false);
   const [preparing, setPreparing] = useState(0);

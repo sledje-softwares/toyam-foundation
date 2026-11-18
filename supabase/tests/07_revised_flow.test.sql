@@ -293,11 +293,12 @@ reset role;
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"17000000-0000-4000-8000-0000000000f1","role":"authenticated"}';
 select throws_ok($$select public.escalate_unattended_cases()$$, '42501', null::text, 'authenticated users cannot run escalation');
-update public.tasks set status = 'completed' where assignee_id = '17000000-0000-4000-8000-0000000000f1';
+-- field users finish work through complete_field_task (20261119100000); a direct update is refused
+select public.complete_field_task(t.id) from public.tasks t where t.assignee_id = '17000000-0000-4000-8000-0000000000f1' and t.status in ('pending', 'in_progress');
 select is((select status::text from public.cases where id = '37000000-0000-4000-8000-000000000001'), 'field_in_progress',
           'case stays in field work while another task is open');
 set local request.jwt.claims to '{"sub":"17000000-0000-4000-8000-0000000000f2","role":"authenticated"}';
-update public.tasks set status = 'completed' where assignee_id = '17000000-0000-4000-8000-0000000000f2';
+select public.complete_field_task(t.id) from public.tasks t where t.assignee_id = '17000000-0000-4000-8000-0000000000f2' and t.status in ('pending', 'in_progress');
 set local request.jwt.claims to '{"sub":"17000000-0000-4000-8000-0000000000f1","role":"authenticated"}';
 select results_eq($$select list from public.field_case_list()$$, array['completed'], 'case listed as completed for the operator');
 

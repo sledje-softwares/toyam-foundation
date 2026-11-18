@@ -6,7 +6,8 @@ Android app for field operators. It should feel like the chat app they already u
 
 ```
 ┌ Cases ───────────────────────┐   ┌ ← INV-2026-000123 · Ravi S ────┐
-│ [ Open (3) ]  Completed      │   │ ⋮ menu ▸ Checklist (5/9)        │  menu option (D41)
+│ [ Open (3) ]  Completed      │   │ ⋮ menu ▸ Checklist (5/9)        │  menu options (D41)
+│                              │   │        ▸ Mark task done         │  complete_field_task
 │                              │   │ ─────────────────────────────── │
 │ ● INV-…123  Ravi S      2:14 │   │ ⚙ Field work assigned to you:   │  system event
 │   Please collect the DL …  ②│   │   Visit garage and spot          │
@@ -28,6 +29,7 @@ Android app for field operators. It should feel like the chat app they already u
 | Share target | "Share → Toyam" from any app → choose case (Open first) → optional caption and tag → send | Android intent `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for `image/*`, `video/*`, `application/pdf`, `audio/*` |
 | Checklist | Opened from the thread's menu (D41); items with progress; **ticks itself once a file is labelled and matched** (D30, D35); tap an item to capture directly into it | `task_checklist_items`, `v_case_checklist`, `evidence_labels` (realtime) |
 | Outbox | Files saved on this phone, per case, progress, "Send now", last try (D43, spec 3) | local queue; `report_outbox_status()` |
+| Mark task done | Thread menu (⋮). See "Mark task done" below | `tasks` (own open tasks), `complete_field_task()` |
 
 ## Sending
 
@@ -100,9 +102,20 @@ Long-press → Withdraw (within 10 minutes, D19). The message shows "Message wit
 
 Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling.
 
+## Mark task done
+
+The operator finishes field work from the thread menu (⋮ → **"Mark task done"**; with several open tasks on the case, one entry each: **"Mark done: {title}"**). It calls `complete_field_task(task)` (docs/06).
+
+- **Online only, never queued.** Offline, tapping it shows **"Needs a connection"** — "Marking the task done needs an internet connection, so the office knows at once. Your photos stay saved on this phone. Try again when you are online." Nothing is stored for later, so the operator always knows whether the office has it.
+- **Confirmation first:** **"Mark task done?"** with **"Not yet"** / **"Mark done"**. The text names the task, and adds "Checklist: k of n items ticked." when items are unticked (information, not a block: ticks arrive when files are labelled) and "{n} files are still saved on this phone. They will still be sent (within 72 h); keep the app signed in." when the outbox holds files for the case (D43 late uploads accept files captured before the task was marked done).
+- **After the call:** "Task marked done" — "This case is now under Completed." (or "{k} more tasks are open on this case."). The thread, the composer's task (photos now need a new request) and the cached case list are refreshed; the Cases list refreshes on focus. A retry after a lost answer is shown as done (the database answers "already completed"); a network failure says "Nothing was changed"; refusals from the database are shown as written (e.g. "This case is no longer open for field work. Ask the office.", a task cancelled by the office).
+- Direct `UPDATE` of a task to completed is refused for field users; the office can also mark a task complete (`/tasks/[id]`, docs/12 tasks).
+
+Logic: `src/ui-logic/taskDone.ts` (tests `taskDone.test.ts`); calls `fetchCaseOpenTasks` / `completeTask` in `src/cache/fetch.ts`.
+
 ## Completed
 
-A case moves to **Completed** when the operator has no open task on it. A new request from the office reopens it (it returns to **Open** with a notification). Operators can still read the thread and send text on completed cases. Files need an open task, except files **captured before** the task closed or was reassigned: they are accepted for 72 h after that (D43, "Late uploads" below), with no mark in the UI.
+A case moves to **Completed** when the operator has no open task on it (after **Mark task done**, or when the office completes, cancels or reassigns the task). A new request from the office reopens it (it returns to **Open** with a notification). Operators can still read the thread and send text on completed cases. Files need an open task, except files **captured before** the task closed or was reassigned: they are accepted for 72 h after that (D43, "Late uploads" below), with no mark in the UI.
 
 ## Notifications (FCM)
 

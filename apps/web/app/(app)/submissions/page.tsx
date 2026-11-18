@@ -6,6 +6,7 @@ import { formatDate, formatDateTime } from "@/lib/format";
 import { applyListParams, escapeSearchTerm, parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import {
   ACK_FILTERS,
+  canCloseWithoutAck,
   CHANNEL_KEYS,
   CHANNELS,
   formatsLabel,
@@ -19,8 +20,8 @@ import {
 } from "@/lib/submissions";
 import { canManageCase } from "@/lib/reports";
 import { Badge, DataTable, EmptyState, ErrorState, FilterBar, Pagination, PageHeader, type Column } from "@/components/ui";
-import { AckDialog, ManualSubmissionDialog, ReopenDialog } from "@/components/submissions/submission-actions";
-import { recordAcknowledgement, recordManualSubmission, reopenCase } from "./actions";
+import { AckDialog, CloseDialog, ManualSubmissionDialog, ReopenDialog } from "@/components/submissions/submission-actions";
+import { closeCase, recordAcknowledgement, recordManualSubmission, reopenCase } from "./actions";
 
 export const metadata = { title: "Submissions" };
 
@@ -154,11 +155,15 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
           acknowledged: !!r.acknowledged_at,
           state: stateOf(r),
           caseStatus: c.status,
+          canCloseWithoutAck: canCloseWithoutAck(me.role),
         });
-        if (!can.ack && !can.reopen) return <span className="text-text-muted">—</span>;
+        if (!can.ack && !can.reopen && !can.close) return <span className="text-text-muted">—</span>;
         return (
           <span className="flex flex-wrap gap-2">
             {can.ack && <AckDialog submissionId={r.id} caseRef={c.case_ref} back={back} action={recordAcknowledgement} />}
+            {can.close && (
+              <CloseDialog caseId={r.case_id} caseRef={c.case_ref} withoutAck={can.close === "without_ack"} back={back} action={closeCase} />
+            )}
             {can.reopen && <ReopenDialog caseId={r.case_id} caseRef={c.case_ref} back={back} action={reopenCase} />}
           </span>
         );
@@ -181,8 +186,8 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
       />
       <p className="mb-4 max-w-3xl text-sm text-text-muted">
         Every report sent to an insurer: when, how and to whom, and whether the insurer has acknowledged it. Record the
-        insurer&apos;s acknowledgement, a report uploaded to a portal or delivered another way, or reopen a sent case on an
-        insurer&apos;s query. Office staff act on the cases they own; orchestrators and admins on all.
+        insurer&apos;s acknowledgement, a report uploaded to a portal or delivered another way, close a case once the insurer
+        has acknowledged it, or reopen a sent case on an insurer&apos;s query. Office staff act on the cases they own; orchestrators and admins on all.
       </p>
       <Suspense>
         <FilterBar

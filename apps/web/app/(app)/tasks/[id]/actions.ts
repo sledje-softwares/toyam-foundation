@@ -6,7 +6,7 @@ import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { setFlash } from "@/lib/flash-server";
 import { createClient } from "@/lib/supabase/server";
 import { caseHref, isGuid } from "@/lib/tasks";
-import { parseCancelForm, parseReassignForm, readEditForm, validateEditForm, type TaskActionResult } from "@/lib/tasks-actions";
+import { parseCancelForm, parseCompleteForm, parseReassignForm, readEditForm, validateEditForm, type TaskActionResult } from "@/lib/tasks-actions";
 import { mapDbError } from "@/lib/validation/db-errors";
 import { loadOperators } from "../new/load";
 
@@ -33,6 +33,22 @@ async function done(taskId: string, caseRef: string, message: string): Promise<n
 
 function fieldFail(errors: Record<string, string>): TaskActionResult {
   return errors.task_id ? fail(RELOAD) : fail("Check the highlighted fields.", errors);
+}
+
+/**
+ * public.complete_field_task(p_task_id, p_note). The database posts the event, notifies the operator, ends the hold
+ * (late uploads stay open, D43) and moves the case to office review when no field work is left.
+ */
+export async function completeTaskAction(formData: FormData): Promise<TaskActionResult> {
+  await requireRole(STAFF_ROLES);
+  const { errors, input } = parseCompleteForm(formData);
+  if (!input) return fieldFail(errors);
+  const supabase = await createClient();
+  const t = await loadTask(supabase, input.p_task_id);
+  if (!t) return fail("This task was not found.");
+  const { error } = await supabase.rpc("complete_field_task", input);
+  if (error) return fail(mapDbError(error).message);
+  return done(t.id, t.cases.case_ref, `Field work marked complete: ${t.title}.`);
 }
 
 /** public.cancel_field_task(p_task_id, p_reason). The database posts the event, notifies the operator and ends the hold. */

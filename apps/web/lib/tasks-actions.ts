@@ -1,6 +1,7 @@
 /**
- * Task detail actions (docs/12-office-pages/tasks.md): cancel, reassign operator, edit.
+ * Task detail actions (docs/12-office-pages/tasks.md): mark complete, cancel, reassign operator, edit.
  * Pure: who may act, and the form -> RPC argument mapping for
+ *   public.complete_field_task(p_task_id, p_note)
  *   public.cancel_field_task(p_task_id, p_reason)
  *   public.reassign_field_task(p_task_id, p_assignee_id, p_reason)
  *   public.update_field_task(p_task_id, p_title, p_instructions, p_due_at, p_location_text)
@@ -34,6 +35,16 @@ export function canReassignOnCase(caseStatus: string): boolean {
   return caseStatus !== "submitted" && caseStatus !== "closed" && caseStatus !== "cancelled";
 }
 
+/**
+ * Case statuses on which an open task may be marked complete. The database refuses submitted, closed and cancelled
+ * cases (left-over work on a submitted case is cancelled, D46).
+ */
+export function canCompleteOnCase(caseStatus: string): boolean {
+  return canReassignOnCase(caseStatus);
+}
+
+export const COMPLETE_NOTE_MAX = 1000;
+
 const str = (fd: FormData, k: string) => {
   const v = fd.get(k);
   return typeof v === "string" ? v.trim() : "";
@@ -57,6 +68,20 @@ export function parseCancelForm(fd: FormData): Parsed<CancelInput> {
   const r = reasonError(reason);
   if (r) errors.reason = r;
   return Object.keys(errors).length ? { errors, input: null } : { errors, input: { p_task_id: task, p_reason: reason } };
+}
+
+export type CompleteInput = { p_task_id: string; p_note?: string };
+
+/** The note is optional; blank is left out. Staff notes are staff-only in the thread (D32). */
+export function parseCompleteForm(fd: FormData): Parsed<CompleteInput> {
+  const task = str(fd, "task_id");
+  const note = str(fd, "note");
+  const errors: Record<string, string> = {};
+  if (!isGuid(task)) errors.task_id = "Reload the page and try again.";
+  if (note.length > COMPLETE_NOTE_MAX) errors.note = `Keep the note under ${COMPLETE_NOTE_MAX} characters.`;
+  return Object.keys(errors).length
+    ? { errors, input: null }
+    : { errors, input: { p_task_id: task, ...(note && { p_note: note }) } };
 }
 
 export type ReassignTaskInput = { p_task_id: string; p_assignee_id: string; p_reason: string };

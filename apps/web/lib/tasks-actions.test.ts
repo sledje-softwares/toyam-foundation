@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   canManageTask,
+  canCompleteOnCase,
   canReassignOnCase,
   editDefaults,
   parseCancelForm,
+  parseCompleteForm,
   parseReassignForm,
   readEditForm,
   validateEditForm,
@@ -41,6 +43,22 @@ describe("canManageTask (D44)", () => {
     expect(canReassignOnCase("submitted")).toBe(false);
     expect(canReassignOnCase("closed")).toBe(false);
     expect(canReassignOnCase("cancelled")).toBe(false);
+  });
+});
+
+describe("complete form", () => {
+  it("maps to complete_field_task arguments; the note is optional", () => {
+    expect(parseCompleteForm(fd({ task_id: TASK, note: "" })).input).toEqual({ p_task_id: TASK });
+    expect(parseCompleteForm(fd({ task_id: TASK, note: "  Confirmed by phone  " })).input).toEqual({ p_task_id: TASK, p_note: "Confirmed by phone" });
+    expect(parseCompleteForm(fd({ task_id: TASK, note: "n".repeat(1001) })).errors.note).toMatch(/1000/);
+    expect(parseCompleteForm(fd({ task_id: "x" })).errors.task_id).toBeDefined();
+  });
+  it("not on submitted, closed or cancelled cases", () => {
+    expect(canCompleteOnCase("field_in_progress")).toBe(true);
+    expect(canCompleteOnCase("office_review")).toBe(true);
+    expect(canCompleteOnCase("submitted")).toBe(false);
+    expect(canCompleteOnCase("closed")).toBe(false);
+    expect(canCompleteOnCase("cancelled")).toBe(false);
   });
 });
 

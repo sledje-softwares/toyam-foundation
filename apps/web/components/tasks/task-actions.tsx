@@ -3,15 +3,45 @@
 import { useState } from "react";
 import { Button, ConfirmDialog, FormField, InlineAlert, Select, SubmitButton, Textarea, TextInput } from "@/components/ui";
 import type { SelectOption } from "@/components/ui";
-import { ACTION_IDLE, ACTION_REASON_MAX, type EditTaskValues, type TaskActionResult } from "@/lib/tasks-actions";
+import { ACTION_IDLE, ACTION_REASON_MAX, COMPLETE_NOTE_MAX, type EditTaskValues, type TaskActionResult } from "@/lib/tasks-actions";
 import { INSTRUCTIONS_MAX, LOCATION_MAX, TITLE_MAX } from "@/lib/tasks-form";
 
 type Action = (fd: FormData) => Promise<TaskActionResult>;
 
 /**
- * Task detail actions (cancel, reassign operator, edit). Success redirects back to the task with a flash; a failure
+ * Task detail actions (mark complete, cancel, reassign operator, edit). Success redirects back to the task with a flash; a failure
  * is shown inline. Inputs are controlled so a failed attempt keeps what was typed.
  */
+
+export function CompleteTaskButton({ taskId, title, action }: { taskId: string; title: string; action: Action }) {
+  const [note, setNote] = useState("");
+  const [state, setState] = useState<TaskActionResult>(ACTION_IDLE);
+  return (
+    <div className="space-y-2">
+      <ConfirmDialog
+        trigger="Mark complete"
+        title="Mark this field task complete?"
+        confirmLabel="Mark complete"
+        action={async (fd) => setState(await action(fd))}
+      >
+        <p className="mb-3">
+          Use this when the operator has finished “{title}” but could not mark it done in the app. The thread shows that the
+          office completed it and the operator is notified. Files captured before now can still arrive for the late-upload
+          period. When no field work is left, the case moves to office review.
+        </p>
+        <input type="hidden" name="task_id" value={taskId} />
+        <FormField label="Note" hint="Optional. Staff-only note in the thread and the audit log.">
+          {(p) => <Textarea {...p} name="note" rows={3} maxLength={COMPLETE_NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} />}
+        </FormField>
+      </ConfirmDialog>
+      {state.error && (
+        <InlineAlert tone="danger" title="The task was not marked complete">
+          {state.fieldErrors.note ?? state.error}
+        </InlineAlert>
+      )}
+    </div>
+  );
+}
 
 export function CancelTaskButton({ taskId, title, action }: { taskId: string; title: string; action: Action }) {
   const [reason, setReason] = useState("");

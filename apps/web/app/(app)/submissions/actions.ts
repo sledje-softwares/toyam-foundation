@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole, STAFF_ROLES } from "@/lib/auth";
 import { setFlash } from "@/lib/flash-server";
 import { createClient } from "@/lib/supabase/server";
-import { AckInput, firstIssue, ManualInput, ReopenInput, safeBack } from "@/lib/submissions";
+import { AckInput, CloseInput, firstIssue, ManualInput, ReopenInput, safeBack } from "@/lib/submissions";
 import { mapDbError } from "@/lib/validation/db-errors";
 
 // Every action checks ownership again in the database (private.can_manage_case, D44); the page only hides buttons.
@@ -88,4 +88,28 @@ export async function reopenCase(fd: FormData): Promise<void> {
   const { data: c } = await supabase.from("cases").select("case_ref").eq("id", parsed.data.case_id).maybeSingle();
   revalidate(c?.case_ref ?? null);
   return done(back, `${c?.case_ref ?? "The case"} is reopened and back in office review. The owner has been notified.`);
+}
+
+/**
+ * public.close_case(p_case_id, p_note): submitted → closed once the insurer has acknowledged the latest submission;
+ * orchestrators / admins may close without an acknowledgement with a reason. A closed case is final.
+ */
+export async function closeCase(fd: FormData): Promise<void> {
+  await requireRole(STAFF_ROLES);
+  const back = safeBack(fd.get("back"));
+  const parsed = CloseInput.safeParse({
+    case_id: fd.get("case_id"),
+    without_ack: fd.get("without_ack") === "1",
+    note: String(fd.get("note") ?? ""),
+  });
+  if (!parsed.success) return done(back, firstIssue(parsed.error), "error");
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("close_case", {
+    p_case_id: parsed.data.case_id,
+    ...(parsed.data.note && { p_note: parsed.data.note }),
+  });
+  if (error) return done(back, mapDbError(error).message, "error");
+  const { data: c } = await supabase.from("cases").select("case_ref").eq("id", parsed.data.case_id).maybeSingle();
+  revalidate(c?.case_ref ?? null);
+  return done(back, `${c?.case_ref ?? "The case"} is closed.`);
 }

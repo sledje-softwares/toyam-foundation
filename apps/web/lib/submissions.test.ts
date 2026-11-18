@@ -8,6 +8,8 @@ import {
   ManualInput,
   recipientsSummary,
   ReopenInput,
+  canCloseWithoutAck,
+  CloseInput,
   rowActions,
   safeBack,
   submissionState,
@@ -22,13 +24,33 @@ describe("reopened mark", () => {
 describe("rowActions", () => {
   const base = { canManage: true, acknowledged: false, state: "sent" as const, caseStatus: "submitted" as const };
   it("offers acknowledgement once and reopen on the latest submission of a submitted case", () => {
-    expect(rowActions(base)).toEqual({ ack: true, reopen: true });
-    expect(rowActions({ ...base, acknowledged: true })).toEqual({ ack: false, reopen: true });
+    expect(rowActions(base)).toEqual({ ack: true, reopen: true, close: false });
+    expect(rowActions({ ...base, acknowledged: true })).toEqual({ ack: false, reopen: true, close: "acknowledged" });
     expect(rowActions({ ...base, state: "resent" }).reopen).toBe(false);
     expect(rowActions({ ...base, caseStatus: "office_review", state: "reopened" }).reopen).toBe(false);
   });
+  it("offers close after the acknowledgement; orchestrators / admins may close without one", () => {
+    expect(rowActions(base).close).toBe(false);
+    expect(rowActions({ ...base, canCloseWithoutAck: true }).close).toBe("without_ack");
+    expect(rowActions({ ...base, acknowledged: true, state: "resent" }).close).toBe(false);
+    expect(rowActions({ ...base, acknowledged: true, caseStatus: "closed", state: "closed" }).close).toBe(false);
+    expect(canCloseWithoutAck("orchestrator")).toBe(true);
+    expect(canCloseWithoutAck("admin")).toBe(true);
+    expect(canCloseWithoutAck("office")).toBe(false);
+  });
   it("offers nothing to office staff who do not own the case", () => {
-    expect(rowActions({ ...base, canManage: false })).toEqual({ ack: false, reopen: false });
+    expect(rowActions({ ...base, canManage: false, acknowledged: true })).toEqual({ ack: false, reopen: false, close: false });
+  });
+});
+
+describe("close input", () => {
+  const id = "3d000000-0000-4000-8000-000000000001";
+  it("needs a reason only without an acknowledgement", () => {
+    expect(CloseInput.parse({ case_id: id, without_ack: false, note: "  " })).toEqual({ case_id: id, without_ack: false, note: "" });
+    expect(CloseInput.safeParse({ case_id: id, without_ack: true, note: "ok" }).success).toBe(false);
+    expect(CloseInput.parse({ case_id: id, without_ack: true, note: " Portal never confirms " }).note).toBe("Portal never confirms");
+    expect(CloseInput.safeParse({ case_id: id, without_ack: false, note: "x".repeat(501) }).success).toBe(false);
+    expect(CloseInput.safeParse({ case_id: "x", without_ack: false, note: "" }).success).toBe(false);
   });
 });
 
@@ -84,7 +106,7 @@ describe("latestPerCase / submissionState", () => {
 
   it("is reopened when the case is active again after sending", () => {
     expect(submissionState(rows[2], "office_review", latest.get("c2"))).toBe("reopened");
-    expect(submissionState(rows[2], "closed", latest.get("c2"))).toBe("sent");
+    expect(submissionState(rows[2], "closed", latest.get("c2"))).toBe("closed");
   });
 
   it("breaks ties on the same timestamp deterministically", () => {

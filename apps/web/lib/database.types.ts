@@ -1700,6 +1700,12 @@ isOneToOne: false
               "attachment_name": string,"body": string,"case_id": string,"case_ref": string,"cc_addresses": (string)[],"formats": (string)[],"id": string,"in_reply_to": string,"message_id": string,"references_ids": (string)[],"report_id": string,"subject": string,"to_addresses": (string)[]
             }[]
                            },
+"close_case":
+{ Args: { "p_case_id": string,"p_note"?: string }; Returns: undefined
+                           },
+"complete_field_task":
+{ Args: { "p_note"?: string,"p_task_id": string }; Returns: undefined
+                           },
 "complete_processing_job":
 { Args: { "p_error"?: string,"p_job_id": number,"p_status": Database["public"]['Enums']["job_status"] }; Returns: undefined
                            },
