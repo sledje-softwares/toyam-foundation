@@ -1,5 +1,13 @@
 # `report-generate` — report versions as PDF / Word, and the HTML preview (7.7, D51)
 
+> **Not used by the web app any more (7.7 piece 3).** The workspace builds the PDF (pdfmake) and the
+> Word file in the office user's browser (`apps/web/lib/report-build`, `docs/13-report-layouts.md`
+> "Built in the browser") and calls the same RPCs and storage policies with the user's own session.
+> This function stays deployable until the browser path is confirmed (piece 4 retires it). Photo
+> choice, byte budget, ordering and the placed-photo list are shared with the browser through
+> `_shared/report/assemble.ts` (`planReportPhotos`, `loadReportPhotos`, `reportDataFrom`,
+> `placedPhotoKeys`, `placedPhotoRecords`, `preparedProblem`).
+
 The web app (server side, piece F) calls this with the signed-in staff user's own session from the
 report workspace: **Preview** shows the HTML in a sandboxed iframe, **Generate report** makes a new
 version. The database decides who may do it: `prepare_report_version` and `create_report_version`

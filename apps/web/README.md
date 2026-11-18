@@ -28,6 +28,12 @@ npm run build && npm run lint && npm run typecheck
 - Sign-in is email + password for staff. Field users and inactive profiles are signed out.
 - `middleware.ts` refreshes the session and redirects anonymous visitors to `/login`.
 - Roles are enforced in layouts/pages (`lib/auth.ts`); row-level security is the real guard.
+- `@shared/*` imports `supabase/functions/_shared/*` (tsconfig `paths` + `allowImportingTsExtensions`, same alias
+  in `vitest.config.ts`; Turbopack resolves it because the repo root, where `package-lock.json` lives, is its root).
+  Used for the report writers; those files follow the `_shared` rules (Deno + Node type stripping).
+- Report generation and preview run in the browser (`lib/report-build`, docs/13 "Built in the browser"):
+  `lib/supabase/browser.ts` is the browser client (anon key + the user's session only), the writers run in a Web
+  Worker (`lib/report-build/worker.ts`) and load on the first Generate / Preview click.
 - `lib/database.types.ts` is generated; regenerate it after schema changes with `npx -y supabase@3.1.0 gen types typescript --local > apps/web/lib/database.types.ts` (run from the repo root).
 
 ## Cloudflare Workers (OpenNext)

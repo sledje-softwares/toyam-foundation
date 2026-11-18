@@ -5,16 +5,14 @@
 // the `reports` storage policies and Supabase Storage images are downloaded under `email-raw`'s, so
 // no service-role key is used (rule 4). R2 images are read with the read-only R2 token, only for keys
 // that prepare_report_version() returned to this caller.
-import { bindReport, fieldsFromSections, LayoutError, type ReportData, type ReportPhoto, type RBlock, type ResolvedDocument } from '../report/bind.ts';
+import { INVALID_LAYOUT_MESSAGE, type LoadedPhoto, loadReportPhotos, placedPhotoKeys, placedPhotoRecords, planReportPhotos, preparedProblem, reportDataFrom } from '../report/assemble.ts';
+import { bindReport, LayoutError, type ReportData, type ResolvedDocument } from '../report/bind.ts';
 import { htmlFromDocument, type PdfOptions } from '../report/html.ts';
 import { docxFromDocument, DOCX_MIME } from '../report/docx.ts';
-import { sniffImage } from '../report/image.ts';
 import type { ReportLayout } from '../report/spec.ts';
-import { validateLayout } from '../report/validate.ts';
 import {
-  caseFacts, type DbErrorLike, fail, type Failure, FETCH_POOL, hex, type ImageSource, imageSources, isPdf, MAX_BODY_CHARS,
-  MAX_IMAGE_BYTES, MAX_PREVIEW_IMAGE_BYTES, MAX_TOTAL_IMAGE_BYTES, mapDbError, mapStorageError, type Mode, parseRequest,
-  type PdfResult, pdfFailure, photoSections, pool, type PreparedPhoto, type PreparedReport, type RateLimit, type ReportFormat,
+  type DbErrorLike, fail, type Failure, FETCH_POOL, hex, type ImageSource, isPdf, MAX_BODY_CHARS, MAX_IMAGE_BYTES, mapDbError,
+  mapStorageError, type Mode, parseRequest, type PdfResult, pdfFailure, type PreparedReport, type RateLimit, type ReportFormat,
   reportPath, type StorageErrorLike, templateFormats,
 } from './logic.ts';
 
@@ -70,71 +68,14 @@ const err = (f: Failure): Reply => ({
 
 const defaultSha = async (b: Uint8Array) => hex(await crypto.subtle.digest('SHA-256', b as Uint8Array<ArrayBuffer>));
 
-interface Loaded {
-  photo: PreparedPhoto;
-  rp: ReportPhoto;
-}
-
-/** Fetches the images of the photos the layout shows; unusable ones get `image: null` and a warning. */
-async function loadPhotos(
-  gw: Gateway, env: Env, prepared: PreparedReport, layout: unknown, mode: Mode, warnings: string[],
-): Promise<Loaded[] | Failure> {
-  const shown = photoSections(layout);
-  const sectionTitle = new Map(prepared.sections.map((s) => [s.key, s.title]));
-  // prepare_report_version() orders photos by section, then position.
-  const photos = (prepared.photos ?? []).filter((p) => shown.has(p.section_key));
-  const budget = mode === 'preview' ? MAX_PREVIEW_IMAGE_BYTES : MAX_TOTAL_IMAGE_BYTES;
-  let planned = 0;
-  const plans = photos.map((p) => {
-    const plan = imageSources(p, mode);
-    const label = `Photo "${p.caption ?? p.category_name ?? 'untitled'}" (${sectionTitle.get(p.section_key) ?? p.section_key})`;
-    if (plan.skip !== null) return { p, label, sources: [] as ImageSource[], skip: plan.skip };
-    const first = plan.sources[0];
-    const size = first.size ?? MAX_IMAGE_BYTES;
-    if (planned + size > budget) {
-      return { p, label, sources: [] as ImageSource[], skip: 'the report already holds as many image bytes as it can' };
-    }
-    planned += size;
-    return { p, label, sources: plan.sources, skip: null as string | null };
-  });
+/** Fetches the images of the photos the layout shows (shared plan, assemble.ts); unusable ones get `image: null` and a warning. */
+async function loadPhotos(gw: Gateway, env: Env, prepared: PreparedReport, mode: Mode, warnings: string[]): Promise<LoadedPhoto[] | Failure> {
+  const plans = planReportPhotos(prepared, mode);
   if (!env.r2Configured && plans.some((x) => x.sources.some((s) => s.store === 'r2'))) {
     gw.logError('R2 is not configured');
     return fail(503, 'storage_not_configured', 'File storage is not available. Try again later.');
   }
-  return pool(plans, FETCH_POOL, async ({ p, label, sources, skip }): Promise<Loaded> => {
-    let reason = skip;
-    for (const src of sources) {
-      const bytes = await gw.fetchImage(src, MAX_IMAGE_BYTES);
-      if (!bytes || bytes.length === 0) { reason = 'the file could not be read'; continue; }
-      const mime = sniffImage(bytes);
-      if (!mime) { reason = 'the file is not a JPEG or PNG'; continue; }
-      return {
-        photo: p,
-        rp: {
-          evidence_id: p.evidence_id, caption: p.caption,
-          image: { bytes, mime, ...(src.width && src.height ? { width: src.width, height: src.height } : {}) },
-        },
-      };
-    }
-    warnings.push(`${label}: ${reason ?? 'not available'}; an empty box with the caption is printed instead.`);
-    return { photo: p, rp: { evidence_id: p.evidence_id, caption: p.caption, image: null } };
-  });
-}
-
-/** Image byte arrays that ended up in the document (identity), to record the photos actually placed. */
-function placedBytes(doc: ResolvedDocument): Set<Uint8Array> {
-  const out = new Set<Uint8Array>();
-  const walk = (blocks: RBlock[]): void => {
-    for (const b of blocks) {
-      if (b.kind === 'image' && b.image) out.add(b.image.bytes);
-      else if (b.kind === 'group') walk(b.blocks);
-      else if (b.kind === 'table') for (const r of b.rows) for (const c of r.cells) walk(c.blocks);
-    }
-  };
-  walk(doc.body);
-  walk(doc.header);
-  walk(doc.footer);
-  return out;
+  return loadReportPhotos(plans, (src) => gw.fetchImage(src, MAX_IMAGE_BYTES), { poolSize: FETCH_POOL, warnings });
 }
 
 export async function handleReportGenerate(method: string, hasAuth: boolean, bodyText: string, gw: Gateway, env: Env): Promise<Reply> {
@@ -169,20 +110,12 @@ export async function handleReportGenerate(method: string, hasAuth: boolean, bod
   }
   const prepared = prep.data;
   const layout = prepared.report_layout;
-  if (layout === null || layout === undefined) {
-    return err(fail(422, 'no_layout',
-      'This insurer template has no report layout yet, so the report cannot be generated. Ask an admin to load the layout for this template.'));
-  }
-  const issues = validateLayout(layout);
-  if (issues.length) {
-    gw.logError(`invalid layout: template ${prepared.template.id} (${issues.length} issues)`);
-    return err(fail(422, 'invalid_layout', 'The report layout of this template is invalid. Ask an admin to fix and reload it.',
-      { issues: issues.slice(0, 10) }));
+  const problem = preparedProblem(prepared, req.mode);
+  if (problem) {
+    if (problem.error.code === 'invalid_layout') gw.logError(`invalid layout: template ${prepared.template.id} (${problem.error.issues?.length ?? 0} issues)`);
+    return err(problem);
   }
   const formats = templateFormats(prepared);
-  if (req.mode === 'generate' && formats.length === 0) {
-    return err(fail(422, 'no_formats', 'This insurer template lists no PDF or Word output.'));
-  }
   const wantPdf = req.mode === 'generate' && formats.includes('pdf');
   if (wantPdf && !env.pdfConfigured) {
     gw.logError('Browser Rendering is not configured');
@@ -197,21 +130,15 @@ export async function handleReportGenerate(method: string, hasAuth: boolean, bod
 
   // 2. Photos (device copies first), then the resolved document, bound once for both writers.
   const warnings: string[] = [];
-  const loaded = await loadPhotos(gw, env, prepared, layout, req.mode, warnings);
+  const loaded = await loadPhotos(gw, env, prepared, req.mode, warnings);
   if (!Array.isArray(loaded)) return err(loaded);
-  const photos: Record<string, ReportPhoto[]> = {};
-  for (const l of loaded) (photos[l.photo.section_key] ??= []).push(l.rp);
-  const pos = new Map(loaded.map((l) => [l.rp, l.photo.position]));
-  for (const k of Object.keys(photos)) photos[k].sort((a, b) => pos.get(a)! - pos.get(b)!);
-  const generatedAt = now().toISOString();
-  const data: ReportData = { case: caseFacts(prepared, generatedAt), fields: fieldsFromSections(prepared.sections), photos };
+  const data: ReportData = reportDataFrom(prepared, loaded, now().toISOString());
   let doc: ResolvedDocument;
   try {
     doc = bindReport(layout as ReportLayout, data);
   } catch (e) {
     if (e instanceof LayoutError) {
-      return err(fail(422, 'invalid_layout', 'The report layout of this template is invalid. Ask an admin to fix and reload it.',
-        { issues: e.issues.slice(0, 10) }));
+      return err(fail(422, 'invalid_layout', INVALID_LAYOUT_MESSAGE, { issues: e.issues.slice(0, 10) }));
     }
     throw e;
   }
@@ -242,7 +169,7 @@ export async function handleReportGenerate(method: string, hasAuth: boolean, bod
   if (formats.includes('docx')) {
     files.push({ format: 'docx', bytes: await docxFromDocument(doc, { now: now() }), mime: DOCX_MIME });
   }
-  const placed = placedBytes(doc);
+  const placedKeys = placedPhotoKeys(doc, data);
 
   // 4. Upload (caller's JWT, no upsert), then record the version.
   const recorded: { format: ReportFormat; storage_path: string; sha256: string; size_bytes: number }[] = [];
@@ -257,9 +184,7 @@ export async function handleReportGenerate(method: string, hasAuth: boolean, bod
     }
     recorded.push({ format: f.format, storage_path: path, sha256: hash, size_bytes: f.bytes.length });
   }
-  const placedPhotos = loaded
-    .filter((l) => l.rp.image && placed.has(l.rp.image.bytes))
-    .map((l) => ({ evidence_id: l.photo.evidence_id, section_key: l.photo.section_key, position: l.photo.position, caption: l.photo.caption }));
+  const placedPhotos = placedPhotoRecords(loaded, placedKeys);
   const created = await gw.createVersion({
     p_case_id: prepared.case.id, p_report_id: reportId, p_values_token: prepared.values_token,
     p_files: recorded, p_photos: placedPhotos, p_notes: req.notes,

@@ -11,7 +11,7 @@ import { EvidencePanel } from "@/components/reports/evidence-panel";
 import { GenerateReport } from "@/components/reports/generate-report";
 import { PlannedNote } from "@/components/reports/planned";
 import { SectionEditor, SourceBadge, ValueText } from "@/components/reports/section-editor";
-import { approveOwnReport, correctLabels, decideApproval, evidenceLink, generateReport, requestApproval, saveSection, setRelevance } from "./actions";
+import { approveOwnReport, correctLabels, decideApproval, evidenceLink, requestApproval, saveSection, setRelevance } from "./actions";
 import { loadWorkspace } from "./load";
 
 export const metadata = { title: "Report" };
@@ -79,7 +79,7 @@ export default async function ReportWorkspacePage({
         }
         actions={
           ws.template && lock.editable ? (
-            <GenerateReport caseId={c.id} caseRef={c.case_ref} previewHref={`${href}/preview`} action={generateReport} />
+            <GenerateReport caseId={c.id} previewHref={`${href}/preview`} />
           ) : ws.template ? (
             // Read-only viewers may still open the preview; generating stays with editors.
             <Link href={`${href}/preview`} className={buttonClass("secondary")}>
