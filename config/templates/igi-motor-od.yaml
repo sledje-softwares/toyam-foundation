@@ -73,7 +73,7 @@ sections:
 
   - key: accident
     title: Accident details
-    categories: [spot_photo, cctv_footage, location_timeline]
+    categories: [cctv_footage, location_timeline]   # spot_photo belongs to `spot` (placement takes the first section; E2E 2026-11-18)
     fields:
       - {key: loss_type, label: Loss type, source: intake, extract: {labels: [Primary Type Of Loss]}}
       - {key: vehicle_burnt, label: Vehicle burnt, type: choice, options: ['Yes', 'No']}

@@ -6,7 +6,7 @@ import { colors, s } from '../src/theme';
 
 export default function SignIn() {
   const { signIn } = useAuth();
-  const [mobile, setMobile] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +15,7 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      setError(await signIn(mobile, password));
+      setError(await signIn(login, password));
     } catch {
       setError('Could not reach the server. Check your internet and try again.');
     } finally {
@@ -27,11 +27,12 @@ export default function SignIn() {
     <SafeAreaView style={s.screen}>
       <KeyboardAvoidingView style={s.pad}>
         <Text style={s.title}>Sign in</Text>
-        <Text style={[s.muted, { marginTop: 6 }]}>Use your mobile number and the password from the office.</Text>
-        <Text style={s.label}>Mobile number</Text>
+        <Text style={[s.muted, { marginTop: 6 }]}>Use the email (or mobile number) and the password from the office.</Text>
+        <Text style={s.label}>Email or mobile number</Text>
         <TextInput
-          style={s.input} value={mobile} onChangeText={setMobile} keyboardType="phone-pad"
-          autoComplete="tel" placeholder="98765 43210" accessibilityLabel="Mobile number"
+          style={s.input} value={login} onChangeText={setLogin} keyboardType="email-address"
+          autoCapitalize="none" autoCorrect={false} autoComplete="username"
+          placeholder="name@example.com" accessibilityLabel="Email or mobile number"
         />
         <Text style={s.label}>Password</Text>
         <TextInput

@@ -23,7 +23,7 @@ Environment (`apps/field/.env`, gitignored):
 
 1. `npx -y supabase@3.1.0 start` (then `db reset` for seed data); `npx -y supabase@3.1.0 status` shows the keys.
 2. Create a field operator (web admin, or the seed) with a mobile number and password. Sign-in is
-   mobile + password (K4, `FIELD_SIGN_IN = mobile_password`); the number is normalised to `+91...`.
+   email + password on the hosted project (`FIELD_SIGN_IN = email_password`, D52) or mobile + password on the local seed (`mobile_password`, K4); one box takes either (`src/lib/login.ts`: an "@" means email, otherwise the number is normalised to `+91...`).
 3. Build and install the dev client, then start Metro:
    ```bash
    cd apps/field

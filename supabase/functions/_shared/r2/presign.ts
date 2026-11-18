@@ -101,9 +101,9 @@ export function readR2Config(get: (k: string) => string | undefined): R2Config |
 export const PUT_EXPIRES_SECONDS = 600;
 
 /**
- * Presigned PUT bound to the file's SHA-256: `x-amz-content-sha256` is a signed header and the
- * canonical payload hash, so the client must send that header and the store can reject a
- * different body. With `contentLength`, `content-length` is signed too: the store refuses any other
+ * Presigned PUT bound to the file's SHA-256: `x-amz-content-sha256` is a signed header (the canonical
+ * payload hash is UNSIGNED-PAYLOAD, as R2 computes it for presigned URLs), so the client must send that
+ * header and the store can reject a different body. With `contentLength`, `content-length` is signed too: the store refuses any other
  * size (the HTTP client sets that header from the file, so it is not returned in `headers`).
  */
 export async function presignEvidencePut(cfg: R2Config, key: string, sha256: string, now: Date, contentLength?: number): Promise<{
@@ -124,7 +124,9 @@ export async function presignEvidencePut(cfg: R2Config, key: string, sha256: str
     headers: contentLength === undefined
       ? { 'x-amz-content-sha256': sha256 }
       : { 'content-length': String(contentLength), 'x-amz-content-sha256': sha256 },
-    payloadHash: sha256,
+    // R2 builds the canonical request of a presigned URL with UNSIGNED-PAYLOAD, whatever x-amz-content-sha256 says
+    // (signing the hash here fails every PUT with SignatureDoesNotMatch, found in the 2026-11-18 E2E run). The hash
+    // stays a signed header, so the client cannot change it, and the store compares the body with it.
   });
   return { url, headers: { 'x-amz-content-sha256': sha256 }, expires_in: PUT_EXPIRES_SECONDS };
 }

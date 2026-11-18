@@ -29,6 +29,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Vision labeller and model bake-off (D34): `services/labeller/README.md`
 - Office pages (cases, tasks, reports, dashboard; wireframes, data sources, DB gaps): `docs/12-office-pages/`
 - Report layouts and writers (D51, 7.7; format, writer interface, sample checklists): `docs/13-report-layouts.md`
+- End-to-end run on hosted (2026-11-18) and the open gap list: `docs/14-e2e-run-2026-11-18.md`
 
 ## Non-negotiable design rules
 
@@ -52,7 +53,9 @@ A single freelance developer working with Claude. Plan work in small, independen
 - Enum and column names are `snake_case`; tables are plural.
 - Client-facing documents (proposals, one-pagers) are business-oriented and do not name the technology stack.
 
-## Current status (2026-11-18, session 7)
+## Current status (2026-11-18, session 8)
+
+- **Session 8: full end-to-end run on hosted** (record + 22 gaps in `docs/14-e2e-run-2026-11-18.md`): ICICI + IndusInd sample mails → test Gmail → deployed Worker poll → `intake` → auto-assign → field tasks → field app on a real phone (gallery → outbox → R2 + 1600/384 copies) → labels (Claude as the model) → checklist ticks → report values → `runGenerate` (Node driver, same deps as the browser) → approval with one change request → submission (channel `other`, nothing sent to insurers) → ack. Fixed: R2 presign (`UNSIGNED-PAYLOAD`; **all field uploads were failing**; hash and size enforcement now verified on R2), stale hosted `evidence-view` redeployed, templates reloaded (ICICI v3 markup, IGI v3 spot photos), `toyam-web` redeployed with `NEXT_PUBLIC_FIELD_SIGN_IN=email_password`. Hosted test logins (orchestrator, office ×2, field2) in `~/toyam-hosted-test-logins.txt` (outside git). Uncommitted at session end: the D52 field email sign-in work from session 7 plus this session's fixes. Tests: intake 269, labeller 37, pgTAP 1133 passing.
 
 - Work is on `main` (local, not pushed; `revised-workflow-plan` is merged into it).
 - **Session 7 (2026-11-17/18): report generation 7.7 built and merged** (`88bf157`, D50 / D51 recorded in docs/07). Report versions (`create_report_version`, value snapshot, values token `RV409`, generated versions are records), layouts per insurer as structured data (`config/templates/layouts/*.yaml`, docs/13; ICICI Case Summary + Final Conclusion accept `**bold**` markup like Reliance), pure writers `supabase/functions/_shared/report` (spec → HTML, spec → .docx), edge function `report-generate` (caller's JWT; PDF via Cloudflare Browser Rendering, **secrets not set**, so PDFs do not render yet), web Generate / versions / downloads / preview (read-only staff get a Preview button; `prepare_report_preview` lets the preview work in locked statuses, `20261117500000`). No server image processing: the field app uploads 1600 px + 384 px copies (`record_device_derivative`, `evidence_derivatives`); insurer attachments are labelled by file name in SQL (`filename_rule`). **Next for 7.7:** PDF built in the office user's browser with pdfmake (plan + implementation prompt in `/home/someone_practicing/.claude/plans/humble-chasing-whistle.md`; approved: pdfmake, Carlito/Caladea/Liberation Sans fonts, R2 CORS rule), Word writer kept. `seed.sql` template blocks are now generated with `npm run seed:templates -w services/intake` (same loader as `templates:load`, layouts included; `seed:check` verifies).
@@ -75,6 +78,7 @@ A single freelance developer working with Claude. Plan work in small, independen
 
 ## Next steps
 
+0. From `docs/14` (blocking first): field "task done" action / `complete_field_task`; report sender 8.2; pipeline worker + OCR (D38); close action after ack; composer overflow with many files; thread refresh after delivery; intake dates to ISO; letterhead / logo / seal assets for reports; loader check that every photo section is printed by the layout.
 1. Field app on a device: a release APK (arm64, test-signed, hosted Supabase) is built from `apps/field/android` (`expo prebuild` output, gitignored) with `./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a`; the laptop (7 GB RAM) builds slowly. Install on a phone; field sign-in needs T6 on hosted first. Walk the offline flow (airplane mode → capture → Outbox → reconnect → ✓/✓✓); check the 1600 / 384 copies are upright and carry no location; confirm on R2 that signed `content-length` / `x-amz-content-sha256` are enforced.
 2. Click through `/intake`, `/intake/[id]` and `/intake/failed` against the local stack with seeded staff of each role; type-check `supabase/functions/intake` with Deno.
 3. M2: click through create / edit / reset / deactivate for one user of each role in a browser (T5–T9 acceptance) and T6 (phone + password sign-in on the hosted plan, needs approval); then 2.6 (availability / rules, D40). Checklist DB gaps closed by D42. Decide whether `/account` should ask for the current password.

@@ -55,7 +55,7 @@ describe('prompt', () => {
 
   test('sections follow from labels (section categories) and matched fields', () => {
     assert.deepEqual(sectionsFor(template, ['dl_document'], []), ['driver']);
-    assert.deepEqual(sectionsFor(template, ['spot_photo'], ['fir_no_date']), ['accident', 'fir', 'spot']);
+    assert.deepEqual(sectionsFor(template, ['spot_photo'], ['fir_no_date']), ['fir', 'spot']);
     assert.deepEqual(sectionsFor(template, ['other'], []), []);
   });
 
