@@ -4,11 +4,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  canInline, contentDisposition, createRateLimit, isR2EvidenceKey, isStoragePath, keyExt, MAX_IDS, parseRequest,
-  publicStorageUrl, readViewR2Config, safeFileName, serveType,
+  canInline, contentDisposition, createRateLimit, derivedKeyMatches, isDerivedKey, isR2EvidenceKey, isStoragePath, keyExt,
+  MAX_IDS, parseRequest, publicStorageUrl, readViewR2Config, safeFileName, serveType,
 } from '../../../supabase/functions/_shared/evidence-view/logic.ts';
 import {
-  type AttachmentRow, type EvidenceRow, type Gateway, handleEvidenceView, MAX_BODY_CHARS,
+  type AttachmentRow, type DerivativeRow, type EvidenceRow, type Gateway, handleEvidenceView, MAX_BODY_CHARS,
 } from '../../../supabase/functions/_shared/evidence-view/handler.ts';
 import { evidenceKey, presignEvidenceGet, presignEvidencePut } from '../../../supabase/functions/_shared/r2/presign.ts';
 
@@ -23,11 +23,20 @@ const R2 = { accountId: 'acct', bucket: 'evidence', accessKeyId: 'AKID', secretA
 const NOW = new Date('2026-11-15T12:00:00Z');
 
 const r2Row = (over: Partial<EvidenceRow> = {}): EvidenceRow => ({
-  id: E1, evidence_type: 'photo', storage_backend: 'r2', storage_path: evidenceKey(CASE, TASK, SHA, 'jpg'),
-  mime_type: 'image/jpeg', original_filename: 'IMG_0001.jpg', cloud_purged_at: null, ...over,
+  id: E1, case_id: CASE, evidence_type: 'photo', storage_backend: 'r2', storage_path: evidenceKey(CASE, TASK, SHA, 'jpg'),
+  mime_type: 'image/jpeg', original_filename: 'IMG_0001.jpg', cloud_purged_at: null, sha256: SHA, size_bytes: 2_400_000, ...over,
+});
+const COPY384 = 'c3'.repeat(32);
+const COPY1600 = 'c4'.repeat(32);
+const copyKey = (width: number, copySha: string, caseId = CASE, origSha = SHA) => `derived/${caseId}/${origSha}/w${width}-${copySha}.jpg`;
+const copyRow = (over: Partial<DerivativeRow> = {}): DerivativeRow => ({
+  evidence_id: E1, width: 384, storage_path: copyKey(384, COPY384), sha256: COPY384, size_bytes: 31_000, pixel_width: 384, ...over,
 });
 
-function fakeGateway(opts: { evidence?: EvidenceRow[]; attachments?: AttachmentRow[]; uid?: string | null; selectError?: { code: string }; signOk?: boolean } = {}) {
+function fakeGateway(opts: {
+  evidence?: EvidenceRow[]; attachments?: AttachmentRow[]; derivatives?: DerivativeRow[]; uid?: string | null;
+  selectError?: { code: string }; derivativeError?: { code: string }; signOk?: boolean;
+} = {}) {
   const calls: { fn: string; args: unknown[] }[] = [];
   const logs: string[] = [];
   const gw: Gateway = {
@@ -42,6 +51,11 @@ function fakeGateway(opts: { evidence?: EvidenceRow[]; attachments?: AttachmentR
     async selectAttachments(ids) {
       calls.push({ fn: 'selectAttachments', args: [ids] });
       return { data: (opts.attachments ?? []).filter((r) => ids.includes(r.id)), error: null };
+    },
+    async selectDerivatives(ids, width) {
+      calls.push({ fn: 'selectDerivatives', args: [ids, width] });
+      if (opts.derivativeError) return { data: null, error: opts.derivativeError };
+      return { data: (opts.derivatives ?? []).filter((d) => ids.includes(d.evidence_id) && d.width === width), error: null };
     },
     async signStorage(bucket, path, seconds, name) {
       calls.push({ fn: 'signStorage', args: [bucket, path, seconds, name] });
@@ -73,7 +87,7 @@ describe('evidence-view validation', () => {
   it('lower-cases, drops repeats and defaults to inline', () => {
     const r = parseRequest({ evidence_ids: [E1.toUpperCase(), E1] });
     assert.ok(r.ok);
-    if (r.ok) assert.deepEqual(r.value, { evidence_ids: [E1], attachment_ids: [], disposition: 'inline' });
+    if (r.ok) assert.deepEqual(r.value, { evidence_ids: [E1], attachment_ids: [], disposition: 'inline', variant: 'original' });
     const d = parseRequest({ evidence_ids: [E1], disposition: 'download' });
     assert.equal(!d.ok && d.failure.error.field, 'disposition');
   });
@@ -190,7 +204,7 @@ describe('evidence-view flow', () => {
   it('signs insurer attachments with the caller client, as a download when asked or unsafe', async () => {
     const { gw, calls } = fakeGateway({
       evidence: [r2Row({ id: E3, storage_backend: 'supabase', storage_path: 'raw/m1/policy.pdf', mime_type: 'application/pdf', original_filename: 'policy.pdf' })],
-      attachments: [{ id: A1, filename: 'page.html', mime_type: 'text/html', storage_path: 'raw/m1/page.html' }],
+      attachments: [{ id: A1, filename: 'page.html', mime_type: 'text/html', storage_path: 'raw/m1/page.html', sha256: SHA, size_bytes: 10 }],
     });
     const r = await post(gw, { evidence_ids: [E3], attachment_ids: [A1] });
     const [ev, at] = files(r);
@@ -223,7 +237,7 @@ describe('evidence-view flow', () => {
     const r = await post(fakeGateway({ evidence: [r2Row()] }).gw, { evidence_ids: [E1] }, null);
     assert.equal(r.status, 503);
     assert.equal((r.body.error as { code: string }).code, 'storage_not_configured');
-    const att = await post(fakeGateway({ attachments: [{ id: A1, filename: 'a.pdf', mime_type: 'application/pdf', storage_path: 'a.pdf' }] }).gw,
+    const att = await post(fakeGateway({ attachments: [{ id: A1, filename: 'a.pdf', mime_type: 'application/pdf', storage_path: 'a.pdf', sha256: SHA, size_bytes: 5 }] }).gw,
       { attachment_ids: [A1] }, null);
     assert.equal(att.status, 200);
   });
@@ -239,5 +253,151 @@ describe('evidence-view flow', () => {
     const again = await post(ok.gw, { evidence_ids: [E1] }, R2, limit);
     assert.equal(again.status, 429);
     assert.equal(again.retryAfter, 60);
+  });
+});
+
+describe('evidence-view variants', () => {
+  it('parses the variant (default original, anything else 400)', () => {
+    for (const v of ['original', 'w384', 'w1600'] as const) {
+      const r = parseRequest({ evidence_ids: [E1], variant: v });
+      assert.ok(r.ok && r.value.variant === v, v);
+    }
+    const none = parseRequest({ evidence_ids: [E1], variant: null });
+    assert.ok(none.ok && none.value.variant === 'original'); // null = not given
+    for (const v of ['w800', 'W384', '', 384, ['w384'], 'derived/x', {}]) {
+      const r = parseRequest({ evidence_ids: [E1], variant: v });
+      assert.equal(!r.ok && r.failure.status, 400, String(v));
+      assert.equal(!r.ok && r.failure.error.code, 'invalid_input');
+      assert.equal(!r.ok && r.failure.error.field, 'variant');
+    }
+  });
+  it('checks copy keys strictly against the photo', () => {
+    const want = { caseId: CASE, originalSha256: SHA, width: 384, copySha256: COPY384 };
+    assert.ok(isDerivedKey(copyKey(384, COPY384)));
+    assert.ok(derivedKeyMatches(copyKey(384, COPY384), want));
+    assert.ok(derivedKeyMatches(copyKey(384, COPY384), { ...want, caseId: CASE.toUpperCase() }));
+    const other = '3e500000-0000-4000-8000-000000000999';
+    for (const k of [
+      copyKey(384, COPY384, other), // wrong case
+      copyKey(384, COPY384, CASE, 'b2'.repeat(32)), // wrong original sha
+      copyKey(384, COPY1600), // wrong copy sha
+      copyKey(1600, COPY384), // wrong width
+      copyKey(384, COPY384).replace(/\.jpg$/, '.png'), // wrong extension
+      copyKey(384, COPY384).toUpperCase(),
+      `derived/${CASE}/../${SHA}/w384-${COPY384}.jpg`, // traversal
+      `derived/../cases/${CASE}/${SHA}/w384-${COPY384}.jpg`,
+      `/${copyKey(384, COPY384)}`,
+      `${copyKey(384, COPY384)}?x=1`,
+      `${copyKey(384, COPY384)}\n`,
+      `cases/${CASE}/files/${SHA}.jpg`,
+    ]) assert.equal(derivedKeyMatches(k, want), false, k);
+    assert.equal(isDerivedKey(`derived/${CASE}/${SHA}/w800-${COPY384}.jpg`), false);
+  });
+  it('serves the recorded copy, read with the caller client, as an inline JPEG', async () => {
+    const { gw, calls } = fakeGateway({
+      evidence: [r2Row()],
+      derivatives: [copyRow(), copyRow({ width: 1600, storage_path: copyKey(1600, COPY1600), sha256: COPY1600, size_bytes: 290_000, pixel_width: 1600 })],
+    });
+    const r = await post(gw, { evidence_ids: [E1], variant: 'w384' });
+    assert.equal(r.status, 200);
+    const [f] = files(r);
+    assert.equal(f.variant, 'w384');
+    assert.equal(f.sha256, COPY384);
+    assert.equal(f.size_bytes, 31_000);
+    assert.equal(f.width, 384);
+    assert.equal(f.mime, 'image/jpeg');
+    assert.equal(f.content_type, 'image/jpeg');
+    assert.equal(f.disposition, 'inline');
+    assert.equal(f.file_name, 'IMG_0001-w384.jpg');
+    const u = new URL(String(f.url));
+    assert.equal(u.pathname, `/evidence/${copyKey(384, COPY384)}`);
+    assert.equal(u.searchParams.get('X-Amz-Expires'), '300');
+    assert.equal(u.searchParams.get('response-content-type'), 'image/jpeg');
+    assert.deepEqual(calls.find((c) => c.fn === 'selectDerivatives')?.args, [[E1], 384]);
+    const big = files(await post(gw, { evidence_ids: [E1], variant: 'w1600' }))[0];
+    assert.equal(big.sha256, COPY1600);
+    assert.equal(big.width, 1600);
+    assert.match(String(big.url), /w1600-c4c4/);
+  });
+  it('reports the original with its hash and size', async () => {
+    const { gw, calls } = fakeGateway({ evidence: [r2Row()], derivatives: [copyRow()] });
+    const [f] = files(await post(gw, { evidence_ids: [E1] }));
+    assert.equal(f.variant, 'original');
+    assert.equal(f.sha256, SHA);
+    assert.equal(f.size_bytes, 2_400_000);
+    assert.equal(f.width, null);
+    assert.equal(f.mime, 'image/jpeg');
+    assert.ok(!calls.some((c) => c.fn === 'selectDerivatives')); // originals never read copies
+    const at = await post(
+      fakeGateway({ attachments: [{ id: A1, filename: 'a.jpg', mime_type: 'image/jpeg', storage_path: 'emails/a.jpg', sha256: SHA, size_bytes: 9 }] }).gw,
+      { attachment_ids: [A1], variant: 'w1600' },
+    );
+    const a = files(at)[0];
+    assert.deepEqual([a.variant, a.sha256, a.size_bytes], ['original', SHA, 9]); // attachments: always originals
+  });
+  it('falls back to the original when no copy is recorded (insurer attachments, field users)', async () => {
+    const supa = r2Row({ id: E2, storage_backend: 'supabase', storage_path: 'emails/dev/x.png', mime_type: 'image/png', original_filename: 'Front View(1).png' });
+    const { gw } = fakeGateway({ evidence: [r2Row(), supa], derivatives: [copyRow()] });
+    const r = await post(gw, { evidence_ids: [E2, E1], variant: 'w384' });
+    const [a, b] = files(r);
+    assert.equal(a.variant, 'original');
+    assert.equal(a.sha256, SHA);
+    assert.equal(a.mime, 'image/png');
+    assert.equal(a.file_name, 'Front View(1).png');
+    assert.match(String(a.url), /email-raw\/emails\/dev\/x\.png/);
+    assert.equal(b.variant, 'w384');
+  });
+  it('never signs a copy whose key does not name this photo', async () => {
+    const other = '3e500000-0000-4000-8000-000000000999';
+    for (const bad of [
+      copyRow({ storage_path: copyKey(384, COPY384, other) }), // other case
+      copyRow({ storage_path: copyKey(384, COPY384, CASE, 'b2'.repeat(32)) }), // other original
+      copyRow({ storage_path: copyKey(384, COPY1600) }), // key's copy sha differs from the row
+      copyRow({ sha256: COPY1600 }),
+      copyRow({ storage_path: copyKey(1600, COPY384) }), // other width
+      copyRow({ storage_path: copyKey(384, COPY384).replace(/\.jpg$/, '.png') }), // other extension
+      copyRow({ storage_path: `derived/${CASE}/../../cases/${CASE}/files/${SHA}.jpg` }), // traversal
+      copyRow({ storage_path: `cases/${CASE}/tasks/${TASK}/${SHA}.jpg` }), // an original's key
+      copyRow({ sha256: 'NOT-A-SHA' }),
+    ]) {
+      const { gw, logs } = fakeGateway({ evidence: [r2Row()], derivatives: [bad] });
+      const r = await post(gw, { evidence_ids: [E1], variant: 'w384' });
+      assert.equal(r.status, 200);
+      assert.deepEqual(files(r)[0], { kind: 'evidence', id: E1, error: 'unavailable' }, bad.storage_path);
+      assert.ok(logs.some((l) => l.includes('derivative key mismatch')));
+    }
+    // a copy row of another width or photo answered by a misbehaving select is ignored (original served)
+    const stray = fakeGateway({ evidence: [r2Row()] });
+    stray.gw.selectDerivatives = async () => ({ data: [copyRow({ width: 1600 }), copyRow({ evidence_id: E2 })], error: null });
+    assert.equal(files(await post(stray.gw, { evidence_ids: [E1], variant: 'w384' }))[0].variant, 'original');
+    // an evidence row without a valid sha256 cannot validate any copy
+    const { gw } = fakeGateway({ evidence: [r2Row({ sha256: null })], derivatives: [copyRow()] });
+    assert.equal(files(await post(gw, { evidence_ids: [E1], variant: 'w384' }))[0].error, 'unavailable');
+  });
+  it('keeps invisible files not_found and never reads their copies', async () => {
+    const { gw, calls } = fakeGateway({ evidence: [], derivatives: [copyRow()] });
+    const r = await post(gw, { evidence_ids: [E1], variant: 'w384' });
+    assert.deepEqual(files(r)[0], { kind: 'evidence', id: E1, error: 'not_found' });
+    assert.ok(!calls.some((c) => c.fn === 'selectDerivatives'));
+    const notes = fakeGateway({
+      evidence: [r2Row({ evidence_type: 'note', storage_path: null }), r2Row({ id: E2, cloud_purged_at: '2026-11-01T00:00:00Z' })],
+      derivatives: [copyRow(), copyRow({ evidence_id: E2 })],
+    });
+    const n = await post(notes.gw, { evidence_ids: [E1, E2], variant: 'w1600' });
+    assert.deepEqual(files(n).map((f) => f.error), ['no_file', 'archived']);
+    assert.ok(!notes.calls.some((c) => c.fn === 'selectDerivatives'));
+  });
+  it('maps a failed copy select and keeps the rate limit as it was', async () => {
+    const failed = await post(fakeGateway({ evidence: [r2Row()], derivativeError: { code: 'XX000' } }).gw, { evidence_ids: [E1], variant: 'w384' });
+    assert.equal(failed.status, 502);
+    const limit = createRateLimit({ calls: 100, ids: 3 });
+    const { gw } = fakeGateway({ evidence: [r2Row()], derivatives: [copyRow()] });
+    assert.equal((await post(gw, { evidence_ids: [E1, E2], variant: 'w384' }, R2, limit)).status, 200);
+    const again = await post(gw, { evidence_ids: [E1, E2], variant: 'w1600' }, R2, limit);
+    assert.equal(again.status, 429); // variants count as ids, like originals
+  });
+  it('needs R2 for a copy, as for any R2 file', async () => {
+    const r = await post(fakeGateway({ evidence: [r2Row()], derivatives: [copyRow()] }).gw, { evidence_ids: [E1], variant: 'w384' }, null);
+    assert.equal(r.status, 503);
   });
 });

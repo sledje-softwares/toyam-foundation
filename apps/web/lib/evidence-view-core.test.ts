@@ -83,3 +83,25 @@ describe("helpers", () => {
     expect(fileHref("attachment", id(1), { download: true })).toBe(`/files/attachment/${id(1)}?download=1`);
   });
 });
+
+describe("variants", () => {
+  const SHA = "ab".repeat(32);
+  it("sends the variant only when it is not the original", () => {
+    expect(batchBodies([id(1)], [], "inline", "w384")).toEqual([{ evidence_ids: [id(1)], disposition: "inline", variant: "w384" }]);
+    expect(batchBodies([id(1)], [], "inline", "original")).toEqual([{ evidence_ids: [id(1)], disposition: "inline" }]);
+  });
+  it("reads the served variant, hash, size and width", () => {
+    const r = parseViewReply({
+      ok: true,
+      files: [
+        { kind: "evidence", id: id(1), url: "https://x/1", content_type: "image/jpeg", variant: "w1600", sha256: SHA, size_bytes: 290000, width: 1600, mime: "image/jpeg" },
+        { kind: "evidence", id: id(2), url: "https://x/2", content_type: "image/png", variant: "w9", sha256: "NOT", size_bytes: -1, width: 1.5 },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.links.get(linkKey("evidence", id(1)))).toMatchObject({ variant: "w1600", sha256: SHA, size_bytes: 290000, width: 1600, mime: "image/jpeg" });
+    // unknown / malformed values are not trusted
+    expect(r.links.get(linkKey("evidence", id(2)))).toMatchObject({ variant: "original", sha256: null, size_bytes: null, width: null, mime: "image/png" });
+  });
+});

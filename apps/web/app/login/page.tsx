@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile, STAFF_ROLES } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { WipeFileCacheOnMount } from "@/components/file-cache/sign-out-form";
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "Sign in" };
@@ -27,6 +28,7 @@ export default async function LoginPage({
       <h1 className="text-2xl font-semibold">Sign in</h1>
       <p className="mt-1 text-sm text-slate-600">Claims investigation platform for office staff.</p>
       <LoginForm initialError={initialError} />
+      <WipeFileCacheOnMount />
     </main>
   );
 }

@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { NAV_ITEMS, type NavBadge } from "@/lib/nav";
 import { NavLinks } from "@/components/nav-links";
 import { Toaster } from "@/components/ui/toaster";
-import { signOut } from "@/app/login/actions";
+import { FileCacheProvider } from "@/components/file-cache/provider";
+import { SignOutForm } from "@/components/file-cache/sign-out-form";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
@@ -54,15 +55,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               My account
             </Link>
           </p>
-          <form action={signOut} className="mt-2">
-            <button type="submit" className="text-blue-800 underline hover:no-underline">
-              Sign out
-            </button>
-          </form>
+          {/* Wipes the browser file cache, then signs out. */}
+          <SignOutForm className="mt-2" />
         </div>
       </aside>
       <main id="main" tabIndex={-1} className="mx-auto w-full max-w-screen-2xl flex-1 p-6 md:p-8">
-        {children}
+        <FileCacheProvider userId={profile.id}>{children}</FileCacheProvider>
       </main>
       <Toaster />
     </div>

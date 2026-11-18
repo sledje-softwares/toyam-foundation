@@ -4,6 +4,7 @@
  * Design: docs/12-office-pages/reports.md.
  */
 
+import type { CachedFile } from "@/lib/file-cache/view-core";
 import type { Tone } from "@/components/ui/badge";
 import type { Enums } from "@/lib/database.types";
 
@@ -514,8 +515,8 @@ export type PanelFile = PanelEvidence & {
   mime: string | null;
   source: Enums<"capture_source">;
   backend: string;
-  /** Short-lived thumbnail link from evidence-view (images only), or null. */
-  thumbUrl: string | null;
+  /** Hashes of the original and its copies (RLS read) for the browser file cache; null for notes. */
+  file: CachedFile | null;
   labels: { categoryId: string; name: string; confidence: number | null; source: Enums<"label_source"> }[];
   description: string | null;
   /** v_evidence_processing.state */

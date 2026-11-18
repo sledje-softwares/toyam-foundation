@@ -2,7 +2,8 @@
 // insurer attachments. Contract: ./README.md.
 //
 //   POST /functions/v1/evidence-view   Authorization: Bearer <signed-in user's access token>
-//   body { evidence_ids?: uuid[], attachment_ids?: uuid[], disposition?: 'inline' | 'attachment' }
+//   body { evidence_ids?: uuid[], attachment_ids?: uuid[], disposition?: 'inline' | 'attachment',
+//          variant?: 'original' | 'w384' | 'w1600' }
 //
 // Rows are read and Storage links signed with the caller's own JWT (RLS and storage.objects policies
 // decide); no service-role key is used. The R2 secret signs GET URLs only and is never returned or
@@ -30,12 +31,21 @@ function gateway(authHeader: string): Gateway {
     async selectEvidence(ids) {
       const { data, error } = await caller
         .from('evidence')
-        .select('id, evidence_type, storage_backend, storage_path, mime_type, original_filename, cloud_purged_at')
+        .select('id, case_id, evidence_type, storage_backend, storage_path, mime_type, original_filename, cloud_purged_at, sha256, size_bytes')
         .in('id', ids);
       return { data, error };
     },
     async selectAttachments(ids) {
-      const { data, error } = await caller.from('email_attachments').select('id, filename, mime_type, storage_path').in('id', ids);
+      const { data, error } = await caller.from('email_attachments').select('id, filename, mime_type, storage_path, sha256, size_bytes').in('id', ids);
+      return { data, error };
+    },
+    async selectDerivatives(evidenceIds, width) {
+      // Caller's client: RLS (p_derivatives_staff_r) decides; the key is checked again in the handler.
+      const { data, error } = await caller
+        .from('evidence_derivatives')
+        .select('evidence_id, width, storage_path, sha256, size_bytes, pixel_width')
+        .in('evidence_id', evidenceIds)
+        .eq('width', width);
       return { data, error };
     },
     async signStorage(bucket, path, seconds, downloadName) {

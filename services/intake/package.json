@@ -9,6 +9,7 @@
     "templates:load": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/load-templates.ts",
     "seed:templates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/gen-template-seed.ts",
     "seed:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/gen-template-seed.ts --check",
+    "dev:photos": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/dev-photos.ts",
     "worker:dev": "npx wrangler dev --config worker/wrangler.jsonc",
     "worker:deploy": "npx wrangler deploy --config worker/wrangler.jsonc"
   },

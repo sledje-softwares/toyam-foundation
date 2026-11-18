@@ -6,8 +6,9 @@ import { formatDateTime } from "@/lib/format";
 import { applyListParams, parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import { CAPTURE_SOURCE_LABELS, caseHref, fileSize, parseEvidenceSource, PROCESSING_LABELS } from "@/lib/cases";
 import { Badge, DataTable, EmptyState, ErrorState, FilterBar, Pagination, type Column } from "@/components/ui";
-import { fileHref, getFileLinks, hasThumbnail, linkKey } from "@/lib/evidence-view";
-import { FileThumb } from "@/components/evidence/file-thumb";
+import { fileHref } from "@/lib/evidence-view-core";
+import { toCachedFile } from "@/lib/file-cache/view-core";
+import { CachedImage, PreviewButton } from "@/components/evidence/cached-image";
 import { loadCase, refParam } from "../load";
 
 const LIST: ListConfig = {
@@ -17,7 +18,7 @@ const LIST: ListConfig = {
 };
 
 const SELECT =
-  "id, original_filename, evidence_type, mime_type, size_bytes, capture_source, server_received_at, is_flagged, flag_reason, relevance, withdrawn_at, captured:profiles!evidence_captured_by_fkey(full_name), task:tasks!evidence_task_id_fkey(title), message:case_messages!evidence_message_id_fkey(visibility), labels:evidence_labels!evidence_labels_evidence_id_fkey(id, is_active, source, confidence, description, needs_detail, category:evidence_categories!evidence_labels_category_id_fkey(name))";
+  "id, case_id, sha256, original_filename, evidence_type, mime_type, size_bytes, capture_source, server_received_at, is_flagged, flag_reason, relevance, withdrawn_at, captured:profiles!evidence_captured_by_fkey(full_name), task:tasks!evidence_task_id_fkey(title), message:case_messages!evidence_message_id_fkey(visibility), labels:evidence_labels!evidence_labels_evidence_id_fkey(id, is_active, source, confidence, description, needs_detail, category:evidence_categories!evidence_labels_category_id_fkey(name)), evidence_derivatives(width, sha256, size_bytes, pixel_width)";
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -57,10 +58,8 @@ export default async function CaseEvidencePage({
   const rows = data ?? [];
   type Row = (typeof rows)[number];
 
-  // Thumbnails for this page's images, in one batch (links live 5 minutes; FileThumb falls back to /files/...).
-  const thumbIds = rows.filter((r) => r.evidence_type !== "note" && hasThumbnail(r.mime_type)).map((r) => r.id);
-  const thumbs = thumbIds.length ? await getFileLinks({ evidenceIds: thumbIds }) : null;
-  const thumbUrl = (id: string) => (thumbs?.ok ? (thumbs.links.get(linkKey("evidence", id))?.url ?? null) : null);
+  // Thumbnails (384 px copy, else an inline-safe original) and previews (1600 px copy) load in the browser through the
+  // hash-checked file cache: the hashes of every variant come from this RLS read, so a cached file needs no request.
 
   const columns: Column<Row>[] = [
     {
@@ -68,6 +67,7 @@ export default async function CaseEvidencePage({
       header: "File",
       cell: (r) => {
         const name = r.original_filename || `${r.evidence_type} file`;
+        const file = toCachedFile(r);
         const placeholder = (
           <span aria-hidden="true" className="text-[10px] uppercase text-text-muted">
             {r.mime_type?.split("/")[1]?.slice(0, 4) ?? r.evidence_type}
@@ -77,11 +77,7 @@ export default async function CaseEvidencePage({
           <span className="flex max-w-80 items-start gap-2">
             {r.evidence_type !== "note" && (
               <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100">
-                {hasThumbnail(r.mime_type) ? (
-                  <FileThumb src={thumbUrl(r.id)} fallbackHref={fileHref("evidence", r.id)} alt={name} placeholder={placeholder} />
-                ) : (
-                  placeholder
-                )}
+                {file ? <CachedImage file={file} purpose="thumb" alt={name} placeholder={placeholder} /> : placeholder}
               </span>
             )}
             <span className="min-w-0">
@@ -90,7 +86,8 @@ export default async function CaseEvidencePage({
               </span>
               <span className="block text-xs text-text-muted">{[r.mime_type, fileSize(r.size_bytes)].filter(Boolean).join(" · ")}</span>
               {r.evidence_type !== "note" && (
-                <span className="flex gap-3 text-xs">
+                <span className="flex flex-wrap gap-x-3 text-xs">
+                  {file && <PreviewButton file={file} name={name} />}
                   <a href={fileHref("evidence", r.id)} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline">
                     Open<span className="sr-only"> {name} in a new tab</span>
                   </a>
@@ -204,7 +201,6 @@ export default async function CaseEvidencePage({
             }
           />
           <Pagination page={list.page} pageSize={list.pageSize} total={count ?? 0} basePath={base} searchParams={sp} />
-          {thumbs && !thumbs.ok && <p className="mt-2 text-xs text-text-muted">Previews could not be loaded: {thumbs.message}</p>}
         </>
       )}
     </>

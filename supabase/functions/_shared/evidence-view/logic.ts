@@ -34,11 +34,22 @@ export const SUPABASE_EVIDENCE_BUCKET = 'email-raw';
 
 export type Disposition = 'inline' | 'attachment';
 export type FileKind = 'evidence' | 'attachment';
+/**
+ * Which bytes to serve for `evidence_ids`: the original, or the shrunk JPEG copy the field app made
+ * (`evidence_derivatives`, 384 px for thumbnails, 1600 px for reports). Attachment ids are always originals.
+ */
+export type Variant = 'original' | 'w384' | 'w1600';
+export const VARIANTS: readonly Variant[] = ['original', 'w384', 'w1600'];
+/** Pixel width of a copy variant (null for the original). */
+export function variantWidth(v: Variant): 384 | 1600 | null {
+  return v === 'w384' ? 384 : v === 'w1600' ? 1600 : null;
+}
 
 export interface ViewRequest {
   evidence_ids: string[];
   attachment_ids: string[];
   disposition: Disposition;
+  variant: Variant;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,7 +82,11 @@ export function parseRequest(body: unknown): Parsed {
   if (n === 0 || n > MAX_IDS) return bad('evidence_ids', `Send 1-${MAX_IDS} ids (evidence_ids and attachment_ids together).`);
   const d = b.disposition ?? 'inline';
   if (d !== 'inline' && d !== 'attachment') return bad('disposition', 'disposition must be "inline" or "attachment".');
-  return { ok: true, value: { evidence_ids: ev, attachment_ids: at, disposition: d } };
+  const v = b.variant ?? 'original';
+  if (typeof v !== 'string' || !(VARIANTS as readonly string[]).includes(v)) {
+    return bad('variant', 'variant must be "original", "w384" or "w1600".');
+  }
+  return { ok: true, value: { evidence_ids: ev, attachment_ids: at, disposition: d, variant: v as Variant } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -122,6 +137,32 @@ const R2_KEY = /^cases\/[0-9a-f-]{36}\/(tasks\/[0-9a-f-]{36}|files)\/[0-9a-f]{64
 export function isR2EvidenceKey(path: string): boolean {
   return R2_KEY.test(path);
 }
+/**
+ * Keys of shrunk copies (private.derivative_path): derived/{case_id}/{original_sha256}/w{384|1600}-{copy_sha256}.jpg.
+ * Strict: lower-case hex only, fixed widths, `.jpg` only, so no traversal or other object can be named.
+ */
+const DERIVED_KEY = /^derived\/([0-9a-f-]{36})\/([0-9a-f]{64})\/w(384|1600)-([0-9a-f]{64})\.jpg$/;
+export function isDerivedKey(path: string): boolean {
+  return DERIVED_KEY.test(path);
+}
+/**
+ * A copy's key is signed only when it matches the scheme AND names exactly this photo: its case id, its
+ * original's SHA-256, the requested width and the copy's own recorded SHA-256 (all from the database).
+ */
+export function derivedKeyMatches(
+  path: string,
+  want: { caseId: string; originalSha256: string; width: number; copySha256: string },
+): boolean {
+  const m = DERIVED_KEY.exec(path);
+  if (!m) return false;
+  return m[1] === want.caseId.toLowerCase() && m[2] === want.originalSha256 && Number(m[3]) === want.width && m[4] === want.copySha256;
+}
+
+/** A SHA-256 as stored (64 lower-case hex), or null. */
+export function cleanSha256(v: unknown): string | null {
+  return typeof v === 'string' && /^[0-9a-f]{64}$/.test(v) ? v : null;
+}
+
 /** A Storage object path we are willing to sign (no traversal, no leading slash). */
 export function isStoragePath(path: string): boolean {
   return path.length > 0 && path.length <= 1024 && !path.startsWith('/') && !path.split('/').includes('..');
