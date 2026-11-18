@@ -90,7 +90,7 @@ See `10-processing-pipeline.md`. **Hosting (D38):** one small always-on containe
 
 ## Storage sizing
 
-~300 cases/month, ~50–60 images per case after compression (≈0.5 MB) plus documents → **~20–30 GB/month** on R2 until purged after archive (D13).
+~300 cases/month, ~50–60 images per case plus device copies, documents and videos → plan for **≈ 100 GB/month** of new files (D53; the first estimate was 20–30 GB), kept in the cloud until purged after archive (D13). On R2 during build and pilot; Supabase Storage for production (D53).
 
 ## Security
 
