@@ -7,6 +7,8 @@
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-reporter=spec \"test/*.test.ts\"",
     "templates:json": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/load-templates.ts --dry-run",
     "templates:load": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/load-templates.ts",
+    "seed:templates": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/gen-template-seed.ts",
+    "seed:check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/gen-template-seed.ts --check",
     "worker:dev": "npx wrangler dev --config worker/wrangler.jsonc",
     "worker:deploy": "npx wrangler deploy --config worker/wrangler.jsonc"
   },

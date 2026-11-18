@@ -79,7 +79,7 @@ Field OTPs come from `[auth.sms.test_otp]` in `config.toml`; no SMS is sent. Fie
 
 ## Seed data (office demo)
 
-`seed.sql` also loads the evidence categories and the two templates in `config/templates` (inlined; regenerate the two marked blocks with `node supabase/seed-tools/gen-template-seed.mjs categories|templates`) and eight demo cases for the office pages. All names, phones, vehicles and claim numbers are invented. No files exist in any bucket, so open / download links on seeded evidence, reports and email attachments do not work; processing jobs for them are marked `skipped`.
+`seed.sql` also loads the evidence categories and the two templates in `config/templates` (inlined; regenerate the two marked blocks with `npm run seed:templates -w services/intake`, which resolves each template's report layout and embeds its assets like `templates:load`; `npm run seed:check -w services/intake` fails when they are out of date) and eight demo cases for the office pages. All names, phones, vehicles and claim numbers are invented. No files exist in any bucket, so open / download links on seeded evidence, reports and email attachments do not work; processing jobs for them are marked `skipped`.
 
 Extra logins (password `DevPassw0rd!`): `office2@example.com` (Neel Office); Field 1 / 2 / 3 (`+919800000001`, `…02`, `…03`, Feroz Field, Nashik) also sign in with phone + password. Insurers `IGI` and `ICL` match the templates.
 
