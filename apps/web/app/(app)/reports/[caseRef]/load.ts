@@ -11,7 +11,7 @@ import {
   type WorkspaceSection,
 } from "@/lib/reports";
 import type { Enums } from "@/lib/database.types";
-import { getFileLinks, hasThumbnail, linkKey } from "@/lib/evidence-view";
+import { toCachedFile } from "@/lib/file-cache/view-core";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -89,7 +89,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     supabase
       .from("evidence")
       .select(
-        "id, evidence_type, mime_type, original_filename, storage_backend, storage_path, capture_source, server_received_at, relevance, evidence_labels(category_id, confidence, source, is_active, description)",
+        "id, case_id, sha256, size_bytes, evidence_type, mime_type, original_filename, storage_backend, storage_path, capture_source, server_received_at, relevance, evidence_labels(category_id, confidence, source, is_active, description), evidence_derivatives(width, sha256, size_bytes, pixel_width)",
       )
       .eq("case_id", c.id)
       .is("withdrawn_at", null)
@@ -137,7 +137,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
   const scores = bestMatchScores(matchesRes?.data ?? []);
   const processing = new Map((processingRes.data ?? []).map((p) => [p.evidence_id, p.state]));
 
-  const files: Omit<PanelFile, "thumbUrl">[] = (evidenceRes.data ?? []).map((e) => {
+  const files: PanelFile[] = (evidenceRes.data ?? []).map((e) => {
     const labels = (e.evidence_labels ?? []).filter((l) => l.is_active);
     return {
       id: e.id,
@@ -153,21 +153,12 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       description: labels.find((l) => l.description)?.description ?? null,
       processing: processing.get(e.id) ?? null,
       matchScore: scores.get(e.id) ?? null,
+      // Thumbnails / previews load in the browser through the hash-checked file cache (no links signed per render).
+      file: e.storage_path ? toCachedFile(e) : null,
     };
   });
   const groups = sectionEvidence(files, focusedCatIds, scores);
 
-  // Thumbnails for the images the panel shows (R2 and insurer attachments), one batch per render via evidence-view.
-  // Links live 5 minutes and are not cached; FileThumb falls back to /files/evidence/{id} once one has expired.
-  const images = new Set((evidenceRes.data ?? []).filter((e) => e.storage_path && hasThumbnail(e.mime_type)).map((e) => e.id));
-  const shown = [...groups.matched, ...groups.unlabelled, ...groups.notRelevant].filter((f) => images.has(f.id));
-  const thumbs = shown.length ? await getFileLinks({ evidenceIds: shown.map((f) => f.id) }) : null;
-  const urls = new Map<string, string>();
-  if (thumbs?.ok) for (const f of shown) {
-    const u = thumbs.links.get(linkKey("evidence", f.id))?.url;
-    if (u) urls.set(f.id, u);
-  }
-  const withThumb = (f: Omit<PanelFile, "thumbUrl">): PanelFile => ({ ...f, thumbUrl: urls.get(f.id) ?? null });
 
   // Label choices: the template's categories first (section order), then whatever is already applied.
   const optionIds = [...new Set([...sectionCats.map((r) => r.category_id), ...files.flatMap((f) => f.categoryIds)])];
@@ -195,7 +186,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     sections,
     focused,
     focusedCategories: focusedCatIds.map((id) => ({ id, name: catName.get(id) ?? "Unknown" })),
-    panel: { matched: groups.matched.map(withThumb), unlabelled: groups.unlabelled.map(withThumb), notRelevant: groups.notRelevant.map(withThumb) },
+    panel: groups,
     labelOptions: optionIds.map((id) => ({ id, name: catName.get(id) ?? "Unknown" })),
     pendingSuggestions: suggestionsRes?.count ?? 0,
     versions,

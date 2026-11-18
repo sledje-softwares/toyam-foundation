@@ -4,6 +4,10 @@
  */
 export type FileKind = "evidence" | "attachment";
 export type Disposition = "inline" | "attachment";
+/** Which bytes of an evidence file: the original, or the field app's 384 px / 1600 px JPEG copy (D51). */
+export type Variant = "original" | "w384" | "w1600";
+export const VARIANTS: readonly Variant[] = ["original", "w384", "w1600"];
+export const isVariant = (v: unknown): v is Variant => typeof v === "string" && (VARIANTS as readonly string[]).includes(v);
 
 export type FileLink = {
   kind: FileKind;
@@ -13,6 +17,14 @@ export type FileLink = {
   content_type: string;
   file_name: string;
   disposition: Disposition;
+  /** What was served: the asked-for copy, or "original" when the file has no copy. */
+  variant: Variant;
+  /** SHA-256 of the served bytes as the database records it (64 lower-case hex), or null when unknown. */
+  sha256: string | null;
+  size_bytes: number | null;
+  /** Pixel width of a served copy, or null. */
+  width: number | null;
+  mime: string;
 };
 export type FileLinkError = { kind: FileKind; id: string; error: string };
 
@@ -29,10 +41,10 @@ export const isUuid = (v: string) => UUID.test(v);
 /** Map key for a link: attachments and evidence ids live in different tables. */
 export const linkKey = (kind: FileKind, id: string) => `${kind}:${id.toLowerCase()}`;
 
-export type ViewBody = { evidence_ids?: string[]; attachment_ids?: string[]; disposition: Disposition };
+export type ViewBody = { evidence_ids?: string[]; attachment_ids?: string[]; disposition: Disposition; variant?: Variant };
 
-/** Splits ids into function-sized bodies (valid UUIDs only, repeats dropped). */
-export function batchBodies(evidenceIds: string[], attachmentIds: string[], disposition: Disposition): ViewBody[] {
+/** Splits ids into function-sized bodies (valid UUIDs only, repeats dropped). `variant` applies to evidence ids. */
+export function batchBodies(evidenceIds: string[], attachmentIds: string[], disposition: Disposition, variant: Variant = "original"): ViewBody[] {
   const items: { kind: FileKind; id: string }[] = [];
   const seen = new Set<string>();
   for (const [kind, ids] of [
@@ -51,7 +63,12 @@ export function batchBodies(evidenceIds: string[], attachmentIds: string[], disp
     const part = items.slice(i, i + MAX_IDS_PER_CALL);
     const ev = part.filter((p) => p.kind === "evidence").map((p) => p.id);
     const at = part.filter((p) => p.kind === "attachment").map((p) => p.id);
-    bodies.push({ ...(ev.length ? { evidence_ids: ev } : {}), ...(at.length ? { attachment_ids: at } : {}), disposition });
+    bodies.push({
+      ...(ev.length ? { evidence_ids: ev } : {}),
+      ...(at.length ? { attachment_ids: at } : {}),
+      disposition,
+      ...(variant !== "original" ? { variant } : {}),
+    });
   }
   return bodies;
 }
@@ -75,6 +92,8 @@ function failure(e: unknown): Extract<LinksResult, { ok: false }> {
 }
 
 const isHttpUrl = (v: unknown): v is string => typeof v === "string" && /^https?:\/\//i.test(v);
+const sha = (v: unknown): string | null => (typeof v === "string" && /^[0-9a-f]{64}$/.test(v) ? v : null);
+const count = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
 
 /** Reads one function reply body into links and per-file errors (anything malformed is dropped). */
 export function parseViewReply(body: unknown): LinksResult {
@@ -89,16 +108,23 @@ export function parseViewReply(body: unknown): LinksResult {
     if ((x.kind !== "evidence" && x.kind !== "attachment") || typeof x.id !== "string") continue;
     const key = linkKey(x.kind, x.id);
     if (typeof x.error === "string") errors.set(key, x.error);
-    else if (isHttpUrl(x.url))
+    else if (isHttpUrl(x.url)) {
+      const contentType = typeof x.content_type === "string" ? x.content_type : "application/octet-stream";
       links.set(key, {
         kind: x.kind,
         id: x.id,
         url: x.url,
         expires_at: typeof x.expires_at === "string" ? x.expires_at : "",
-        content_type: typeof x.content_type === "string" ? x.content_type : "application/octet-stream",
+        content_type: contentType,
         file_name: typeof x.file_name === "string" ? x.file_name : "",
         disposition: x.disposition === "attachment" ? "attachment" : "inline",
+        variant: isVariant(x.variant) ? x.variant : "original",
+        sha256: sha(x.sha256),
+        size_bytes: count(x.size_bytes),
+        width: count(x.width),
+        mime: typeof x.mime === "string" ? x.mime : contentType,
       });
+    }
   }
   return { ok: true, links, errors };
 }

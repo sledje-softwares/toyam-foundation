@@ -4,7 +4,7 @@
  * decides which files the user gets links for. Links live 5 minutes: ask again per request, never cache them.
  */
 import { createClient } from "@/lib/supabase/server";
-import { batchBodies, mergeResults, parseViewReply, type Disposition, type LinksResult, type ViewBody } from "./evidence-view-core";
+import { batchBodies, mergeResults, parseViewReply, type Disposition, type LinksResult, type Variant, type ViewBody } from "./evidence-view-core";
 
 export * from "./evidence-view-core";
 
@@ -32,14 +32,16 @@ async function call(supabase: Awaited<ReturnType<typeof createClient>>, body: Vi
 
 /**
  * Short-lived links for evidence rows and/or email attachments, batched 50 per call (calls run in parallel).
- * Keys of `links` / `errors` are `linkKey(kind, id)`.
+ * Keys of `links` / `errors` are `linkKey(kind, id)`. `variant` (evidence only) asks for the 384 / 1600 px copy;
+ * each link says which variant was served and the SHA-256 of its bytes.
  */
 export async function getFileLinks(req: {
   evidenceIds?: string[];
   attachmentIds?: string[];
   disposition?: Disposition;
+  variant?: Variant;
 }): Promise<LinksResult> {
-  const bodies = batchBodies(req.evidenceIds ?? [], req.attachmentIds ?? [], req.disposition ?? "inline");
+  const bodies = batchBodies(req.evidenceIds ?? [], req.attachmentIds ?? [], req.disposition ?? "inline", req.variant ?? "original");
   if (!bodies.length) return { ok: true, links: new Map(), errors: new Map() };
   const supabase = await createClient();
   return mergeResults(await Promise.all(bodies.map((b) => call(supabase, b))));
