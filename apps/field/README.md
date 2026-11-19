@@ -33,6 +33,15 @@ Environment (`apps/field/.env`, gitignored):
    No Android SDK was available when this was scaffolded, so the native build is untested; the JS bundle
    (`npx expo export --platform android`) is verified. No EAS account or cloud build is needed for local builds.
 
+## Native modules of our own
+
+`modules/toyam-ocr` — local Expo module (autolinked from `modules/`, no config plugin): ML Kit text recognition with the
+bundled Latin and Devanagari models (device OCR of the 1600 px photo copies, docs/11 "Device OCR and description").
+
+Share target (5.6): `expo-share-intent` (config plugin in `app.json` adds the Android `SEND` / `SEND_MULTIPLE`
+intent filters at prebuild), handled in `src/ui/ShareIntake.tsx`, `src/share/`, `app/share.tsx` (docs/11 "Share to Toyam").
+Both need a native rebuild (`expo prebuild` + Gradle) before they can be tried on a phone.
+
 ## Scripts
 
 `npm run start | android | typecheck | lint | test` (vitest, pure logic in `src/lib`).

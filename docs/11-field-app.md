@@ -5,9 +5,10 @@ Android app for field operators. It should feel like the chat app they already u
 ## Screens
 
 ```
-┌ Cases ───────────────────────┐   ┌ ← INV-2026-000123 · Ravi S ────┐
-│ [ Open (3) ]  Completed      │   │ ⋮ menu ▸ Checklist (5/9)        │  menu options (D41)
-│                              │   │        ▸ Mark task done         │  complete_field_task
+┌ My cases                   ⋮ ┐   ┌ ← INV-2026-000123 · Ravi S ────┐
+│ ⋮ menu ▸ Outbox (2)          │   │ ⋮ menu ▸ Checklist (5/9)        │  menu options (D41)
+│        ▸ Sign out            │   │        ▸ Mark task done         │  complete_field_task
+│ [ Open (3) ]  Completed      │   │                                 │
 │                              │   │ ─────────────────────────────── │
 │ ● INV-…123  Ravi S      2:14 │   │ ⚙ Field work assigned to you:   │  system event
 │   Please collect the DL …  ②│   │   Visit garage and spot          │
@@ -22,11 +23,11 @@ Android app for field operators. It should feel like the chat app they already u
 
 | Screen | Content | Data |
 |---|---|---|
-| Cases | Tabs **Open** (has an open task) / **Completed**; last message preview, time, unread badge; search by name / claim no. / vehicle | `field_case_list()` |
+| Cases | Tabs **Open** (has an open task) / **Completed**; last message preview, time, unread badge; search by name / claim no. / vehicle. Header **⋮** menu (same style as the thread's): **Outbox** ("Outbox (N)" while files wait; always listed) and **Sign out** (2026-11-19: moved off the bottom of the list; the sign-out check of spec 9 is unchanged). The "Outbox (N)" row above the tabs stays while files wait | `field_case_list()`; menu entries `src/ui-logic/caseListMenu.ts` |
 | Thread | Case header (insured, vehicle, location, insurer points), pinned checklist, messages incl. system events and requests, composer | `case_messages`, `case_field_values` (intake only), `v_case_checklist` |
 | Camera | In-app camera, burst, document mode (edge crop) | local |
 | Picker | Gallery and documents, multi-select | local |
-| Share target | "Share → Toyam" from any app → choose case (Open first) → optional caption and tag → send | Android intent `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for `image/*`, `video/*`, `application/pdf`, `audio/*` |
+| Share target | "Share → Toyam Field" from any app → choose the case (open cases, newest first) → the files land in that case's composer → optional caption and tag → send. See "Share to Toyam" | Android intent `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for `image/*`, `video/*`, `application/pdf`, `audio/*` (expo-share-intent config plugin) |
 | Checklist | Opened from the thread's menu (D41); items with progress; **ticks itself once a file is labelled and matched** (D30, D35); tap an item to capture directly into it | `task_checklist_items`, `v_case_checklist`, `evidence_labels` (realtime) |
 | Outbox | Files saved on this phone, per case, progress, "Send now", last try (D43, spec 3) | local queue; `report_outbox_status()` |
 | Mark task done | Thread menu (⋮). See "Mark task done" below | `tasks` (own open tasks), `complete_field_task()` |
@@ -34,7 +35,7 @@ Android app for field operators. It should feel like the chat app they already u
 ## Sending
 
 1. Operator captures or selects files; optional caption; optional one-tap category chip (from the checklist's categories).
-2. App compresses photos (~0.5–1 MB), computes SHA-256, reads GPS (camera only), keeps EXIF, runs ML Kit OCR on document-like photos.
+2. App compresses photos (~0.5–1 MB), computes SHA-256, reads GPS (camera only), keeps EXIF. In the background it makes the 1600 px / 384 px copies (D51) and reads the text of every photo from the 1600 px copy with ML Kit (see "Device OCR and description").
 3. Message is stored locally (app sandbox) with a new `client_message_id` → shown with 🕓.
 4. When online (WorkManager job): presigned upload to R2 for each file (edge function `evidence-upload`, contract in its README: checks `can_upload_evidence_at(task, device_captured_at)` with the operator's JWT; PUT bound to `x-amz-content-sha256` and the file size; `already_stored` skips the PUT), then `post_thread_message()` with the items. Retries reuse the same `client_message_id`, so nothing is duplicated; a file already stored is skipped.
 
@@ -75,7 +76,7 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 6. **"All N files sent ✓" notification.** A local notification when the queue becomes empty after at least one file was waiting more than 1 minute: title **"All {N} files sent ✓"**, body **"The office has them now."** Tapping opens the last case that sent. Not shown while the app is in the foreground on that thread (the ticks already show it).
 7. **Gentle prompt after 6 h.** Once per 6-hour stretch with files waiting and no successful send: a local notification and, when the app is open, a non-blocking banner. Title **"{N} files are still on this phone"**. Body **"They will send by themselves when you have signal. If you are on Wi-Fi or mobile data now, tap to send."** Button **"Send now"**. Never says "failed" or "error".
 8. **Low-storage warning.** When free phone storage drops below 500 MB (or the queue would push it below 200 MB): banner on Cases and in the camera **"Phone storage is almost full. Your {N} saved files are safe — connect to send them and free space."** Below 200 MB the camera shows a dialog before capture: **"Not enough space for more photos. Send saved files first, or free space on the phone."** with **"Open Outbox"** and **"OK"**. Never deletes queued files by itself.
-9. **Sign-out blocked while files wait.** Menu → Sign out with files queued opens **"{N} files are not sent yet"** / **"Signing out would delete them from this phone. Connect to the internet and wait for them to send."** with **"Open Outbox"** and **"Stay signed in"** only (no sign-out button). With an empty queue sign-out works as usual.
+9. **Sign-out blocked while files wait.** Menu (⋮ on "My cases") → Sign out with files queued opens **"{N} files are not sent yet"** / **"Signing out would delete them from this phone. Connect to the internet and wait for them to send."** with **"Open Outbox"** and **"Stay signed in"** only (no sign-out button). With an empty queue sign-out works as usual.
 10. **Remote sign-out (operator deactivated): drain, then wipe.** When the session refresh fails because the account is blocked, the app calls `field-drain` `status`. If `state = 'drain'`: a full-screen, non-dismissable page **"Your access has been removed"** / **"Sending the {N} files you took before that. Keep the app open or connected — this finishes by itself."** with progress **"{k} of {N} sent"**. Cases and the camera are no longer reachable. When done (or if `state = 'closed'`, or after the 7-day window): **"All files sent. This phone is now signed out."** (if some could not be sent: **"{k} files were sent. {m} could not be sent and have been removed."**), then the app calls `finish`, wipes the cache, queue, device secret and session, and returns to the sign-in screen. If `state = 'active'` the account was restored: back to normal sign-in.
 
 ### Remote sign-out contract (`supabase/functions/field-drain`)
@@ -94,13 +95,106 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 
 Accepted only for files captured (device clock) before `profiles.deactivated_at`, within the operator's hold on the task, within 7 days of deactivation; text-only messages are not drained. Every presign and file is audited.
 
+## Share to Toyam (5.6)
+
+"Toyam Field" appears in Android's share sheet for photos, videos, audio and PDFs (one file or several).
+
+| Piece | Where |
+|---|---|
+| Intent filters | `expo-share-intent` 9.0.0 config plugin in `app.json` (`androidIntentFilters` / `androidMultiIntentFilters`: `image/*`, `video/*`, `audio/*`, `application/pdf`; iOS disabled; main activity `singleTask`). Generated by `expo prebuild`; nothing is edited in `android/` by hand |
+| Receiving (also while signed out) | `src/ui/ShareIntake.tsx` (mounted in `app/_layout.tsx`; native module events, no router deep link) |
+| Inbox (copy at once, JSON list) | `src/share/inbox.ts` → `documentDirectory/share-inbox/` + `share-inbox.json` |
+| Mapping (pure, tested) | `src/share/intent.ts`, `intent.test.ts` |
+| Case choice | `app/share.tsx` ("Send to a case") |
+
+- **Receiving:** the sender's `content://` URI is used (a MediaStore file path is usually unreadable without storage
+  permission, which the app does not ask for). Type and size are checked first with the same caps as `evidence-upload`
+  (image 20 MB, PDF 25 MB, audio 50 MB, video 300 MB; at most 100 files per share); accepted files are copied into the
+  share inbox at once, because the sender's read grant ends with the share. Refused files are listed under "Not added"
+  with the composer's wording. Shared text / links are refused ("Only photos, videos, audio and PDF files…").
+- **Signed out:** the files wait in the inbox; after sign-in the share screen opens by itself. A remote sign-out drain
+  does not open it. Sign-out and the drain wipe delete the inbox (files never sent to a case).
+- **Choosing the case:** only cases with an open task (the "Open" tab), newest activity first; completed cases cannot
+  take files. With **no open case** the screen says so — "No open case" / "You have no open case to send these files
+  to. …" — with **"Remove the files"** and **"Keep for now"**; kept files show a banner on the case list
+  ("{n} shared files waiting — choose a case") until a case is chosen or they are removed, so nothing stays behind
+  silently.
+- **Same path as gallery picks (D18):** each file goes through `preparePicked(…, 'share')` (compression, sandbox copy,
+  size check, SHA-256 of the sandbox copy — rule 3), into the chosen case's composer draft; caption and category chip
+  are set there; Send = outbox (offline queue, ✓ / ✓✓, 1600 / 384 px copies, device OCR). No mark and no block;
+  `capture_source = 'share'` (existing enum value) records the origin for audit only. No EXIF is read from shared
+  files (the capture time is the time they were added).
+- **Many files (gap 5):** the composer's file list is at most ~4 rows tall and scrolls, with a count line
+  ("13 files · sent as 1 message"), so the caption box and Send stay visible; the outbox splits sends into messages of 30.
+- **Needs a native rebuild to test:** the intent filters, the share module and the new screen only exist in an APK built
+  after `expo prebuild` with this `app.json`. Not yet tried on a phone (check: Google Photos, Files, WhatsApp; one and
+  several files; signed out; app killed vs in the background).
+
+## Device OCR and description (gap 35)
+
+User decision 2026-11-19: OCR runs **on the operator's phone** on the **1600 px copy** of every photo, and its text
+is stored with the image together with a **short description** that applies to the original and both copies. No
+generative model (the test phone is a low-end Galaxy F12): the description is built from the operator's tag and the
+OCR text.
+
+| Piece | Where |
+|---|---|
+| Native module (local Expo module, autolinked from `apps/field/modules`) | `modules/toyam-ocr` (Kotlin, `ToyamOcrModule.kt`): ML Kit text recognition v2 **16.0.1**, **bundled** Latin + Devanagari models (offline from the first launch, no Play-services download). Own low-priority thread: neither the UI thread nor the shared Expo module queue waits. |
+| JS adapter | `src/ocr/native.ts` (`requireOptionalNativeModule('ToyamOcr')`; missing module = no OCR) |
+| Block mapping, Latin + Devanagari merge | `src/ocr/blocks.ts` |
+| Aadhaar masking | `src/ocr/mask.ts` (same rule in SQL: `private.mask_aadhaar`) |
+| Description | `src/ocr/describe.ts` |
+| Read step (best effort) | `src/ocr/read.ts` (`readPhoto`) |
+| Outbox step (persist, send, retry) | `src/outbox/outbox.ts` (`startOcr`, `sendOcr`), tests `src/outbox/ocr.test.ts`, `src/ocr/ocr.test.ts` |
+| Server call | `record_device_ocr()` (migration `20261119600000_device_ocr.sql`, docs/06) |
+
+- **What is read:** camera, gallery and shared **images** (the ones that get copies). Not videos, audio or PDFs (a
+  PDF's text layer is read on the server, `text_extract`). Both script models run on each photo; the Latin reading is
+  the base and a Devanagari-model line containing Devanagari script replaces the Latin lines it overlaps.
+- **When:** after the photo's copies are made, in the background, one photo at a time. Sending the message is not
+  delayed (✓ as before); the copies of that photo wait until it is read (the 1600 px file must still exist), then the
+  text goes. Order per photo: original PUT → `post_thread_message` → both copies → `record_device_ocr`.
+- **Stored on the phone:** the result is kept on the file in the outbox store (`OutboxFile.ocr`, item JSON in SQLite),
+  so it survives restarts and works offline; after a restart a photo whose 1600 px copy was not read yet is read then.
+- **Best effort:** a failed read, a refusal (no longer on the case, withdrawn, bad input) or 6 failed sends drop the
+  text silently; transient errors share the outbox backoff; an expired session pauses like for files. OCR never holds a
+  message and is never shown to the operator (no ticks, counts or sign-out checks). Low storage: copies are not made, so
+  nothing is read. Battery: one read is ~1–2 s of CPU on a low-end phone and only runs while the app (or its background
+  job) runs; no separate battery check yet. Drain mode (remote sign-out): neither read nor sent.
+- **Blocks:** one per text line, `{text, bbox:[x,y,w,h], conf, line}` in the **1600 px copy's pixels** (its size is
+  `evidence_derivatives.pixel_width/height` for width 1600), reading order, `conf` = ML Kit line confidence.
+  `mean_confidence` = average line confidence weighted by text length. `lang` = `latin`, `devanagari` or
+  `latin+devanagari`. Limits as in the RPC: text 20 000 characters, 2 000 blocks.
+- **Description** (≤ 200 characters): `<operator's category name if tagged, else Photo / Document>; text read from the
+  1600 px copy: <first 3 meaningful lines joined with " · ">`, or `<…>; no text read`. "Document" when text lines cover
+  ≥ 12 % of the image or there are ≥ 8 lines with ≥ 120 characters. A meaningful line has ≥ 3 letters / digits and is
+  mostly letters / digits. The tag name comes from the case's cached chips.
+- **Privacy (rule 7, UIDAI):** before anything leaves the phone, every 12-digit number whose first digit is 2–9 (plain or
+  grouped 4-4-4 with spaces / hyphens), not part of a longer digit run, becomes `XXXX XXXX 1234` in the text, every
+  block and the description; the database applies the same masking again. No checksum test on purpose (a misread digit
+  would fail it and leak 11 digits). Other numbers (registration, DL, policy, chassis) are report fields and stay as
+  read; a 12-digit segment inside a policy number is masked as well (privacy first; the photo still shows it).
+- **Who sees it:** staff on cases they manage (report workspace relevant-files panel, case evidence list: description,
+  "Show text", "Copy text"). Field operators never read OCR (RLS, rule 4); they also cannot write OCR rows except
+  through `record_device_ocr()`.
+- **Server pipeline:** with text and a mean confidence ≥ 70 % (`app_settings.device_ocr_skip_confidence_pct`) the
+  queued server `ocr` job of the file is set `skipped` ("device OCR present"); the server worker also skips files with a
+  current `mlkit_device` row. If server OCR already read the file, the phone's row is stored beside it, not current.
+- **APK size:** the bundled models are expected to add roughly 6–10 MB to the arm64 release APK (about 4 MB per
+  script per ABI per Google's figures; **not measured yet**, the APK with this module has not been built — the previous
+  arm64 release APK was 39.9 MB). The unbundled Play-services variant would be smaller but needs a model download on
+  first use. The Kotlin module is also not compiled yet: check the first build (`ToyamOcrModule.kt` uses
+  `Text.Line.confidence`, ML Kit ≥ 16.0.0).
+- **Not built yet:** on-device timing log; skipping the Devanagari pass on photos without Devanagari-like noise (would
+  halve the time); a battery-saver check; OCR of PDFs on the phone.
+
 ## Withdraw
 
 Long-press → Withdraw (within 10 minutes, D19). The message shows "Message withdrawn"; its files disappear for everyone else and cannot be used in reports. Nothing is deleted.
 
 ## What operators never see
 
-Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling.
+Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling. The phone reads and sends the OCR text of its photos (above) but can never read OCR rows back (RLS).
 
 ## Mark task done
 
@@ -130,5 +224,5 @@ New task, request (re-investigation), office reply, case reassigned. Tokens in `
 
 ## Build notes
 
-- Expo with a custom development build (share intent handling and ML Kit need native modules).
+- Expo with a custom development build (share intent handling and ML Kit need native modules). ML Kit lives in the local Expo module `modules/toyam-ocr` (autolinked; no config plugin needed).
 - Test on the operators' actual phones early (Android versions and OEM share sheets differ).

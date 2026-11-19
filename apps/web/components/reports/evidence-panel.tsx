@@ -2,6 +2,7 @@ import type { ActionResult, LinkResult, PanelFile } from "@/lib/reports";
 import { formatRelativeDay } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { CachedImage, PreviewButton } from "@/components/evidence/cached-image";
+import { OcrText } from "@/components/evidence/ocr-text";
 import { LabelEditor, OpenFileButton, RelevanceButton } from "./evidence-actions";
 import { PlannedButton, PlannedNote } from "./planned";
 
@@ -68,14 +69,15 @@ function Tile({ f, caseRef, editable, labelOptions, actions }: { f: PanelFile; c
             {f.relevance === "not_relevant" && <Badge>Not relevant</Badge>}
           </p>
           {f.description && <p className="line-clamp-2 text-xs text-text-muted">{f.description}</p>}
+          {f.ocr && <OcrText ocr={f.ocr} compact />}
         </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3">
         {f.file && <PreviewButton file={f.file} name={f.name} />}
         <OpenFileButton evidenceId={f.id} canOpen link={actions.evidenceLink} />
         {editable && <RelevanceButton evidenceId={f.id} caseRef={caseRef} notRelevant={f.relevance === "not_relevant"} action={actions.setRelevance} />}
-        <span className="text-xs text-text-muted" title="Planned (7.3): OCR text with tap-to-fill into the focused field">
-          OCR text <span className="rounded bg-slate-100 px-1 py-0.5">Planned · 7.3</span>
+        <span className="text-xs text-text-muted" title="Planned (7.3): tap an OCR line to fill the focused field">
+          Tap-to-fill <span className="rounded bg-slate-100 px-1 py-0.5">Planned · 7.3</span>
         </span>
       </div>
       {editable && <LabelEditor evidenceId={f.id} caseRef={caseRef} current={f.categoryIds} options={labelOptions} action={actions.correctLabels} />}

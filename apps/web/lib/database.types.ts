@@ -941,14 +941,14 @@ isOneToOne: false
                   ]
                 },"evidence_ocr": {
                   Row: {
-                    "blocks": NonNullable<Json>,"created_at": string,"created_by": string | null,"engine": string,"engine_version": string | null,"evidence_id": string,"id": string,"is_current": boolean,"lang": string | null,"mean_confidence": number | null,"page_no": number,"text": string
+                    "blocks": NonNullable<Json>,"created_at": string,"created_by": string | null,"engine": string,"engine_version": string | null,"evidence_id": string,"id": string,"is_current": boolean,"lang": string | null,"mean_confidence": number | null,"page_no": number,"source_width": number | null,"summary": string | null,"text": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "blocks"?: NonNullable<Json>,"created_at"?: string,"created_by"?: string | null,"engine": string,"engine_version"?: string | null,"evidence_id": string,"id"?: string,"is_current"?: boolean,"lang"?: string | null,"mean_confidence"?: number | null,"page_no"?: number,"text": string
+                    "blocks"?: NonNullable<Json>,"created_at"?: string,"created_by"?: string | null,"engine": string,"engine_version"?: string | null,"evidence_id": string,"id"?: string,"is_current"?: boolean,"lang"?: string | null,"mean_confidence"?: number | null,"page_no"?: number,"source_width"?: number | null,"summary"?: string | null,"text": string
                   }
                   Update: {
-                    "blocks"?: NonNullable<Json>,"created_at"?: string,"created_by"?: string | null,"engine"?: string,"engine_version"?: string | null,"evidence_id"?: string,"id"?: string,"is_current"?: boolean,"lang"?: string | null,"mean_confidence"?: number | null,"page_no"?: number,"text"?: string
+                    "blocks"?: NonNullable<Json>,"created_at"?: string,"created_by"?: string | null,"engine"?: string,"engine_version"?: string | null,"evidence_id"?: string,"id"?: string,"is_current"?: boolean,"lang"?: string | null,"mean_confidence"?: number | null,"page_no"?: number,"source_width"?: number | null,"summary"?: string | null,"text"?: string
                   }
                   Relationships: [
                     {
@@ -1882,6 +1882,9 @@ isOneToOne: false
                            },
 "record_device_derivative":
 { Args: { "p_case_id": string,"p_original_sha256": string,"p_pixel_height": number,"p_pixel_width": number,"p_sha256": string,"p_size_bytes": number,"p_storage_path": string,"p_width": number }; Returns: Json
+                           },
+"record_device_ocr":
+{ Args: { "p_blocks": Json,"p_case_id": string,"p_description": string,"p_engine_version": string,"p_lang": string,"p_mean_confidence": number,"p_original_sha256": string,"p_source_width": number,"p_text": string }; Returns: Json
                            },
 "record_field_suggestions":
 { Args: { "p_evidence_id": string,"p_rows": Json }; Returns: number

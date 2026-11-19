@@ -22,14 +22,32 @@ export interface Gps {
   accuracy_m: number | null;
 }
 
-export interface DeviceOcr {
+/** One OCR line in the documented evidence_ocr shape (docs/10): pixel box of the image that was read. */
+export interface OcrBlock {
   text: string;
-  engine?: string;
-  engine_version?: string;
-  lang?: string;
-  page_no?: number;
-  blocks?: unknown[];
-  mean_confidence?: number;
+  /** [x, y, w, h] in the 1600 px copy's pixels. */
+  bbox: [number, number, number, number];
+  conf: number | null;
+  /** Reading-order index. */
+  line: number;
+}
+
+/**
+ * Text read on the phone from the 1600 px copy (ML Kit, Latin + Devanagari) with a short description,
+ * waiting for record_device_ocr(). Aadhaar-like numbers are already masked (src/ocr/mask.ts).
+ * Best effort and invisible to the operator, like the copies.
+ */
+export interface OutboxOcr {
+  engine_version: string;
+  lang: string | null;
+  text: string;
+  blocks: OcrBlock[];
+  mean_confidence: number | null;
+  /** "<tag or Photo/Document>; text read from the 1600 px copy: ..." (<= 200 characters). */
+  description: string;
+  source_width: 1600;
+  /** Failed tries; dropped after MAX_COPY_ATTEMPTS like a copy. */
+  attempts: number;
 }
 
 /**
@@ -78,7 +96,11 @@ export interface OutboxFile {
   checklist_item_id: string | null;
   exif?: Record<string, unknown>;
   device_info?: Record<string, unknown>;
-  ocr?: DeviceOcr | null;
+  /**
+   * Device OCR (gap 35): undefined = not read yet (or a file saved before OCR existed), null = nothing
+   * to send (read failed, not a photo, already recorded or dropped), object = to record.
+   */
+  ocr?: OutboxOcr | null;
   /** Shrunk copies still to send (images only); absent on items saved before copies existed. */
   copies?: OutboxCopy[];
   /** Set once the PUT to R2 succeeded; a stored file is never uploaded again. */

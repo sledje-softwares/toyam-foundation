@@ -18,6 +18,7 @@ Source of truth: all files in `supabase/migrations/` applied in order. Tests: `s
 | `20261115800000_report_guards` | `save_case_field_values()`, claim / policy no. sync, approval request rules, submission records, acknowledgement, manual submission, reopen (D44/D45, below) |
 | `20261117300000_device_derivative_target` | `device_derivative_target()`: presign check for the shrunk copies the field app uploads (below) |
 | `20261117000000_report_versions` | Report versions from the generator (7.7, D51): `case_templates.report_layout`, `evidence_derivatives` (shrunk image copies), `prepare_report_version()`, `create_report_version()`, value snapshot per version, generated versions as records, `reports` bucket scheme for generated files (below) |
+| `20261119600000_device_ocr` | Device OCR on the field phone (gap 35): `evidence_ocr.summary` / `source_width`, `record_device_ocr()`, `private.mask_aadhaar()`, field inserts only through the RPC (guard trigger, insert policy dropped), queued server OCR skipped on confident device text |
 
 ## Core entities
 
@@ -70,7 +71,8 @@ Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, 
 |---|---|
 | `case_messages` | Kinds text / media / voice / system / request; `client_message_id` for offline idempotency; no edit, no delete; withdraw only |
 | `case_thread_reads` | Read pointer per user per case (ticks, unread counts) |
-| `post_thread_message(case, client_id, kind, body, task, reply_to, items)` | Runs as the caller (RLS decides); stores files as evidence with operator tag and device OCR; first upload starts the field task |
+| `post_thread_message(case, client_id, kind, body, task, reply_to, items)` | Runs as the caller (RLS decides); stores files as evidence with operator tag; first upload starts the field task. A field user's `ocr` item is ignored since `20261119600000` (device OCR goes through `record_device_ocr`) |
+| `record_device_ocr(case, original_sha256, source_width, engine_version, lang, text, blocks, mean_confidence, description)` | Field operator who captured the photo, while they still see the case or within the D43 late window (same rule as `record_device_derivative`); photos only, not withdrawn; `source_width` 1600; text ≤ 20 000 chars, blocks ≤ 2 000 `{text, bbox[4] ≥ 0, conf 0–1/null, line ≥ 0}`, description ≤ 240; Aadhaar masked again in SQL; idempotent per file (`recorded: false` on a retry); confident text skips the queued server `ocr` job. Returns `{evidence_id, ocr_id, recorded, is_current, server_ocr_skipped}`. Errcodes 42501 / P0002 / 22023 / 55000 |
 | `withdraw_message(id)` | Sender only, within `withdraw_window_minutes`; hides message and files |
 | `mark_thread_read(case)`, `case_thread_state(case)` | Read state for ticks |
 | `field_case_list()` | Field app home: Open / Completed, last message, unread |
@@ -80,7 +82,7 @@ Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, 
 | Object | Purpose |
 |---|---|
 | `processing_jobs` | One row per evidence × stage × pipeline version; queued / running / done / failed / skipped; back-off retries |
-| `evidence_ocr` | Text + blocks (bbox, confidence) per page and engine; newest is current |
+| `evidence_ocr` | Text + blocks (bbox, confidence) per page and engine; newest is current (a device row arriving after server OCR is stored not current). `summary`: short description made on the field phone (applies to the original and its copies); `source_width`: copy that was read (1600). One `mlkit_device` row per file and page |
 | `evidence_labels` | Category labels with source (operator / filename_rule / text_rule / model / llm / human); corrections deactivate, never delete |
 | `field_suggestions` | Proposed field values from OCR with block reference; accepted / rejected |
 | `claim_processing_jobs`, `complete_processing_job`, `enqueue_reprocessing` | Worker API, service role only |

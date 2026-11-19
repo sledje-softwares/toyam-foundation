@@ -143,6 +143,26 @@ export function signedInServer(
         throw e;
       }
     },
+    async recordOcr(r) {
+      try {
+        await call('record_device_ocr', {
+          p_case_id: r.case_id,
+          p_original_sha256: r.original_sha256,
+          p_source_width: r.source_width,
+          p_engine_version: r.engine_version,
+          p_lang: r.lang,
+          p_text: r.text,
+          p_blocks: r.blocks,
+          p_mean_confidence: r.mean_confidence,
+          p_description: r.description,
+        });
+      } catch (e) {
+        if (e instanceof ServerError && e.kind === 'transient' && (e.code === 'P0002' || e.code === '55000')) {
+          throw new ServerError('rejected', e.code, e.message);
+        }
+        throw e;
+      }
+    },
     async postMessage(m) {
       const id = await call('post_thread_message', {
         p_case_id: m.case_id,

@@ -5,7 +5,7 @@ import { emptyBatch, allSentEvent, outboxTotals, type SendBatch } from './select
 import { type PostMessage, type Server, ServerError, type Transport } from './server';
 import { assertTransition, tickRank } from './stateMachine';
 import type { Store } from './store';
-import { type HeldReason, isPending, MAX_COPY_ATTEMPTS, type NewItem, type OutboxCopy, type OutboxFile, type OutboxItem } from './types';
+import { type HeldReason, isPending, MAX_COPY_ATTEMPTS, type NewItem, type OutboxCopy, type OutboxFile, type OutboxItem, type OutboxOcr } from './types';
 
 export type OutboxMode = 'normal' | 'drain';
 
@@ -48,6 +48,12 @@ export interface OutboxDeps {
    * it cannot). Left out = no copies are made or sent (the report uses the original).
    */
   makeCopies?: (file: OutboxFile) => Promise<OutboxCopy[]>;
+  /**
+   * Gap 35: read the text of a photo's 1600 px copy on the phone (ML Kit) and describe it (never
+   * throws; null = nothing to send). Runs after the copies are made, off the send path; left out =
+   * no device OCR.
+   */
+  readOcr?: (file: OutboxFile, item: OutboxItem) => Promise<OutboxOcr | null>;
   /** Wake-up timer for backoff; returns a cancel function. */
   schedule?: (ms: number, fn: () => void) => () => void;
   log?: (msg: string) => void;
@@ -58,11 +64,18 @@ const META_SUCCESS = 'last_success_at';
 const META_PROMPT = 'last_prompt_at';
 
 export class Outbox {
-  private d: Required<Omit<OutboxDeps, 'deviceId' | 'makeCopies'>> & { deviceId: string | null; makeCopies?: OutboxDeps['makeCopies'] };
+  private d: Required<Omit<OutboxDeps, 'deviceId' | 'makeCopies' | 'readOcr'>> & {
+    deviceId: string | null;
+    makeCopies?: OutboxDeps['makeCopies'];
+    readOcr?: OutboxDeps['readOcr'];
+  };
   private items = new Map<string, OutboxItem>();
   /** Copy-making per message (one at a time, in enqueue order); sending the message waits for its job. */
   private copyJobs = new Map<string, Promise<void>>();
   private copyChain: Promise<void> = Promise.resolve();
+  /** Device OCR per file id (one at a time); its copies wait for it (OCR reads the 1600 px copy). */
+  private ocrJobs = new Map<string, Promise<void>>();
+  private ocrChain: Promise<void> = Promise.resolve();
   private listeners = new Set<() => void>();
   private eventListeners = new Set<(e: OutboxEvent) => void>();
   private running: Promise<void> | null = null;
@@ -113,6 +126,8 @@ export class Outbox {
     this.batch = { ...emptyBatch(), oldest_queued_at: this.oldestQueued() };
     // the app was closed before the copies of these photos were made: make them now (originals still exist)
     for (const it of this.items.values()) if (it.state === 'queued' || it.state === 'held') this.startCopies(it);
+    // and the photos whose 1600 px copy is still on the phone but was not read yet
+    for (const it of this.items.values()) for (const f of it.files) this.startOcr(f);
     this.changed();
   }
 
@@ -202,6 +217,7 @@ export class Outbox {
           }
           f.copies = copies; // [] = done, nothing to send
           await this.save(live);
+          this.startOcr(f);
         }
       })
       .catch(() => {})
@@ -210,6 +226,52 @@ export class Outbox {
       });
     this.copyChain = job;
     this.copyJobs.set(id, job);
+  }
+
+  /**
+   * Gap 35: read the photo's 1600 px copy in the background once it exists. The message is not kept
+   * waiting; the copies wait (the 1600 px file must stay until it is read). Best effort.
+   */
+  private startOcr(f: OutboxFile): void {
+    const read = this.d.readOcr;
+    if (!read || this.mode === 'drain' || f.ocr !== undefined || this.ocrJobs.has(f.id)) return;
+    if (f.evidence_type !== 'photo' || !f.copies?.some((c) => c.width === 1600)) return;
+    const job: Promise<void> = this.ocrChain
+      .then(async () => {
+        const at = this.findFile(f.id);
+        if (!at || at.f.ocr !== undefined) return; // sent-and-wiped, removed, or read meanwhile
+        let result: OutboxOcr | null = null;
+        try {
+          result = await read(at.f, at.it);
+        } catch {
+          result = null;
+        }
+        const live = this.findFile(f.id); // the message may have been split meanwhile
+        if (!live) return;
+        live.f.ocr = result;
+        await this.save(live.it);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (this.ocrJobs.get(f.id) === job) this.ocrJobs.delete(f.id);
+        this.changed();
+        void this.run(); // its copies and the text can go now
+      });
+    this.ocrChain = job;
+    this.ocrJobs.set(f.id, job);
+  }
+
+  private findFile(fileId: string): { it: OutboxItem; f: OutboxFile } | undefined {
+    for (const it of this.items.values()) {
+      const f = it.files.find((x) => x.id === fileId);
+      if (f) return { it, f };
+    }
+    return undefined;
+  }
+
+  /** Copies or device OCR of a sent photo still to go (invisible to the operator). */
+  private hasSideWork(f: OutboxFile): boolean {
+    return (f.copies?.length ?? 0) > 0 || !!f.ocr || this.ocrJobs.has(f.id);
   }
 
   private async dropCopyFiles(copies: readonly OutboxCopy[] | undefined): Promise<void> {
@@ -329,6 +391,15 @@ export class Outbox {
     return discarded;
   }
 
+  /** Resolves once no copy job, device OCR job or sending pass is left (tests, background task). */
+  async whenIdle(): Promise<void> {
+    for (let i = 0; i < 100; i++) {
+      const jobs = [...this.copyJobs.values(), ...this.ocrJobs.values(), ...(this.running ? [this.running] : [])];
+      if (jobs.length === 0) return;
+      await Promise.all(jobs);
+    }
+  }
+
   /** One sending pass; concurrent callers share it. Resolves when it stops (empty, offline, backoff). */
   run(): Promise<void> {
     if (this.running) {
@@ -410,14 +481,21 @@ export class Outbox {
 
   // ------------------------------------------------------------------ shrunk copies (D51)
 
-  /** A stored message's photo that still has copies to send; none in drain mode or without server support. */
+  /**
+   * A stored message's photo that still has copies (or then its device OCR) to send; none in drain
+   * mode. A photo whose 1600 px copy is still being read waits.
+   */
   private nextCopyWork(): { it: OutboxItem; f: OutboxFile } | undefined {
-    if (this.mode === 'drain' || !this.d.server.presignDerivatives || !this.d.server.recordDerivative) return undefined;
+    if (this.mode === 'drain') return undefined;
+    const server = this.d.server;
+    const copiesOk = !!server.presignDerivatives && !!server.recordDerivative;
     let best: { it: OutboxItem; f: OutboxFile } | undefined;
     for (const it of this.items.values()) {
       if (it.state !== 'stored' && it.state !== 'processed' && it.state !== 'seen') continue;
       for (const f of it.files) {
-        if (f.copies && f.copies.length > 0 && (!best || it.created_at < best.it.created_at)) best = { it, f };
+        if (this.ocrJobs.has(f.id)) continue;
+        const work = (copiesOk && (f.copies?.length ?? 0) > 0) || (!!server.recordOcr && !!f.ocr);
+        if (work && (!best || it.created_at < best.it.created_at)) best = { it, f };
       }
     }
     return best;
@@ -431,7 +509,8 @@ export class Outbox {
       if (this.nextQueued()) return;
       const work = this.nextCopyWork();
       if (!work) return;
-      if (await this.sendCopies(work.it, work.f)) return;
+      const stop = (work.f.copies?.length ?? 0) > 0 ? await this.sendCopies(work.it, work.f) : await this.sendOcr(work.it, work.f);
+      if (stop) return;
     }
   }
 
@@ -484,12 +563,55 @@ export class Outbox {
 
   /** Copies never block or hold a message: permanent trouble drops them, transient trouble backs off. */
   private async onCopyError(it: OutboxItem, f: OutboxFile, e: unknown): Promise<boolean> {
+    return this.onSideError('copies', it, e, () => this.dropCopies(it, f, f.copies ?? []), async () => {
+      const worn = (f.copies ?? []).filter((c) => ++c.attempts >= MAX_COPY_ATTEMPTS);
+      if (worn.length > 0) await this.dropCopies(it, f, worn);
+      else await this.save(it);
+    });
+  }
+
+  /** Gap 35: record the photo's device OCR (after its copies). Same rules as the copies. */
+  private async sendOcr(it: OutboxItem, f: OutboxFile): Promise<boolean> {
+    const o = f.ocr;
+    const server = this.d.server;
+    if (!o || !server.recordOcr) return false;
+    try {
+      await server.recordOcr({
+        case_id: it.case_id,
+        original_sha256: f.sha256,
+        source_width: o.source_width,
+        engine_version: o.engine_version,
+        lang: o.lang,
+        text: o.text,
+        blocks: o.blocks,
+        mean_confidence: o.mean_confidence,
+        description: o.description,
+      });
+      f.ocr = null; // recorded (or already there): done
+      await this.save(it);
+      this.failures = 0;
+      this.nextRetryAt = null;
+      return false;
+    } catch (e) {
+      const drop = async () => {
+        f.ocr = null;
+        await this.save(it);
+      };
+      return this.onSideError('ocr', it, e, drop, async () => {
+        if (++o.attempts >= MAX_COPY_ATTEMPTS) await drop();
+        else await this.save(it);
+      });
+    }
+  }
+
+  /** Shared by copies and device OCR: refused = dropped, session trouble = pause, transient = wear + backoff. */
+  private async onSideError(what: string, it: OutboxItem, e: unknown, drop: () => Promise<void>, wear: () => Promise<void>): Promise<boolean> {
     const err = e instanceof ServerError ? e : new ServerError('transient', 'client', e instanceof Error ? e.message : String(e));
-    this.d.log(`outbox copies ${it.client_message_id}: ${err.kind} ${err.code}`);
+    this.d.log(`outbox ${what} ${it.client_message_id}: ${err.kind} ${err.code}`);
     switch (err.kind) {
       case 'window_closed':
       case 'rejected':
-        await this.dropCopies(it, f, f.copies ?? []);
+        await drop();
         return false;
       case 'auth':
       case 'drain_closed':
@@ -498,15 +620,12 @@ export class Outbox {
         this.changed();
         this.emit({ type: err.kind === 'auth' ? 'auth_blocked' : err.kind });
         return true;
-      case 'transient': {
-        const worn = (f.copies ?? []).filter((c) => ++c.attempts >= MAX_COPY_ATTEMPTS);
-        if (worn.length > 0) await this.dropCopies(it, f, worn);
-        else await this.save(it);
+      case 'transient':
+        await wear();
         this.failures += 1;
         this.nextRetryAt = this.d.now().getTime() + backoffDelay(this.failures, this.d.random);
         this.changed();
         return true;
-      }
     }
   }
 
@@ -637,8 +756,8 @@ export class Outbox {
     if (totals.items === 0 && this.mode === 'normal') {
       // drained: drop the sent rows (the thread shows server ticks from now on) and reset the batch
       for (const it of [...this.items.values()]) {
-        // a sent row stays while its shrunk copies are still to be sent (they are invisible to the operator)
-        if (!isPending(it) && !it.files.some((f) => f.copies && f.copies.length > 0)) {
+        // a sent row stays while its shrunk copies / device OCR are still to be sent (invisible to the operator)
+        if (!isPending(it) && !it.files.some((f) => this.hasSideWork(f))) {
           this.items.delete(it.client_message_id);
           void this.d.store.remove(it.client_message_id);
         }
@@ -727,7 +846,7 @@ export function toPostMessage(it: OutboxItem): PostMessage {
       category_code: it.category_code,
       ...(f.device_info ? { device_info: f.device_info } : {}),
       ...(f.exif ? { exif: f.exif } : {}),
-      ...(f.ocr ? { ocr: f.ocr } : {}),
+      // device OCR goes separately through record_device_ocr (masked, checked), never in p_items
     })),
   };
 }

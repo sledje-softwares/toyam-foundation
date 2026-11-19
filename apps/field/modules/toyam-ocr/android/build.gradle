@@ -1,0 +1,23 @@
+// Local Expo module (autolinked from apps/field/modules): ML Kit text recognition, bundled models.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'in.toyaminvestigation.field'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.toyamocr"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  // Bundled (statically linked) models: work offline from the first launch, no Play-services download.
+  // Keep ENGINE_VERSION in ToyamOcrModule.kt in step.
+  implementation 'com.google.mlkit:text-recognition:16.0.1'
+  implementation 'com.google.mlkit:text-recognition-devanagari:16.0.1'
+}

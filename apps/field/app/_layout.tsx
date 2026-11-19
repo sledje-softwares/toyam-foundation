@@ -6,6 +6,7 @@ import '../src/outbox/background'; // defines the background send task at module
 import { colors } from '../src/theme';
 import { DrainScreen } from '../src/ui/DrainScreen';
 import { OutboxProvider, useOffline } from '../src/ui/OutboxProvider';
+import { ShareIntake } from '../src/ui/ShareIntake';
 
 function Gate() {
   const { session, loading } = useAuth();
@@ -29,6 +30,7 @@ function Gate() {
       <Stack.Screen name="index" options={{ title: 'My cases' }} />
       <Stack.Screen name="case/[id]" options={{ title: 'Case' }} />
       <Stack.Screen name="outbox" options={{ title: 'Outbox' }} />
+      <Stack.Screen name="share" options={{ title: 'Send to a case' }} />
     </Stack>
   );
 }
@@ -39,6 +41,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <OutboxProvider>
         <Gate />
+        <ShareIntake />
       </OutboxProvider>
     </AuthProvider>
   );
