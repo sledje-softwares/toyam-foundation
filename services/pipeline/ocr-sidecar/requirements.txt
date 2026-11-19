@@ -1,0 +1,6 @@
+# PaddleOCR on CPU (D34). Ranges, not exact pins: the image was not built in the developer environment
+# (no PaddleOCR there); pin exact versions after the first successful build (`pip freeze` in the image).
+paddlepaddle>=3.0,<4
+paddleocr>=3.0,<4
+pypdfium2>=4.30,<6
+pillow>=10,<13

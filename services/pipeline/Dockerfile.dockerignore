@@ -1,0 +1,7 @@
+# Build context is the repository root; send only what the worker image needs (no case data, no node_modules).
+*
+!services/pipeline/package.json
+!services/pipeline/src/**
+!services/labeller/package.json
+!services/labeller/src/**
+!supabase/functions/_shared/r2/**

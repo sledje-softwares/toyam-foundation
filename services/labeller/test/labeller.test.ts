@@ -328,3 +328,21 @@ describe('collages (D36)', async () => {
     assert.equal(collageMaxTokens(36), 1024 + 36 * 160);
   });
 });
+
+describe('text-only requests and extras (pipeline worker)', () => {
+  test('no image part when image is null, for every provider format', () => {
+    const a = buildRequest(parseModelRef('anthropic:claude-haiku-5-5'), 'k', 'sys', 'text of the PDF', null).body as any;
+    assert.deepEqual(a.messages[0].content, [{ type: 'text', text: 'text of the PDF' }]);
+    const g = buildRequest(parseModelRef('google:gemini-2.5-flash-lite'), 'k', 'sys', 'doc', null).body as any;
+    assert.deepEqual(g.contents[0].parts, [{ text: 'doc' }]);
+    const o = buildRequest(parseModelRef('openai:gpt-5-nano'), 'k', 'sys', 'doc', null).body as any;
+    assert.deepEqual(o.messages[1].content, [{ type: 'text', text: 'doc' }]);
+  });
+
+  test('anthropic effort goes into output_config; omitted by default', () => {
+    const ref = parseModelRef('anthropic:claude-haiku-5-5');
+    assert.equal((buildRequest(ref, 'k', 'sys', 'x', image).body as any).output_config, undefined);
+    assert.deepEqual((buildRequest(ref, 'k', 'sys', 'x', image, 512, { effort: 'low' }).body as any).output_config, { effort: 'low' });
+    assert.equal((buildRequest(parseModelRef('openai:gpt-5-nano'), 'k', 'sys', 'x', image, 512, { effort: 'low' }).body as any).output_config, undefined);
+  });
+});
