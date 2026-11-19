@@ -13,7 +13,7 @@ It also says whether the image must be read at full resolution (`needs_detail`).
 | Path | What it is |
 |---|---|
 | `src/prompt.ts` | System prompt from the categories and the case template's fields (per template version — cache it); parser and validator for the model's answer; `sectionsFor()` |
-| `src/providers.ts` | Request / response adapters: Anthropic, Google, OpenAI and any OpenAI-compatible endpoint (OpenRouter, DeepSeek, a self-hosted vLLM server); retries on 429 / 5xx |
+| `src/providers.ts` | Request / response adapters: Anthropic, Google, OpenAI and any OpenAI-compatible endpoint (OpenRouter, DeepSeek, a self-hosted vLLM server); retries on 429 / 5xx. `image` may be `null` (text-only request: the pipeline labels PDFs from their text layer); optional `extras.effort` (Anthropic `output_config.effort`) |
 | `src/prices.ts` | List prices per million tokens (researched 2026-11-14 — **check before use**, override with `--prices`) |
 | `src/score.ts`, `src/truth.ts` | Ground-truth CSV, scoring and the markdown report |
 | `scripts/bakeoff.ts` | The bake-off command |

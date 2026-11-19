@@ -75,8 +75,18 @@ export function modelKey(ref: ModelRef): string {
   return `${ref.provider}/${ref.model}`;
 }
 
-export function buildRequest(ref: ModelRef, apiKey: string, system: string, instruction: string, image: ImageInput,
-                             maxOutputTokens = MAX_OUTPUT_TOKENS): HttpRequest {
+/** Provider-specific request options (ignored by providers that do not support them). */
+export interface RequestExtras {
+  /** Anthropic `output_config.effort` (thinking depth); omitted = the model's default. */
+  effort?: 'low' | 'medium' | 'high';
+}
+
+/**
+ * `image` may be null for a text-only request (the pipeline labels PDFs with a text layer from their text,
+ * which then travels in `instruction`).
+ */
+export function buildRequest(ref: ModelRef, apiKey: string, system: string, instruction: string, image: ImageInput | null,
+                             maxOutputTokens = MAX_OUTPUT_TOKENS, extras: RequestExtras = {}): HttpRequest {
   switch (ref.provider) {
     case 'anthropic':
       return {
@@ -86,10 +96,11 @@ export function buildRequest(ref: ModelRef, apiKey: string, system: string, inst
           model: ref.model,
           max_tokens: maxOutputTokens,
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          ...(extras.effort ? { output_config: { effort: extras.effort } } : {}),
           messages: [{
             role: 'user',
             content: [
-              { type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.base64 } },
+              ...(image ? [{ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.base64 } }] : []),
               { type: 'text', text: instruction },
             ],
           }],
@@ -101,7 +112,7 @@ export function buildRequest(ref: ModelRef, apiKey: string, system: string, inst
         headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
         body: {
           systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image.mimeType, data: image.base64 } }, { text: instruction }] }],
+          contents: [{ role: 'user', parts: [...(image ? [{ inlineData: { mimeType: image.mimeType, data: image.base64 } }] : []), { text: instruction }] }],
           generationConfig: { responseMimeType: 'application/json', maxOutputTokens },
         },
       };
@@ -121,7 +132,7 @@ export function buildRequest(ref: ModelRef, apiKey: string, system: string, inst
             {
               role: 'user',
               content: [
-                { type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}`, detail: image.longEdge <= 512 ? 'low' : 'high' } },
+                ...(image ? [{ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}`, detail: image.longEdge <= 512 ? 'low' : 'high' } }] : []),
                 { type: 'text', text: instruction },
               ],
             },
@@ -175,20 +186,21 @@ export class HttpError extends Error {
   }
 }
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>;
 
 export interface CallOptions {
   attempts?: number;             // default 4
   maxOutputTokens?: number;      // default MAX_OUTPUT_TOKENS; a collage needs more
+  extras?: RequestExtras;
   sleep?: (ms: number) => Promise<unknown>;
 }
 
 /** One call with retries on rate limits and server errors (exponential back-off). */
 export async function callModel(fetchFn: FetchLike, ref: ModelRef, apiKey: string, system: string, instruction: string,
-                                image: ImageInput, opts: CallOptions = {}): Promise<ModelReply> {
+                                image: ImageInput | null, opts: CallOptions = {}): Promise<ModelReply> {
   const attempts = opts.attempts ?? 4;
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  const req = buildRequest(ref, apiKey, system, instruction, image, opts.maxOutputTokens);
+  const req = buildRequest(ref, apiKey, system, instruction, image, opts.maxOutputTokens, opts.extras);
   for (let attempt = 1; ; attempt++) {
     const res = await fetchFn(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body) });
     if (res.ok) return readResponse(ref.provider, await res.json());
