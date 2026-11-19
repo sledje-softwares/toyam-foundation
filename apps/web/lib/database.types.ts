@@ -1883,6 +1883,12 @@ isOneToOne: false
 "record_device_derivative":
 { Args: { "p_case_id": string,"p_original_sha256": string,"p_pixel_height": number,"p_pixel_width": number,"p_sha256": string,"p_size_bytes": number,"p_storage_path": string,"p_width": number }; Returns: Json
                            },
+"record_field_suggestions":
+{ Args: { "p_evidence_id": string,"p_rows": Json }; Returns: number
+                           },
+"record_llm_labels":
+{ Args: { "p_evidence_id": string,"p_result": Json,"p_superseded"?: Json }; Returns: Json
+                           },
 "record_manual_submission":
 { Args: { "p_case_id": string,"p_channel": Database["public"]['Enums']["submission_channel"],"p_formats": (string)[],"p_insurer_reference": string,"p_note": string,"p_report_id"?: string,"p_submitted_at"?: string }; Returns: string
                            },

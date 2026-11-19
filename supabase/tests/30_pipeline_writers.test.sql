@@ -105,20 +105,24 @@ select is((select description from public.evidence_labels where evidence_id = '2
 select is(pg_temp.matches('29500000-0000-4000-8000-000000000002'), 'dl_number@v1+esc,driver_dob@v1+esc', 'matches of the accepted answer only');
 
 -- matches from another source (category -> field map) are neither replaced nor duplicated
-insert into public.evidence_field_matches (evidence_id, field_id, score, model, pipeline_version)
-select '29500000-0000-4000-8000-000000000002', f.id, 1, 'category_map', v
+-- (category_map rows name their source category: ck_field_matches_map_category, migration 20261119500000)
+insert into public.evidence_field_matches (evidence_id, field_id, score, model, pipeline_version, category_id)
+select '29500000-0000-4000-8000-000000000002', f.id, 1, 'category_map', v, c.id
   from public.case_template_fields f join public.case_templates t on t.id = f.template_id
   cross join (values ('map-v1'), ('v3')) x(v)
- where t.name = 'PWR OD' and f.key = 'dl_number';
+  join public.evidence_categories c on c.code = 'p_dl'
+ where t.name = 'PWR OD' and f.key = 'dl_number'
+on conflict do nothing;
 select is((public.record_llm_labels('29500000-0000-4000-8000-000000000002', '{
     "pipeline_version":"v3","model":"anthropic/claude-haiku-5-5",
     "labels":[{"code":"p_dl","confidence":0.97}],"fields":[{"key":"dl_number","confidence":0.9},{"key":"driver_dob","confidence":0.8}],
-    "needs_detail":true}'))->>'field_matches', '1', 'an LLM match colliding with a map row is not written twice');
+    "needs_detail":true}'))->>'field_matches', '2',
+          'model matches written; map rows derived from model labels are only a fallback (removed by trg_field_matches_model, 20261119500000)');
 select is((select string_agg(f.key || '@' || m.pipeline_version || ':' || m.model, ',' order by f.key, m.pipeline_version)
              from public.evidence_field_matches m join public.case_template_fields f on f.id = m.field_id
             where m.evidence_id = '29500000-0000-4000-8000-000000000002'),
-          'dl_number@map-v1:category_map,dl_number@v3:category_map,driver_dob@v3:anthropic/claude-haiku-5-5',
-          'map rows kept; earlier LLM matches (Sonnet, v1+esc) replaced');
+          'dl_number@v3:anthropic/claude-haiku-5-5,driver_dob@v3:anthropic/claude-haiku-5-5',
+          'fallback map rows removed; earlier LLM matches (Sonnet, v1+esc) replaced');
 
 -- =====================================================================
 -- E. Validation
