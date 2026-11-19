@@ -27,6 +27,8 @@ import { allSentContent } from '../ui-logic/offline';
 import { sendingNotificationText } from '../ui-logic/threadMenu';
 import { clearCaptureContext } from '../capture/useCaptureContext';
 import { clearInbox } from '../share/inbox';
+import { clearFileStore } from '../thread/fileStore';
+import { confirmDelivery, emptyDelivery, restoreDelivery, trackDelivery, type Delivery } from '../thread/model';
 
 interface DrainState {
   phase: DrainPhase;
@@ -55,6 +57,12 @@ interface Ctx {
   requestSignOut: () => Promise<void>;
   drain: DrainState | null;
   finishDrain: () => void;
+  /**
+   * Gap 6: stored items are kept here (and in the read cache, across restarts) after the outbox drops them,
+   * until a thread fetch confirms their server message, so a sent bubble never disappears.
+   */
+  delivery: Delivery;
+  confirmDelivered: (clientMessageIds: string[]) => void;
 }
 
 const C = createContext<Ctx | null>(null);
@@ -84,6 +92,28 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   const activeThread = useRef<string | null>(null);
   const snapRef = useRef(snapshot);
   useEffect(() => { snapRef.current = snapshot; }, [snapshot]);
+
+  // gap 6: remember stored items the outbox prunes until a thread has their server copy
+  const [delivery, setDelivery] = useState<Delivery>(emptyDelivery);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the outbox snapshot
+  useEffect(() => { setDelivery((d) => trackDelivery(d, snapshot.items, new Set(), new Date())); }, [snapshot.items]);
+  const [restoredFrom, setRestoredFrom] = useState<CaseCache | null>(null);
+  useEffect(() => {
+    if (!cache) return;
+    let live = true;
+    void cache.getDelivered().then((saved) => {
+      if (!live) return;
+      setDelivery((d) => restoreDelivery(d, saved));
+      setRestoredFrom(cache);
+    }, () => { if (live) setRestoredFrom(cache); });
+    return () => { live = false; };
+  }, [cache]);
+  // written only after the saved list was read, so a start-up snapshot never overwrites it
+  useEffect(() => {
+    if (!cache || restoredFrom !== cache) return;
+    void cache.putDelivered([...delivery.delivered.values()]).catch(() => {});
+  }, [cache, restoredFrom, delivery.delivered]);
+  const confirmDelivered = useCallback((ids: string[]) => setDelivery((d) => confirmDelivery(d, ids)), []);
 
   // clock + free space, once a minute
   useEffect(() => {
@@ -193,6 +223,8 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     await cacheRef.current?.clear().catch(() => {});
     clearCaptureContext();
     await clearInbox().catch(() => {}); // files shared to the app but never sent
+    await clearFileStore(); // thread thumbnails / viewer copies
+    setDelivery(emptyDelivery());
     await forgetDevice(secretStore);
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
@@ -247,6 +279,8 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     await cache?.clear().catch(() => {});
     clearCaptureContext();
     await clearInbox().catch(() => {}); // files shared to the app but never sent to a case
+    await clearFileStore(); // thread thumbnails / viewer copies
+    setDelivery(emptyDelivery());
     await forgetDevice(secretStore).catch(() => {});
     await unregisterOutboxBackgroundTask().catch(() => {});
     await supabase.auth.signOut();
@@ -269,6 +303,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     outbox, snapshot, now, storage, prompt: snapshot.items.length === 0 ? null : banner,
     dismissPrompt, names,
     rememberNames, syncedAt, markSynced, setActiveThread, cache, applyOpenTasks, guardCapture, requestSignOut, drain, finishDrain,
+    delivery, confirmDelivered,
   };
   return <C.Provider value={value}>{children}</C.Provider>;
 }

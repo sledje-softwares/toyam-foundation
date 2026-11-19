@@ -69,7 +69,7 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
 }
 
 export function ClockSheet({ view, onSend, onOutbox, onClose }: {
-  view: { title: string; body: string; lastTry: string; primary: string; secondary: string } | null;
+  view: { title: string; body: string; reason?: string | null; lastTry: string; primary: string; secondary: string } | null;
   onSend: () => void; onOutbox: () => void; onClose: () => void;
 }) {
   return (
@@ -78,6 +78,7 @@ export function ClockSheet({ view, onSend, onOutbox, onClose }: {
         <View style={{ gap: 12 }}>
           <Text style={s.title}>{view.title}</Text>
           <Text style={s.text}>{view.body}</Text>
+          {view.reason ? <Text style={[s.text, { color: '#8a5a00', fontWeight: '600' }]}>{view.reason}</Text> : null}
           <Text style={[s.muted, { fontWeight: '600' }]}>{view.lastTry}</Text>
           <View style={{ gap: 12, marginTop: 8 }}>
             <Btn label={view.primary} onPress={onSend} />

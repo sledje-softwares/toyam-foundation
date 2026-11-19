@@ -52,7 +52,7 @@ export interface OutboxOcr {
 
 /**
  * A shrunk JPEG copy of an image (D51): 1600 px for reports, 384 px for labelling. A rebuildable cache,
- * not evidence: no EXIF / GPS, never shown to the operator, dropped silently when it cannot be made or
+ * not evidence: no EXIF / GPS, shown to the operator only as thread thumbnails (src/thread), dropped silently when it cannot be made or
  * uploaded (the report then uses the original). Present on the file only while it still has to be sent.
  */
 export interface OutboxCopy {

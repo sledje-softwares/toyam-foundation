@@ -6,6 +6,9 @@ user may call it; what they get is decided by RLS, so a field operator only gets
 posted into their own threads (rule 4) and an office user only for the cases RLS lets them read
 (D44). Files are never public: every link expires.
 
+The field app (`apps/field/src/thread/runtime.ts`) calls it directly with the operator's session for
+thread thumbnails (`w384`) and the full-screen viewer (`w1600`); a native app needs no CORS.
+
 ```
 POST /functions/v1/evidence-view
 Authorization: Bearer <signed-in user's access token>      (verify_jwt = true)
@@ -24,8 +27,9 @@ served as originals.
 `w384` / `w1600` ask for the JPEG copy the field app made of its photo (`evidence_derivatives`,
 384 px for thumbnails and labelling, 1600 px for previews and reports). For every **visible**
 evidence row (step 3 below) the function reads `evidence_derivatives` at that width **with the
-caller's client** (RLS policy `p_derivatives_staff_r`: staff on cases they manage; field users read
-no copies and therefore always get the original, exactly as before). The object key is **never taken
+caller's client** (RLS policies `p_derivatives_staff_r`: staff on cases they manage, and
+`p_derivatives_field_r` (`20261119810000`): field users for evidence they can see, i.e. their own files and
+office files posted to them; the field app's thread thumbnails and viewer use this). The object key is **never taken
 from the request**; it is the row's `storage_path`, signed only when it matches
 `^derived/[0-9a-f-]{36}/[0-9a-f]{64}/w(384|1600)-[0-9a-f]{64}\.jpg$` **and** its case id, original
 hash, width and copy hash equal the evidence row's `case_id`, `sha256`, the requested width and the
