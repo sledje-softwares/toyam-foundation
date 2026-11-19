@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchCaseList, fetchOpenTasks } from '../src/cache/fetch';
 import { splitCases, type CaseRow, type CaseTab } from '../src/lib/cases';
 import { relativeTime } from '../src/lib/time';
+import { applyLocalReads } from '../src/thread/model';
 import { colors, s } from '../src/theme';
 import { caseListMenuItems, type CaseListMenuKey } from '../src/ui-logic/caseListMenu';
 import { outboxMenuLabel } from '../src/ui-logic/offline';
@@ -24,6 +25,8 @@ export default function Cases() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // gap 9: threads read on this phone (also offline) show no badge for what was already on screen
+  const [reads, setReads] = useState<Record<string, string>>({});
   const menuItems = caseListMenuItems(snapshot.items);
 
   // ⋮ menu: Outbox, Sign out (the D43 sign-out check in requestSignOut is unchanged; only moved here)
@@ -49,6 +52,7 @@ export default function Cases() {
 
   const load = useCallback(async () => {
     setRefreshing(true);
+    if (cache) void cache.getReads().then(setReads, () => {});
     const list = await fetchCaseList();
     if (!list) setError((e) => e ?? 'Could not load your cases. Pull down to try again.');
     else {
@@ -64,7 +68,7 @@ export default function Cases() {
 
   useFocusEffect(useCallback(() => { void load(); }, [load]));
 
-  const split = splitCases(rows);
+  const split = splitCases(applyLocalReads(rows, reads));
   const list = split[tab];
 
   return (

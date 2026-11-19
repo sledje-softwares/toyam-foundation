@@ -4,7 +4,8 @@ import type { CaseRow } from '../lib/cases';
 import type { ChecklistRow } from '../ui-logic/offline';
 import type { OpenTaskRow, RpcErrorLike } from '../ui-logic/taskDone';
 import { MESSAGE_LIMIT, type OpenTask } from './logic';
-import type { CaseHeader, Msg } from './caseCache';
+import type { ProcState, ServerFile } from '../thread/model';
+import type { CaseHeader, Msg, ThreadFiles } from './caseCache';
 
 export async function fetchCaseList(): Promise<CaseRow[] | null> {
   const { data, error } = await supabase.rpc('field_case_list');
@@ -50,11 +51,65 @@ export async function fetchChecklist(caseId: string): Promise<ChecklistRow[] | n
 export async function fetchMessages(caseId: string): Promise<Msg[] | null> {
   const { data, error } = await supabase
     .from('case_messages')
-    .select('id, kind, body, sender_id, created_at, withdrawn_at')
+    .select('id, kind, body, sender_id, created_at, withdrawn_at, client_message_id')
     .eq('case_id', caseId)
     .order('created_at', { ascending: false })
     .limit(MESSAGE_LIMIT);
   return error ? null : ((data ?? []) as Msg[]);
+}
+
+const PROC: readonly ProcState[] = ['none', 'pending', 'processing', 'failed', 'done'];
+
+/**
+ * Files of the thread's messages (evidence under RLS: own files and files of visible office messages; never
+ * staff-only ones), the copy widths the caller can read (p_derivatives_field_r) and the processing state for ✓✓.
+ * Plus the office's last read time for blue ✓✓ (case_thread_state). Null when the evidence read fails.
+ */
+export async function fetchThreadFiles(caseId: string): Promise<ThreadFiles | null> {
+  const [ev, proc, st] = await Promise.all([
+    supabase
+      .from('evidence')
+      .select('id, message_id, evidence_type, mime_type, size_bytes, original_filename, sha256, withdrawn_at, evidence_derivatives(width)')
+      .eq('case_id', caseId)
+      .not('message_id', 'is', null)
+      .is('withdrawn_at', null)
+      .order('created_at', { ascending: true })
+      .limit(1000),
+    supabase.from('v_evidence_processing').select('evidence_id, state').eq('case_id', caseId).limit(2000),
+    supabase.rpc('case_thread_state', { p_case_id: caseId }),
+  ]);
+  if (ev.error) return null;
+  const state = new Map<string, ProcState>();
+  for (const r of (proc.data ?? []) as { evidence_id: string; state: string }[]) {
+    state.set(String(r.evidence_id), (PROC as readonly string[]).includes(r.state) ? (r.state as ProcState) : 'none');
+  }
+  type Row = {
+    id: string; message_id: string; evidence_type: string; mime_type: string | null; size_bytes: number | null;
+    original_filename: string | null; sha256: string | null; evidence_derivatives: { width: number }[] | null;
+  };
+  const files: ServerFile[] = ((ev.data ?? []) as unknown as Row[]).map((r) => ({
+    id: String(r.id),
+    message_id: String(r.message_id),
+    evidence_type: String(r.evidence_type),
+    mime_type: r.mime_type ?? null,
+    size_bytes: r.size_bytes === null || r.size_bytes === undefined ? null : Number(r.size_bytes),
+    original_filename: r.original_filename ?? null,
+    sha256: r.sha256 ?? null,
+    copies: (r.evidence_derivatives ?? []).map((d) => Number(d.width)).sort((a, b) => a - b),
+    processing: state.get(String(r.id)) ?? 'none',
+  }));
+  const row = Array.isArray(st.data) ? (st.data[0] as { staff_last_read_at?: string | null } | undefined) : undefined;
+  return { files, staff_last_read_at: row?.staff_last_read_at ?? null };
+}
+
+/** mark_thread_read(p_case_id): the thread is on screen (gap 9). Best effort; false when it did not go. */
+export async function markThreadRead(caseId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('mark_thread_read', { p_case_id: caseId });
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 /** This operator's open tasks on one case (RLS: p_tasks_field_r, own tasks only). */

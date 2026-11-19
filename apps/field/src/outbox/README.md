@@ -86,7 +86,8 @@ last_success_at, last_prompt_at, next_retry_at }`. It is stable between changes.
 Every image the app sends (camera, gallery, share-in; jpeg / png / heic / heif / webp) also gets two JPEG
 copies: 1600 px (reports) and 384 px (labelling) on the long edge, quality 0.8, upright, **no EXIF / GPS**,
 never enlarged (an image smaller than the target keeps its size). They are a rebuildable cache, not
-evidence: the operator never sees them, and any failure drops the copy silently (the report then uses the
+evidence: the operator sees them only as thread thumbnails / viewer images (seeded into the thread image cache
+when made, `src/thread/fileStore.ts`), and any failure drops the copy silently (the report then uses the
 original). The server never decodes images.
 
 | Piece | Where |
@@ -109,7 +110,7 @@ original). The server never decodes images.
   is dropped; transient errors back off and retry, a copy is dropped after `MAX_COPY_ATTEMPTS` (6) failures;
   an expired session pauses sending like for files. Copies never hold a message.
 - **Drain (remote sign-out):** `field-drain` has no copy calls; copies are skipped and deleted at `wipe()`.
-- **Invisible:** counts, ticks, the "Sending k of n" bar and sign-out checks cover messages and files only.
+- **Invisible in the counts:** counts, ticks, the "Sending k of n" bar and sign-out checks cover messages and files only.
   A sent row stays in the store (not shown as pending) until its copies are done, then it is pruned.
 - **Cleanup:** copy files are deleted after the record call, when a file is removed from the phone, and on wipe.
 - **Orientation / metadata:** the copy is rendered by `ImageManipulator` (decoded upright) and re-encoded

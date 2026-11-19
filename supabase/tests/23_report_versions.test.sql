@@ -173,7 +173,8 @@ select throws_ok($$insert into public.evidence_derivatives (evidence_id, width, 
                    values ('23800000-0000-4000-8000-000000000002', 1600,
                            pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e2', 1600, 'd'), repeat('d', 64))$$,
                  '42501', null, 'device: no direct insert');
-select is((select count(*)::int from public.evidence_derivatives), 0, 'field users read no copies');
+select is((select count(*)::int from public.evidence_derivatives), 3,
+    'field users read the copies of evidence they can see, here their own photos (20261119810000; none before)');
 set local request.jwt.claims to '{"sub":"23000000-0000-4000-8000-0000000000f2","role":"authenticated"}';
 select throws_ok($$select public.record_device_derivative('23300000-0000-4000-8000-000000000001', (select sha from ev where k = 'e1'), 1600,
                    pg_temp.dpath('23300000-0000-4000-8000-000000000001', 'e1', 1600, 'd'), repeat('d', 64), 1000, 1600, 1200)$$,

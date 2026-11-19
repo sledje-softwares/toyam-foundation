@@ -14,6 +14,8 @@ import { lowStorage } from './selectors';
 import { cachedCategoryName } from '../capture/useCaptureContext';
 import { readPhoto } from '../ocr/read';
 import { ocrEngine } from '../ocr/native';
+import { seedFile } from '../thread/fileStore';
+import { cacheKey } from '../thread/sources';
 
 export const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 export const newUuid = (): string => uuidV4(randomBytes(16));
@@ -39,7 +41,10 @@ export function getOutbox(): Promise<Outbox> {
           } catch {
             return [];
           }
-          return makeCopies(copyEngine, f, f.id);
+          const copies = await makeCopies(copyEngine, f, f.id);
+          // the thread shows the photo from these copies, before and after the outbox deletes them (gap 6/7)
+          for (const c of copies) await seedFile(cacheKey(f.sha256, c.width === 384 ? 'w384' : 'w1600'), c.local_path);
+          return copies;
         },
         // gap 35: text of the 1600 px copy + a short description, read on the phone (best effort)
         readOcr: async (f, it) => {

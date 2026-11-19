@@ -1,4 +1,6 @@
 import type { CaseRow } from '../lib/cases';
+import type { OutboxItem } from '../outbox/types';
+import type { ServerFile } from '../thread/model';
 import type { ChecklistRow } from '../ui-logic/offline';
 import { trimMessages } from './logic';
 import type { CacheStore } from './store';
@@ -10,7 +12,12 @@ export interface Msg {
   sender_id: string | null;
   created_at: string;
   withdrawn_at: string | null;
+  /** The phone's idempotency key for own messages (rule 6); absent in caches written before 2026-11-19. */
+  client_message_id?: string | null;
 }
+
+/** Files of the cached thread messages plus the office's last read time (for blue ✓✓). */
+export interface ThreadFiles { files: ServerFile[]; staff_last_read_at: string | null }
 
 /** What a field user may read under RLS: cases, parties and intake-sourced case_field_values (labels are staff-only). */
 export interface CaseHeader {
@@ -31,7 +38,10 @@ const key = {
   header: (id: string) => `header:${id}`,
   checklist: (id: string) => `checklist:${id}`,
   messages: (id: string) => `messages:${id}`,
+  files: (id: string) => `files:${id}`,
   tasks: 'known_tasks',
+  reads: 'local_reads',
+  delivered: 'delivered_items',
 };
 
 /** Typed access to the read cache. Every put stores a synced_at; every get returns it. */
@@ -62,6 +72,29 @@ export class CaseCache {
   putChecklist(id: string, rows: ChecklistRow[]) { return this.write(key.checklist(id), rows); }
   getMessages(id: string) { return this.read<Msg[]>(key.messages(id)); }
   putMessages(id: string, msgs: Msg[]) { return this.write(key.messages(id), trimMessages(msgs)); }
+  getFiles(id: string) { return this.read<ThreadFiles>(key.files(id)); }
+  /** Only the files of the cached messages are kept. */
+  putFiles(id: string, f: ThreadFiles, msgs: readonly Pick<Msg, 'id'>[]) {
+    const ids = new Set(msgs.map((m) => m.id));
+    return this.write(key.files(id), { ...f, files: f.files.filter((x) => ids.has(x.message_id)) });
+  }
+
+  /** Stored items the outbox already dropped whose server copy no thread has fetched yet (gap 6). */
+  async getDelivered(): Promise<OutboxItem[]> {
+    return (await this.read<OutboxItem[]>(key.delivered))?.data ?? [];
+  }
+  putDelivered(items: readonly OutboxItem[]) { return this.write(key.delivered, items); }
+
+  /** Newest message time shown per thread (gap 9: the badge of a cached list row clears offline too). */
+  async getReads(): Promise<Record<string, string>> {
+    return (await this.read<Record<string, string>>(key.reads))?.data ?? {};
+  }
+  async markRead(caseId: string, at: string): Promise<void> {
+    const all = await this.getReads();
+    const cur = all[caseId];
+    if (cur && Date.parse(cur) >= Date.parse(at)) return;
+    await this.write(key.reads, { ...all, [caseId]: at });
+  }
 
   /** Task ids already seen as open (for once-per-new-task retryHeld). */
   async getKnownTasks(): Promise<Set<string> | null> {

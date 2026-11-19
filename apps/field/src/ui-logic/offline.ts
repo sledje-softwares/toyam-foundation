@@ -16,10 +16,13 @@ export function barView(s: Pick<OutboxSnapshot, 'online' | 'items' | 'sending'>)
 }
 
 // 2. clock sheet
-export function clockSheetView(item: Pick<OutboxItem, 'state' | 'last_attempt_at'>, now: Date) {
+/** `reason`: the thread's status line for this item (gap 30, thread/model.ts pendingStatus), shown under the body. */
+export function clockSheetView(item: Pick<OutboxItem, 'state' | 'last_attempt_at'>, now: Date, reason: string | null = null) {
   return {
     title: CLOCK_SHEET.title,
     body: item.state === 'held' ? HELD_TEXT : CLOCK_SHEET.body,
+    // the held body already says it; other reasons (network, refused upload, sign-in) add a line
+    reason: item.state === 'held' || reason === HELD_TEXT ? null : reason,
     lastTry: lastTryLine(item.last_attempt_at, now),
     primary: CLOCK_SHEET.primary,
     secondary: CLOCK_SHEET.secondary,
