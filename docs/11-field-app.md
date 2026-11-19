@@ -34,7 +34,7 @@ Android app for field operators. It should feel like the chat app they already u
 ## Sending
 
 1. Operator captures or selects files; optional caption; optional one-tap category chip (from the checklist's categories).
-2. App compresses photos (~0.5–1 MB), computes SHA-256, reads GPS (camera only), keeps EXIF, runs ML Kit OCR on document-like photos.
+2. App compresses photos (~0.5–1 MB), computes SHA-256, reads GPS (camera only), keeps EXIF. In the background it makes the 1600 px / 384 px copies (D51) and reads the text of every photo from the 1600 px copy with ML Kit (see "Device OCR and description").
 3. Message is stored locally (app sandbox) with a new `client_message_id` → shown with 🕓.
 4. When online (WorkManager job): presigned upload to R2 for each file (edge function `evidence-upload`, contract in its README: checks `can_upload_evidence_at(task, device_captured_at)` with the operator's JWT; PUT bound to `x-amz-content-sha256` and the file size; `already_stored` skips the PUT), then `post_thread_message()` with the items. Retries reuse the same `client_message_id`, so nothing is duplicated; a file already stored is skipped.
 
@@ -94,13 +94,68 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 
 Accepted only for files captured (device clock) before `profiles.deactivated_at`, within the operator's hold on the task, within 7 days of deactivation; text-only messages are not drained. Every presign and file is audited.
 
+## Device OCR and description (gap 35)
+
+User decision 2026-11-19: OCR runs **on the operator's phone** on the **1600 px copy** of every photo, and its text
+is stored with the image together with a **short description** that applies to the original and both copies. No
+generative model (the test phone is a low-end Galaxy F12): the description is built from the operator's tag and the
+OCR text.
+
+| Piece | Where |
+|---|---|
+| Native module (local Expo module, autolinked from `apps/field/modules`) | `modules/toyam-ocr` (Kotlin, `ToyamOcrModule.kt`): ML Kit text recognition v2 **16.0.1**, **bundled** Latin + Devanagari models (offline from the first launch, no Play-services download). Own low-priority thread: neither the UI thread nor the shared Expo module queue waits. |
+| JS adapter | `src/ocr/native.ts` (`requireOptionalNativeModule('ToyamOcr')`; missing module = no OCR) |
+| Block mapping, Latin + Devanagari merge | `src/ocr/blocks.ts` |
+| Aadhaar masking | `src/ocr/mask.ts` (same rule in SQL: `private.mask_aadhaar`) |
+| Description | `src/ocr/describe.ts` |
+| Read step (best effort) | `src/ocr/read.ts` (`readPhoto`) |
+| Outbox step (persist, send, retry) | `src/outbox/outbox.ts` (`startOcr`, `sendOcr`), tests `src/outbox/ocr.test.ts`, `src/ocr/ocr.test.ts` |
+| Server call | `record_device_ocr()` (migration `20261119600000_device_ocr.sql`, docs/06) |
+
+- **What is read:** camera, gallery and shared **images** (the ones that get copies). Not videos, audio or PDFs (a
+  PDF's text layer is read on the server, `text_extract`). Both script models run on each photo; the Latin reading is
+  the base and a Devanagari-model line containing Devanagari script replaces the Latin lines it overlaps.
+- **When:** after the photo's copies are made, in the background, one photo at a time. Sending the message is not
+  delayed (✓ as before); the copies of that photo wait until it is read (the 1600 px file must still exist), then the
+  text goes. Order per photo: original PUT → `post_thread_message` → both copies → `record_device_ocr`.
+- **Stored on the phone:** the result is kept on the file in the outbox store (`OutboxFile.ocr`, item JSON in SQLite),
+  so it survives restarts and works offline; after a restart a photo whose 1600 px copy was not read yet is read then.
+- **Best effort:** a failed read, a refusal (no longer on the case, withdrawn, bad input) or 6 failed sends drop the
+  text silently; transient errors share the outbox backoff; an expired session pauses like for files. OCR never holds a
+  message and is never shown to the operator (no ticks, counts or sign-out checks). Low storage: copies are not made, so
+  nothing is read. Battery: one read is ~1–2 s of CPU on a low-end phone and only runs while the app (or its background
+  job) runs; no separate battery check yet. Drain mode (remote sign-out): neither read nor sent.
+- **Blocks:** one per text line, `{text, bbox:[x,y,w,h], conf, line}` in the **1600 px copy's pixels** (its size is
+  `evidence_derivatives.pixel_width/height` for width 1600), reading order, `conf` = ML Kit line confidence.
+  `mean_confidence` = average line confidence weighted by text length. `lang` = `latin`, `devanagari` or
+  `latin+devanagari`. Limits as in the RPC: text 20 000 characters, 2 000 blocks.
+- **Description** (≤ 200 characters): `<operator's category name if tagged, else Photo / Document>; text read from the
+  1600 px copy: <first 3 meaningful lines joined with " · ">`, or `<…>; no text read`. "Document" when text lines cover
+  ≥ 12 % of the image or there are ≥ 8 lines with ≥ 120 characters. A meaningful line has ≥ 3 letters / digits and is
+  mostly letters / digits. The tag name comes from the case's cached chips.
+- **Privacy (rule 7, UIDAI):** before anything leaves the phone, every 12-digit number whose first digit is 2–9 (plain or
+  grouped 4-4-4 with spaces / hyphens), not part of a longer digit run, becomes `XXXX XXXX 1234` in the text, every
+  block and the description; the database applies the same masking again. No checksum test on purpose (a misread digit
+  would fail it and leak 11 digits). Other numbers (registration, DL, policy, chassis) are report fields and stay as
+  read; a 12-digit segment inside a policy number is masked as well (privacy first; the photo still shows it).
+- **Who sees it:** staff on cases they manage (report workspace relevant-files panel, case evidence list: description,
+  "Show text", "Copy text"). Field operators never read OCR (RLS, rule 4); they also cannot write OCR rows except
+  through `record_device_ocr()`.
+- **Server pipeline:** with text and a mean confidence ≥ 70 % (`app_settings.device_ocr_skip_confidence_pct`) the
+  queued server `ocr` job of the file is set `skipped` ("device OCR present"); the server worker also skips files with a
+  current `mlkit_device` row. If server OCR already read the file, the phone's row is stored beside it, not current.
+- **APK size:** the bundled models add about 6–7 MB to the arm64 release APK (measured 2026-11-19, see the build
+  notes); the unbundled Play-services variant would be smaller but needs a model download on first use.
+- **Not built yet:** on-device timing log; skipping the Devanagari pass on photos without Devanagari-like noise (would
+  halve the time); a battery-saver check; OCR of PDFs on the phone.
+
 ## Withdraw
 
 Long-press → Withdraw (within 10 minutes, D19). The message shows "Message withdrawn"; its files disappear for everyone else and cannot be used in reports. Nothing is deleted.
 
 ## What operators never see
 
-Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling.
+Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling. The phone reads and sends the OCR text of its photos (above) but can never read OCR rows back (RLS).
 
 ## Mark task done
 
@@ -130,5 +185,5 @@ New task, request (re-investigation), office reply, case reassigned. Tokens in `
 
 ## Build notes
 
-- Expo with a custom development build (share intent handling and ML Kit need native modules).
+- Expo with a custom development build (share intent handling and ML Kit need native modules). ML Kit lives in the local Expo module `modules/toyam-ocr` (autolinked; no config plugin needed).
 - Test on the operators' actual phones early (Android versions and OEM share sheets differ).

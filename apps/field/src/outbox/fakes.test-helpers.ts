@@ -1,11 +1,11 @@
 // Test fakes for the outbox (not a test file itself).
 import { Outbox } from './outbox';
 import {
-  type DerivativePresign, type DerivativePresignRequest, type DerivativeRecord, type OutboxReport, type PostMessage, type Presigned, type PresignRequest,
+  type DerivativePresign, type DerivativePresignRequest, type DerivativeRecord, type OcrRecord, type OutboxReport, type PostMessage, type Presigned, type PresignRequest,
   type Server, ServerError, type Transport,
 } from './server';
 import { MemoryStore } from './store';
-import type { NewItem, OutboxCopy, OutboxFile } from './types';
+import type { NewItem, OutboxCopy, OutboxFile, OutboxItem, OutboxOcr } from './types';
 
 export class FakeServer implements Server {
   /** Server-side messages by client_message_id (what the database would hold). */
@@ -89,6 +89,24 @@ export class FakeDerivServer extends FakeServer {
   }
 }
 
+/** A signed-in server that also records device OCR (gap 35). */
+export class FakeOcrServer extends FakeDerivServer {
+  ocrs: OcrRecord[] = [];
+  ocrErrors: (ServerError | undefined)[] = [];
+  async recordOcr(rec: OcrRecord): Promise<void> {
+    const e = this.ocrErrors.shift();
+    if (e) throw e;
+    this.ocrs.push(rec);
+  }
+}
+
+/** A device OCR result like src/ocr/read.ts makes it. */
+export const fakeOcr = (text = 'MH 12 AB 3456'): OutboxOcr => ({
+  engine_version: 'mlkit-test', lang: 'latin', text,
+  blocks: [{ text, bbox: [1, 2, 3, 4], conf: 0.9, line: 0 }], mean_confidence: 0.9,
+  description: `Photo; text read from the 1600 px copy: ${text}`, source_width: 1600, attempts: 0,
+});
+
 export class FakeTransport implements Transport {
   puts: string[] = [];
   errors: (Error | undefined)[] = [];
@@ -126,7 +144,11 @@ export function fakeMakeCopies(made: string[] = [], fail = false) {
   };
 }
 
-export function setup(opts: { store?: MemoryStore; server?: FakeServer; clock?: Clock; deviceId?: string | null; makeCopies?: (f: OutboxFile) => Promise<OutboxCopy[]> } = {}) {
+export function setup(opts: {
+  store?: MemoryStore; server?: FakeServer; clock?: Clock; deviceId?: string | null;
+  makeCopies?: (f: OutboxFile) => Promise<OutboxCopy[]>;
+  readOcr?: (f: OutboxFile, it: OutboxItem) => Promise<OutboxOcr | null>;
+} = {}) {
   const store = opts.store ?? new MemoryStore();
   const server = opts.server ?? new FakeServer();
   const transport = new FakeTransport();
@@ -140,6 +162,7 @@ export function setup(opts: { store?: MemoryStore; server?: FakeServer; clock?: 
     transport,
     deviceId: opts.deviceId === undefined ? 'dev-1' : opts.deviceId,
     makeCopies: opts.makeCopies,
+    readOcr: opts.readOcr,
     now: clock.now,
     random: () => 0.5,
     uuid: () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`,

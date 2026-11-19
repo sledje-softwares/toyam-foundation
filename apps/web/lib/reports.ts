@@ -5,6 +5,7 @@
  */
 
 import type { CachedFile } from "@/lib/file-cache/view-core";
+import type { OcrDisplay } from "./ocr-display";
 import type { Tone } from "@/components/ui/badge";
 import type { Enums } from "@/lib/database.types";
 
@@ -519,6 +520,8 @@ export type PanelFile = PanelEvidence & {
   file: CachedFile | null;
   labels: { categoryId: string; name: string; confidence: number | null; source: Enums<"label_source"> }[];
   description: string | null;
+  /** Gap 35: description made on the field phone + full OCR text (staff only, RLS). */
+  ocr: OcrDisplay | null;
   /** v_evidence_processing.state */
   processing: string | null;
   matchScore: number | null;

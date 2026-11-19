@@ -32,6 +32,16 @@ async function writeCache(caseId: string, ctx: CaptureContext): Promise<void> {
   }
 }
 
+/** Name of a category chip of the case from the last good context (device OCR description); null if unknown. */
+export async function cachedCategoryName(caseId: string, code: string | null): Promise<string | null> {
+  if (!code) return null;
+  try {
+    return (await readCache())[caseId]?.chips.find((c) => c.code === code)?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function clearCaptureContext(): void {
   memory = {};
   try {

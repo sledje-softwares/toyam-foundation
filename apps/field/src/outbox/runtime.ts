@@ -11,6 +11,9 @@ import { fileTransport, freeDiskBytes, removeSandboxFile } from './transport';
 import { makeCopies } from '../capture/copies';
 import { copyEngine } from '../capture/copiesNative';
 import { lowStorage } from './selectors';
+import { cachedCategoryName } from '../capture/useCaptureContext';
+import { readPhoto } from '../ocr/read';
+import { ocrEngine } from '../ocr/native';
 
 export const randomBytes = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 export const newUuid = (): string => uuidV4(randomBytes(16));
@@ -37,6 +40,11 @@ export function getOutbox(): Promise<Outbox> {
             return [];
           }
           return makeCopies(copyEngine, f, f.id);
+        },
+        // gap 35: text of the 1600 px copy + a short description, read on the phone (best effort)
+        readOcr: async (f, it) => {
+          if (!ocrEngine) return null;
+          return readPhoto(ocrEngine, f, await cachedCategoryName(it.case_id, it.category_code));
         },
         log: (m) => console.log(m),
       });

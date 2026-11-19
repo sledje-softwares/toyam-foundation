@@ -37,7 +37,7 @@ last_success_at, last_prompt_at, next_retry_at }`. It is stable between changes.
 
 | Call | When |
 |---|---|
-| `enqueue(NewItem)` → `OutboxItem` | Send pressed. Copy files into the sandbox first (`adoptIntoSandbox()` in `transport.ts`); pass sha256, size, mime, ext, evidence_type, device_captured_at, gps (camera only), capture_source, checklist_item_id, optional exif / ocr. `task_id` is required for files. |
+| `enqueue(NewItem)` → `OutboxItem` | Send pressed. Copy files into the sandbox first (`adoptIntoSandbox()` in `transport.ts`); pass sha256, size, mime, ext, evidence_type, device_captured_at, gps (camera only), capture_source, checklist_item_id, optional exif. `task_id` is required for files. Device OCR is made by the outbox itself (below). |
 | `sendNow(caseId?)` | "Send now" (sheet, Outbox card, prompt). Resets backoff, retries held items. |
 | `retryHeld(caseId, newTaskId)` | The operator got a new open task on a case with held files (from `field_case_list()` / a push). Re-uploads under the new task. |
 | `removeFile(clientMessageId, fileId)` | Only after the "Remove this file?" confirmation. Unsent files only. |
@@ -115,6 +115,27 @@ original). The server never decodes images.
 - **Orientation / metadata:** the copy is rendered by `ImageManipulator` (decoded upright) and re-encoded
   with `saveAsync` (Android `Bitmap.compress`: pixels only). Not verified on a device yet: shoot a portrait
   photo and a gallery photo with GPS EXIF, open the copy and check it is upright and has no EXIF.
+
+## Device OCR of photos (gap 35)
+
+Every photo that got copies is also read on the phone (ML Kit, Latin + Devanagari, bundled models; native module
+`modules/toyam-ocr`, pure logic `src/ocr/`): text and blocks of the **1600 px copy**, Aadhaar-like numbers masked, plus a
+short description (`<tag or Photo/Document>; text read from the 1600 px copy: …`). Spec: docs/11 "Device OCR and description".
+
+| Piece | Where |
+|---|---|
+| Read step (`readPhoto`: 1600 px copy only, limits, never throws) | `src/ocr/read.ts`; engine injected as `OutboxDeps.readOcr` (wired in `runtime.ts`) |
+| Engine (`startOcr`, `sendOcr`, shared `onSideError`) | `outbox.ts`, tests `ocr.test.ts` here |
+| Server call | `Server.recordOcr` (`record_device_ocr`, signed-in server only) |
+
+- **State:** `OutboxFile.ocr` — `undefined` not read yet, `null` nothing to send, object = to record (persisted in the item
+  JSON, like the copies). After a restart, a photo whose 1600 px copy is still on the phone and not read yet is read then.
+- **Order:** read after the copies are made (own chain, one photo at a time; the message is not kept waiting). A photo's
+  copies are not sent while it is being read (the 1600 px file must exist). Then copies, then the text.
+- **Outcomes:** same as copies — refused → dropped, transient → backoff and `attempts` (dropped after 6), session trouble
+  pauses. Never in `post_thread_message` items, never visible to the operator; a sent row stays until its copies and text are
+  done. Drain mode: neither read nor sent.
+- `whenIdle()` resolves once no copy job, OCR job or sending pass is left (tests).
 
 ## Behaviour notes
 

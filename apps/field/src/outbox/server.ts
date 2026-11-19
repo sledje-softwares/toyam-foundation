@@ -1,6 +1,7 @@
 // Server calls the outbox needs, behind interfaces so the engine is tested with fakes.
 // Real implementations: signedInServer.ts (JWT, post_thread_message / report_outbox_status) and
 // drainServer.ts (field-drain edge function after remote sign-out).
+import type { OcrBlock } from './types';
 
 /**
  * transient     network, 5xx, timeouts: retry with backoff
@@ -59,7 +60,6 @@ export interface PostItem {
   category_code: string | null;
   device_info?: Record<string, unknown>;
   exif?: Record<string, unknown>;
-  ocr?: unknown;
 }
 
 export interface PostMessage {
@@ -107,6 +107,19 @@ export interface DerivativeRecord {
   pixel_height: number;
 }
 
+/** record_device_ocr (20261119600000): the OCR of one photo's 1600 px copy. */
+export interface OcrRecord {
+  case_id: string;
+  original_sha256: string;
+  source_width: 1600;
+  engine_version: string;
+  lang: string | null;
+  text: string;
+  blocks: OcrBlock[];
+  mean_confidence: number | null;
+  description: string;
+}
+
 export interface Server {
   /** Presigned R2 PUT for one file. */
   presign(req: PresignRequest): Promise<Presigned>;
@@ -117,6 +130,8 @@ export interface Server {
   presignDerivatives?(req: DerivativePresignRequest): Promise<DerivativePresign[]>;
   /** `record_device_derivative`; idempotent. */
   recordDerivative?(rec: DerivativeRecord): Promise<void>;
+  /** Device OCR of a stored photo (record_device_ocr); idempotent. Optional like the copies (not in drain mode). */
+  recordOcr?(rec: OcrRecord): Promise<void>;
   /** Idempotent on client_message_id; returns the server message id. */
   postMessage(msg: PostMessage): Promise<string>;
   reportOutbox(report: OutboxReport): Promise<void>;

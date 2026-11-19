@@ -35,7 +35,7 @@ A stage records what it did; the next one decides whether more work is needed (e
 |---|---|---|---|
 | `text_extract` | Document file | `evidence_ocr` (engine `pdf_text_layer`), or `skipped` | documents |
 | `label` | File name, PDF text, image at ~384 px, the case template's categories and fields | `evidence_labels` (category, confidence, source `llm` / `filename_rule` / `operator`, pipeline_version, **description** (only where needed), **needs_detail**, **detail_reason**, **model**) and `evidence_field_matches` (field, confidence, model) | all except notes |
-| `ocr` | Photo / scanned page | `evidence_ocr` per page (engine name + version, text, blocks); `skipped` when `ocr_wanted()` is false or device OCR is good enough | photos, documents |
+| `ocr` | Photo / scanned page | `evidence_ocr` per page (engine name + version, text, blocks); `skipped` when `ocr_wanted()` is false or device OCR is good enough (a current `mlkit_device` row; `record_device_ocr()` already sets the queued job `skipped`, `last_error = 'device OCR present'`, when the phone's text has a mean confidence ≥ `device_ocr_skip_confidence_pct`, default 70) | photos, documents |
 | `field_suggest` | OCR blocks + the matched fields' pattern rules | `field_suggestions` (field, value, confidence, block index) — values for the fields the label stage matched | photos, documents |
 
 Jobs are created automatically when evidence is inserted (`trg_evidence_enqueue`). A stage becomes claimable once earlier stages (by rank) of the same file and pipeline version are no longer queued or running; a permanently failed stage does not block later ones. The enum keeps its original order (Postgres cannot reorder an enum); only the rank decides.
@@ -84,6 +84,8 @@ Outputs are written with the service role directly into `evidence_ocr`, `evidenc
 ## Data shapes
 
 `evidence_ocr.blocks` — array of `{ "text": "...", "bbox": [x, y, w, h], "conf": 0.0–1.0, "line": n }` in image pixel coordinates (page coordinates for PDFs). The workspace highlights blocks and copies `text` on tap. A new row for the same file and page supersedes the previous one (`is_current`).
+
+**Device OCR path (gap 35, `20261119600000_device_ocr.sql`):** the field phone reads every photo's 1600 px copy with ML Kit (Latin + Devanagari, bundled) and calls `record_device_ocr()` once the original and its copies are stored: engine `mlkit_device`, page 1, `source_width = 1600` (blocks are in that copy's pixels: `evidence_derivatives.pixel_width/height` of width 1600), `summary` = a short description built on the phone from the operator's tag and the first text lines (applies to the original and both copies). Aadhaar-like numbers are masked on the phone and again in SQL (`private.mask_aadhaar`). One device row per file (retries return `recorded: false`). If a server row is already current the device row is stored beside it with `is_current = false`; otherwise it is current, and with text and mean confidence ≥ 70 % the queued `ocr` job is `skipped`. A running job is left to the worker, which should also skip a file with a current `mlkit_device` row. Field-originated OCR through any other path (the legacy `ocr` item of `post_thread_message`, late / drain posting, direct inserts) is dropped by a trigger. Details: docs/11 "Device OCR and description".
 
 `evidence_labels` — several active labels per file are allowed (a photo can show both the odometer and the chassis plate). `source` is one of `operator`, `filename_rule`, `text_rule`, `model`, `llm`, `human`.
 

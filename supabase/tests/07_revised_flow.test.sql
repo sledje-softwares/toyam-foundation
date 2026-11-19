@@ -137,7 +137,8 @@ select is((select count(*)::int from public.evidence where case_id = '37000000-0
 select is((select status::text from public.tasks where case_id = '37000000-0000-4000-8000-000000000001'), 'in_progress',
           'first upload starts the task');
 reset role;
-select is((select count(*)::int from public.evidence_ocr where text = 'MP19ZS1887'), 1, 'device OCR stored with the evidence');
+select is((select count(*)::int from public.evidence_ocr where text = 'MP19ZS1887'), 0,
+          'device OCR inside post_thread_message is dropped (record_device_ocr is the only field path, 20261119600000)');
 set local role authenticated;
 select is((select count(*)::int from public.processing_jobs j join public.evidence e on e.id = j.evidence_id
             where e.case_id = '37000000-0000-4000-8000-000000000001'), 10, 'processing jobs queued (3 per photo, 4 per document)');

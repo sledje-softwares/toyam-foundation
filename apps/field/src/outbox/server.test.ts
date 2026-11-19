@@ -181,3 +181,30 @@ describe('device identity', () => {
     expect(JSON.stringify(calls)).not.toContain(d1.secret);
   });
 });
+
+describe('signedInServer.recordOcr (record_device_ocr)', () => {
+  const rec = {
+    case_id: 'case-1', original_sha256: 'a'.repeat(64), source_width: 1600 as const, engine_version: 'mlkit', lang: 'latin',
+    text: 'MH 12', blocks: [{ text: 'MH 12', bbox: [1, 2, 3, 4] as [number, number, number, number], conf: 0.9, line: 0 }],
+    mean_confidence: 0.9, description: 'Photo; text read from the 1600 px copy: MH 12',
+  };
+  const fns = { functions: { invoke: async () => ({ data: null, error: null }) } };
+
+  it('calls the RPC with every argument', async () => {
+    const calls: [string, Record<string, unknown>][] = [];
+    const server = signedInServer({ ...fns, rpc: async (fn, a) => (calls.push([fn, a]), { data: { recorded: true }, error: null }) });
+    await server.recordOcr!(rec);
+    expect(calls).toEqual([['record_device_ocr', {
+      p_case_id: 'case-1', p_original_sha256: 'a'.repeat(64), p_source_width: 1600, p_engine_version: 'mlkit', p_lang: 'latin',
+      p_text: 'MH 12', p_blocks: rec.blocks, p_mean_confidence: 0.9, p_description: rec.description,
+    }]]);
+  });
+
+  it('photo not found / withdrawn / no access are permanent refusals, other trouble is transient', async () => {
+    const failing = (code: string) => signedInServer({ ...fns, rpc: async () => ({ data: null, error: { code, message: code } }) });
+    await expect(failing('P0002').recordOcr!(rec)).rejects.toMatchObject({ kind: 'rejected', code: 'P0002' });
+    await expect(failing('55000').recordOcr!(rec)).rejects.toMatchObject({ kind: 'rejected' });
+    await expect(failing('42501').recordOcr!(rec)).rejects.toMatchObject({ kind: 'rejected' });
+    await expect(failing('57014').recordOcr!(rec)).rejects.toMatchObject({ kind: 'transient' });
+  });
+});
