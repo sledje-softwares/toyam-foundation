@@ -8,9 +8,12 @@
 // A template's report layout (`report_layout: layouts/<x>.yaml`, docs/13-report-layouts.md) is validated, its
 // asset files are embedded, and it is loaded as part of the template JSON: load_case_template() stores it in
 // case_templates.report_layout (migration 20261117400000) and a layout change is a new template version.
+// A template's category → field map (`category_map: maps/<x>.yaml`, docs/09) is validated and sent as `category_fields`;
+// load_case_template() stores it in case_template_category_fields (migration 20261119500000); a score change is a new
+// version.
 import { basename } from 'node:path';
 import {
-  TEMPLATES_DIR, type TemplateYaml, readYaml, resolveTemplateLayout, templateFiles, validateTemplate,
+  TEMPLATES_DIR, type TemplateYaml, readYaml, resolveTemplate, templateFiles, validateTemplate,
 } from '../src/template-config.ts';
 
 interface Category { code: string }
@@ -27,11 +30,12 @@ const targets = files.length ? files : templateFiles();
 let failed = false;
 const loaded: Array<{ file: string; config: TemplateYaml }> = [];
 for (const file of targets) {
-  const { config, errors: layoutErrors } = resolveTemplateLayout(readYaml<TemplateYaml>(file), file);
+  const { config, errors: layoutErrors } = resolveTemplate(readYaml<TemplateYaml>(file), file, codes);
   const errors = [...validateTemplate(config, codes), ...layoutErrors];
   const fields = config.sections.flatMap((s) => s.fields ?? []);
   const intake = fields.filter((f) => f.source === 'intake').length;
-  const layout = config.report_layout ? ', report layout' : ', no report layout';
+  const layout = (config.report_layout ? ', report layout' : ', no report layout')
+    + (config.category_fields ? `, category map (${Object.values(config.category_fields as Record<string, object>).reduce((n, m) => n + Object.keys(m).length, 0)} pairs)` : ', no category map');
   console.log(`${basename(file)}: ${config.insurer_code}/${config.claim_type}/${config.variant ?? 'general'} — ${config.sections.length} sections, ${fields.length} fields (${intake} intake)${layout}`);
   for (const e of errors) console.log(`  ✖ ${e}`);
   if (errors.length) failed = true;

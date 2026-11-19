@@ -522,6 +522,8 @@ export type PanelFile = PanelEvidence & {
   /** v_evidence_processing.state */
   processing: string | null;
   matchScore: number | null;
+  /** Where the best field match came from: the template's category → field map (label-based) or a model. */
+  matchFrom: MatchOrigin | null;
 };
 
 /** Field matches below this score are not used for placement. */
@@ -561,6 +563,21 @@ export function bestMatchScores(matches: { evidence_id: string; score: number }[
   const out = new Map<string, number>();
   for (const m of matches) out.set(m.evidence_id, Math.max(out.get(m.evidence_id) ?? 0, m.score));
   return out;
+}
+
+/** `category_map` rows come from the template's category → field map applied to the file's labels (gap 26). */
+export const CATEGORY_MAP_MODEL = "category_map";
+export type MatchOrigin = "category" | "model";
+
+/** Origin of the best match per evidence (ties: a model match wins, it is specific to the file). */
+export function bestMatchOrigins(matches: { evidence_id: string; score: number; model: string }[]): Map<string, MatchOrigin> {
+  const best = new Map<string, { score: number; origin: MatchOrigin }>();
+  for (const m of matches) {
+    const origin: MatchOrigin = m.model === CATEGORY_MAP_MODEL ? "category" : "model";
+    const cur = best.get(m.evidence_id);
+    if (!cur || m.score > cur.score || (m.score === cur.score && origin === "model")) best.set(m.evidence_id, { score: m.score, origin });
+  }
+  return new Map([...best].map(([id, b]) => [id, b.origin]));
 }
 
 // ---------------------------------------------------------------------

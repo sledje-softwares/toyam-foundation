@@ -1,0 +1,148 @@
+# Category → report field map of icl-motor-od.yaml (docs/09-template-model.md "Category → field map").
+#
+# For each evidence category (config/templates/_categories.yaml): the report fields a file of that category is
+# evidence for, with a score 0–1 (how directly the file shows the field's value). When a file is labelled without
+# the vision LLM (insurer file name, operator tag, office correction) its field matches come from this map:
+# match score = map score × label confidence. Loaded with the template (`category_map:`), so a change here is a
+# new template version; cases keep the version they started with.
+#
+# Every category is listed: `{}` means "reviewed, a file of this kind is evidence for no field of this template".
+# `unmapped_fields` lists fields no file is evidence for (written by people from the visit, the enquiry or the
+# conclusion). `npm run maps:check -w services/intake` reports categories and fields missing from both.
+#
+# Gap 23 (docs/14): this template has no chassis / engine number fields, so chassis_engine_photo only supports
+# make_model until those fields are added.
+generated_by: claude (semantic match, 2026-11-19)
+reviewed: false
+
+categories:
+  vehicle_photo:
+    damage_correlation: 0.85
+    traces_inspection: 0.7
+    vehicle_no: 0.6          # number plate views
+    make_model: 0.55
+    garage_visit: 0.5
+  odometer_photo:
+    odometer_service: 0.95
+    break_in: 0.5            # break-in odometer discrepancy
+  chassis_engine_photo:
+    make_model: 0.5          # no chassis_no / engine_no field yet (gap 23)
+  spot_photo:
+    accident_version: 0.85   # exact loss location
+    discreet_enquiry: 0.55   # enquiry at the place of loss
+    neighbour_enquiry: 0.5
+  insured_photo:
+    insured_visit: 0.8
+    written_statement: 0.55  # insured holding the signed statement
+    insured_name: 0.5
+  rc_document:
+    vehicle_no: 0.95
+    registration_date: 0.95
+    make_model: 0.9
+    hypothecation: 0.8
+    insured_name: 0.6        # registered owner
+  dl_document:
+    dl_number: 0.95
+    dl_classes: 0.9
+    dl_rto: 0.9
+    driver_name: 0.85
+    dl_observation: 0.75
+  policy_document:
+    policy_no: 0.95
+    policy_period: 0.95
+    policy_type: 0.9
+    agent_dealer: 0.75
+    previous_policy_no: 0.7
+    previous_insurer: 0.7
+  claim_form:
+    date_of_loss: 0.8
+    time_of_accident: 0.75
+    intimation_date: 0.7
+    accident_version: 0.7
+    insurer_claim_no: 0.6    # ICICI's ECLAIM intimation sheet
+    late_intimation_reason: 0.5
+  estimate:
+    garage_name: 0.7
+    damage_correlation: 0.6
+    job_card: 0.5
+  job_card:
+    job_card: 0.95
+    gate_pass: 0.9
+    garage_name: 0.75
+    odometer_service: 0.6
+    garage_delay_status: 0.6
+  towing_bill:
+    towing: 0.95
+    rehabilitation: 0.75     # how the vehicle left the loss location
+  id_document:
+    insured_name: 0.7
+    insured_actual_address: 0.6
+    driver_name: 0.5         # the ID may be the driver's
+  fir_police_document:
+    fir_no: 0.95
+    fir_details: 0.95
+    panchanama: 0.85
+    police_clarification: 0.7
+    injury_details: 0.6
+    eye_witness: 0.5
+    tp_vehicle: 0.6          # FIR names a third-party vehicle
+  medical_document:
+    injury_details: 0.9
+    injuries_deaths: 0.85
+    driver_injured: 0.8
+    nearby_police_hospital: 0.6
+  written_statement:
+    written_statement: 0.95
+    accident_version: 0.7
+    travel_from_to: 0.6
+    purpose_of_travel: 0.6
+    first_contact: 0.5
+    driver_relationship: 0.5
+  avr_recording:
+    written_statement: 0.7
+    accident_version: 0.65
+    discreet_enquiry: 0.6
+    neighbour_enquiry: 0.55
+  cctv_footage:
+    accident_version: 0.75
+    discrepancy_observed: 0.6
+    travel_from_to: 0.5
+  location_timeline:
+    gps_timeline: 0.95
+    travel_from_to: 0.75
+    first_contact: 0.6       # call log
+    discrepancy_observed: 0.55
+    time_of_accident: 0.5
+  echallan_check:
+    observations: 0.6
+    discrepancy_observed: 0.55
+    case_summary: 0.5
+  vehicle_invoice:
+    purchase_invoice: 0.95
+    make_model: 0.75
+    agent_dealer: 0.5        # selling dealer
+  loan_document:
+    repayment: 0.95
+    hypothecation: 0.9
+  reminder_letter: {}        # this template has no reminder / deficiency fields
+  proof_of_dispatch: {}
+  other: {}
+
+# Reviewed: no evidence category shows these (typed from the visit, the enquiry, intake or the conclusion).
+unmapped_fields:
+  - firm_case_ref
+  - insurer_internal_claim_no
+  - interaction_no
+  - national_holiday
+  - investigation_points
+  - insured_registration_no
+  - insured_profession
+  - negative_area
+  - contact_person
+  - previous_claim
+  - bluetooth_photos
+  - fastag
+  - final_conclusion
+  - investigation_status
+  - repudiate_ground
+  - submission_date

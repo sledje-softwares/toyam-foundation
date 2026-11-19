@@ -1,0 +1,168 @@
+# Category → report field map of igi-motor-od.yaml (docs/09-template-model.md "Category → field map").
+#
+# For each evidence category (config/templates/_categories.yaml): the report fields a file of that category is
+# evidence for, with a score 0–1 (how directly the file shows the field's value). When a file is labelled without
+# the vision LLM (insurer file name, operator tag, office correction) its field matches come from this map:
+# match score = map score × label confidence. Loaded with the template (`category_map:`), so a change here is a
+# new template version; cases keep the version they started with.
+#
+# Every category is listed: `{}` means "reviewed, a file of this kind is evidence for no field of this template".
+# `unmapped_fields` lists fields no file is evidence for (written by people from the visit, the enquiry or the
+# conclusion). `npm run maps:check -w services/intake` reports categories and fields missing from both.
+generated_by: claude (semantic match, 2026-11-19)
+reviewed: false
+
+categories:
+  vehicle_photo:
+    vehicle_burnt: 0.75
+    modifications: 0.6
+    vehicle_no: 0.55         # number plate views
+    origin_of_fire: 0.5
+    vehicle_model: 0.5
+  odometer_photo:
+    odometer_at_entry: 0.95
+  chassis_engine_photo:
+    chassis_no: 0.95
+    engine_no: 0.95
+  spot_photo:
+    spot_details: 0.9
+    spot_matches: 0.85
+    actual_spot: 0.8
+  insured_photo:
+    statements: 0.6          # person photographed with their statement
+    insured_name: 0.5
+    spot_witness: 0.4
+  rc_document:               # the RC carries every registration row of the report
+    reg_number: 0.95
+    reg_date: 0.95
+    reg_rto: 0.9
+    vehicle_make: 0.85
+    vehicle_model: 0.85
+    fuel_type: 0.8
+    seating_capacity: 0.8
+    chassis_no: 0.8
+    engine_no: 0.8
+    vehicle_no: 0.8
+    hypothecation: 0.75
+  dl_document:               # the DL carries every licence row of the report
+    dl_number: 0.95
+    dl_validity: 0.95
+    dl_authority: 0.9
+    dl_type: 0.9
+    dl_classes: 0.9
+    driver_dob: 0.9
+    driver_name: 0.85
+    dl_valid_at_loss: 0.8
+    driver_address: 0.7
+  policy_document:
+    policy_no: 0.95
+    policy_period: 0.95
+    policy_type: 0.9
+    within_policy_period: 0.8
+    policy_address: 0.7
+    rollover_policy_no: 0.7
+  claim_form:
+    loss_dt_claim_form: 0.95
+    cause_of_loss_intimated: 0.75
+    loss_datetime: 0.7
+    intimation_datetime: 0.6
+    spot_matches: 0.6        # spot as per the claim form
+    delay_reason: 0.5
+  estimate:
+    garage_name: 0.7
+    garage_address: 0.6
+    garage_contact: 0.5
+  job_card:
+    job_card_no: 0.95
+    garage_entry: 0.9
+    garage_name: 0.75
+    odometer_at_entry: 0.7
+    loss_to_entry_gap: 0.6
+  towing_bill:
+    garage_entry: 0.5        # towing date and destination
+    loss_to_entry_gap: 0.5
+  id_document:
+    insured_name: 0.7
+    permanent_address: 0.6
+    present_address: 0.55
+    driver_name: 0.5         # the ID may be the driver's
+  fir_police_document:
+    fir_no_date: 0.95
+    fir_narration: 0.95
+    loss_dt_fir: 0.9
+    police_station: 0.9
+    io_details: 0.85
+    fir_delay: 0.7
+    tp_involved: 0.6         # FIR names a third-party vehicle
+  medical_document:
+    injured_details: 0.95
+    injury_observation: 0.8
+    anyone_injured: 0.8
+  written_statement:
+    statements: 0.95
+    loss_dt_statement: 0.85
+    brief_remarks: 0.6
+    purpose_of_travel: 0.6
+    travel_from_location: 0.5
+    travel_to_location: 0.5
+  avr_recording:
+    statements: 0.8
+    brief_remarks: 0.5
+  cctv_footage:
+    findings: 0.6
+    brief_remarks: 0.6
+    insured_travelling: 0.5
+    vehicles_involved: 0.5
+  location_timeline:
+    travel_from_location: 0.85
+    travel_to_location: 0.85
+    travel_from_date: 0.75
+    travel_to_date: 0.75
+    findings: 0.6
+    insured_travelling: 0.6
+  echallan_check:
+    findings: 0.7
+    documents_collected: 0.5
+  vehicle_invoice:
+    vehicle_make: 0.8
+    vehicle_model: 0.8
+    chassis_no: 0.75
+    engine_no: 0.75
+    hypothecation: 0.5
+  loan_document:
+    hypothecation: 0.9
+  reminder_letter:
+    reminder_1_date: 0.9
+    reminder_2_date: 0.9
+    deficiency_list: 0.9
+  proof_of_dispatch:
+    reminder_1_date: 0.7
+    reminder_2_date: 0.7
+  other: {}
+
+# Reviewed: no evidence category shows these (typed from the visit, the enquiry, intake or the conclusion).
+unmapped_fields:
+  - insurer_claim_no
+  - insured_mobile
+  - insured_email
+  - vehicle_class
+  - investigation_points
+  - intimation_delay_days
+  - previous_year_claim
+  - close_proximity
+  - mismatch_reason
+  - loss_type
+  - occupants
+  - occupant_relation
+  - possession_other
+  - driver_contact
+  - driver_relation
+  - driver_remarks
+  - garage_gap_reason
+  - not_reported_reason
+  - commercial_details     # permit / fitness / load papers have no category yet
+  - conclusion
+  - investigation_status
+  - repudiate_ground
+  - submission_date
+  - compiled_by

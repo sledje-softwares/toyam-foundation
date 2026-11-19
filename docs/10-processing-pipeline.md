@@ -4,7 +4,7 @@ Every file that reaches a case (field thread, staff upload, insurer attachment) 
 
 ## Principle (revised 2026-11-14, D30)
 
-One vision LLM call per image returns its **labels** (the template's own categories), the **report fields** it is evidence for (and through them and the categories, its **sections**), and a **short description only where needed** (D35). Exact, free signals (insurer file names, operator tags) are used first so the LLM is not called when the label is already known — but the field matches still need the call. Values are not read by the LLM; OCR + rules read them. Latency matters: a label within seconds lets the operator's pinned checklist tick itself on site.
+One vision LLM call per image returns its **labels** (the template's own categories), the **report fields** it is evidence for (and through them and the categories, its **sections**), and a **short description only where needed** (D35). Exact, free signals (insurer file names, operator tags) are used first so the LLM is not called when the label is already known; such files get their field matches from the template's category → field map instead (gap 26, "Field matches from the template map"). Values are not read by the LLM; OCR + rules read them. Latency matters: a label within seconds lets the operator's pinned checklist tick itself on site.
 
 Volume (revised 2026-11-14): 250–300 files per case × ~300 cases ≈ 75–90k a month.
 
@@ -24,7 +24,7 @@ The model is chosen by the bake-off (`services/labeller/README.md`) on real case
 |---|---|---|
 | Text | PDF text layer → on-device OCR (sent with the file) → server OCR (dedicated OCR model) **only where `ocr_wanted()`** | Free → free → fixed |
 | Label | Operator tag / file-name rules (exact, free) → **small vision model** on a ~384 px image, constrained to the template's categories + short description + `needs_detail` (D30, D34) → larger model / higher resolution when confidence is low | Free → ≈ $0.0001 per image |
-| Field matching | **The same LLM call** returns the fields the image is evidence for → `evidence_field_matches` (D35); sections = sections of those fields + sections whose categories include the label | Included in the label call |
+| Field matching | **The same LLM call** returns the fields the image is evidence for → `evidence_field_matches` (D35); files labelled without the LLM get their matches from the **template's category → field map** (below); sections = sections of those fields + sections whose categories include the label | Included in the label call / free |
 | Field values | Pattern rules on OCR text (dates, amounts, DL / RC / policy / chassis numbers) → LLM only if asked | Free |
 
 A stage records what it did; the next one decides whether more work is needed (e.g. skip server OCR when device OCR confidence is high, skip the model when a rule already labelled the file).
@@ -112,6 +112,18 @@ Outputs are written with the service role: `evidence_ocr` rows directly, labels 
 - File-name rules: `evidence_categories.filename_patterns` (case-insensitive regex). Insurer attachments are named descriptively (e.g. ICICI `Front View(1)_…`, `DRIVING LICENSE(1)_…`, `ECLAIM_MOT…`). **Applied in the database at arrival** (`20261117200000_filename_rule_labels.sql`): an AFTER INSERT trigger on `evidence` for `capture_source = 'email_attachment'` calls `private.apply_filename_labels()`, which inserts active `filename_rule` labels (confidence 0.9, one per matching category, several allowed). The name is normalised first: extension dropped, lower-cased, `(n)` counters removed, split on `_`, tokens carrying identifiers (4+ digits in a row, or 3+ digits in all: timestamps, ids, claim numbers, dates) dropped; patterns are tried against the tokens joined with `_` and with a space. Nothing matches means no label and the file goes the normal way. A human or operator label is never overridden; the call is idempotent; an invalid regex is skipped with a warning and never blocks the insert. When a file is labelled by rule its queued `label` job is set to `skipped`, so the LLM labeller never sees it; OCR still follows `ocr_wanted()`. Field-app files are not touched. `public.backfill_filename_labels(limit)` (service role) labels existing unlabelled email attachments.
 - Text rules: `evidence_categories.text_patterns` against OCR text (e.g. "Registration Certificate", "First Information Report", "Discharge Summary").
 - Field patterns: per field type and key (e.g. `dl_number` ~ Indian DL format, `chassis_no` ~ 17-character VIN, dates in `dd.mm.yyyy` / `dd-Mon-yyyy`).
+
+## Field matches from the template map (`20261119500000_category_field_map.sql`, gap 26)
+
+Each template version carries a category → field map with scores (`case_template_category_fields`, from `config/templates/maps/*.yaml`, docs/09). The database applies it to every labelled file, so a file labelled by file name, by the operator or by the office has field matches at no per-file cost:
+
+- **When:** an AFTER trigger on `evidence_labels` (insert, and `is_active` changes) recomputes the file's map rows with `private.derive_category_field_matches(evidence)`; the trigger never fails the label write (a warning instead).
+- **Rows:** one `evidence_field_matches` row per field, `model = 'category_map'`, `pipeline_version = 'map-v1'`, `category_id` = the category that gave it, `score = map score × label confidence` (confidence null → 1; e.g. a `filename_rule` DL at 0.9 × `dl_number` 0.95 = 0.855). Several labels mapping to one field keep the best. Idempotent (upsert on `(evidence_id, field_id, pipeline_version)`).
+- **Which labels count:** active labels of source `operator`, `filename_rule`, `text_rule` and `human` always; labels of source `llm` / `model` **only while the file has no model-produced match** — the map is a fallback for an LLM answer with no fields. When the model's matches arrive (an insert of a non-`category_map` row, trigger `trg_field_matches_model`), the fallback rows built from LLM labels are removed; rows from non-LLM labels stay beside the model's.
+- **Corrections:** `set_evidence_labels()` deactivates the old labels and adds human ones; the trigger recomputes, so map rows of removed categories are **deleted** and the new categories' rows added. Map rows are derived data (re-creatable from labels + template), not evidence, so deleting them is safe; the labels themselves stay as history. Rows written by a model are never touched by the map (a correction does not remove the LLM's own field matches; open decision: whether a human correction should also hide them).
+- **No template on the case** → no map rows. Cases keep their template version, so a later map change does not alter their matches.
+- **Backfill:** `public.backfill_category_field_matches(limit)` (service role) fills files labelled before the map existed (e.g. the filename-labelled ICICI attachments on hosted); call until it returns 0.
+- **UI:** the report workspace shows a map-derived best match as "match 86% (from label)"; placement uses the same 0.5 threshold as model matches.
 
 ## Feedback loop
 

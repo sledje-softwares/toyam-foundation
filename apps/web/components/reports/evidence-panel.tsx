@@ -44,7 +44,18 @@ function Tile({ f, caseRef, editable, labelOptions, actions }: { f: PanelFile; c
           </p>
           <p className="text-xs text-text-muted">
             {SOURCE_LABELS[f.source]} · {formatRelativeDay(f.server_received_at)}
-            {f.matchScore !== null && <> · match {Math.round(f.matchScore * 100)}%</>}
+            {f.matchScore !== null && (
+              <span
+                title={
+                  f.matchFrom === "category"
+                    ? "Matched from the file's label through the template's category → field map"
+                    : "Matched by the labelling model for this file"
+                }
+              >
+                {" "}
+                · match {Math.round(f.matchScore * 100)}%{f.matchFrom === "category" ? " (from label)" : ""}
+              </span>
+            )}
           </p>
           <p className="flex flex-wrap gap-1">
             {f.labels.map((l) => (
