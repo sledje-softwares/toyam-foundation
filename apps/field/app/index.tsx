@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,7 +6,9 @@ import { fetchCaseList, fetchOpenTasks } from '../src/cache/fetch';
 import { splitCases, type CaseRow, type CaseTab } from '../src/lib/cases';
 import { relativeTime } from '../src/lib/time';
 import { colors, s } from '../src/theme';
+import { caseListMenuItems, type CaseListMenuKey } from '../src/ui-logic/caseListMenu';
 import { outboxMenuLabel } from '../src/ui-logic/offline';
+import { Sheet } from '../src/ui/components';
 import { useOffline } from '../src/ui/OutboxProvider';
 import { StatusStack } from '../src/ui/StatusStack';
 
@@ -18,6 +20,15 @@ export default function Cases() {
   const [tab, setTab] = useState<CaseTab>('open');
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuItems = caseListMenuItems(snapshot.items);
+
+  // ⋮ menu: Outbox, Sign out (the D43 sign-out check in requestSignOut is unchanged; only moved here)
+  const onMenu = (key: CaseListMenuKey) => {
+    setMenuOpen(false);
+    if (key === 'outbox') router.push('/outbox');
+    else void requestSignOut();
+  };
 
   const names = useCallback((list: CaseRow[]) => rememberNames(Object.fromEntries(list.map((r) => [r.case_id, { case_ref: r.case_ref, title: r.title }]))), [rememberNames]);
 
@@ -55,6 +66,13 @@ export default function Cases() {
 
   return (
     <SafeAreaView style={s.screen} edges={['bottom']}>
+      <Stack.Screen options={{
+        headerRight: () => (
+          <Pressable onPress={() => setMenuOpen(true)} accessibilityRole="button" accessibilityLabel="Menu" style={{ minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 28, color: colors.text }}>⋮</Text>
+          </Pressable>
+        ),
+      }} />
       <StatusStack storage />
       {outboxLabel ? (
         <Pressable onPress={() => router.push('/outbox')} accessibilityRole="button" style={{ minHeight: 56, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
@@ -104,9 +122,16 @@ export default function Cases() {
           </Pressable>
         )}
       />
-      <Pressable onPress={() => void requestSignOut()} style={{ minHeight: 56, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={[s.muted, { textDecorationLine: 'underline' }]}>Sign out</Text>
-      </Pressable>
+      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
+        {menuItems.map((m, i) => (
+          <Pressable
+            key={m.key} onPress={() => onMenu(m.key)} accessibilityRole="button"
+            style={{ minHeight: 56, justifyContent: 'center', ...(i > 0 ? { borderTopWidth: 1, borderTopColor: colors.border } : {}) }}
+          >
+            <Text style={[s.text, { fontWeight: '600' }]}>{m.label}</Text>
+          </Pressable>
+        ))}
+      </Sheet>
     </SafeAreaView>
   );
 }

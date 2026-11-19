@@ -5,9 +5,10 @@ Android app for field operators. It should feel like the chat app they already u
 ## Screens
 
 ```
-┌ Cases ───────────────────────┐   ┌ ← INV-2026-000123 · Ravi S ────┐
-│ [ Open (3) ]  Completed      │   │ ⋮ menu ▸ Checklist (5/9)        │  menu options (D41)
-│                              │   │        ▸ Mark task done         │  complete_field_task
+┌ My cases                   ⋮ ┐   ┌ ← INV-2026-000123 · Ravi S ────┐
+│ ⋮ menu ▸ Outbox (2)          │   │ ⋮ menu ▸ Checklist (5/9)        │  menu options (D41)
+│        ▸ Sign out            │   │        ▸ Mark task done         │  complete_field_task
+│ [ Open (3) ]  Completed      │   │                                 │
 │                              │   │ ─────────────────────────────── │
 │ ● INV-…123  Ravi S      2:14 │   │ ⚙ Field work assigned to you:   │  system event
 │   Please collect the DL …  ②│   │   Visit garage and spot          │
@@ -22,7 +23,7 @@ Android app for field operators. It should feel like the chat app they already u
 
 | Screen | Content | Data |
 |---|---|---|
-| Cases | Tabs **Open** (has an open task) / **Completed**; last message preview, time, unread badge; search by name / claim no. / vehicle | `field_case_list()` |
+| Cases | Tabs **Open** (has an open task) / **Completed**; last message preview, time, unread badge; search by name / claim no. / vehicle. Header **⋮** menu (same style as the thread's): **Outbox** ("Outbox (N)" while files wait; always listed) and **Sign out** (2026-11-19: moved off the bottom of the list; the sign-out check of spec 9 is unchanged). The "Outbox (N)" row above the tabs stays while files wait | `field_case_list()`; menu entries `src/ui-logic/caseListMenu.ts` |
 | Thread | Case header (insured, vehicle, location, insurer points), pinned checklist, messages incl. system events and requests, composer | `case_messages`, `case_field_values` (intake only), `v_case_checklist` |
 | Camera | In-app camera, burst, document mode (edge crop) | local |
 | Picker | Gallery and documents, multi-select | local |
@@ -75,7 +76,7 @@ Principle: the phone is a safe place for files. Nothing the operator captured is
 6. **"All N files sent ✓" notification.** A local notification when the queue becomes empty after at least one file was waiting more than 1 minute: title **"All {N} files sent ✓"**, body **"The office has them now."** Tapping opens the last case that sent. Not shown while the app is in the foreground on that thread (the ticks already show it).
 7. **Gentle prompt after 6 h.** Once per 6-hour stretch with files waiting and no successful send: a local notification and, when the app is open, a non-blocking banner. Title **"{N} files are still on this phone"**. Body **"They will send by themselves when you have signal. If you are on Wi-Fi or mobile data now, tap to send."** Button **"Send now"**. Never says "failed" or "error".
 8. **Low-storage warning.** When free phone storage drops below 500 MB (or the queue would push it below 200 MB): banner on Cases and in the camera **"Phone storage is almost full. Your {N} saved files are safe — connect to send them and free space."** Below 200 MB the camera shows a dialog before capture: **"Not enough space for more photos. Send saved files first, or free space on the phone."** with **"Open Outbox"** and **"OK"**. Never deletes queued files by itself.
-9. **Sign-out blocked while files wait.** Menu → Sign out with files queued opens **"{N} files are not sent yet"** / **"Signing out would delete them from this phone. Connect to the internet and wait for them to send."** with **"Open Outbox"** and **"Stay signed in"** only (no sign-out button). With an empty queue sign-out works as usual.
+9. **Sign-out blocked while files wait.** Menu (⋮ on "My cases") → Sign out with files queued opens **"{N} files are not sent yet"** / **"Signing out would delete them from this phone. Connect to the internet and wait for them to send."** with **"Open Outbox"** and **"Stay signed in"** only (no sign-out button). With an empty queue sign-out works as usual.
 10. **Remote sign-out (operator deactivated): drain, then wipe.** When the session refresh fails because the account is blocked, the app calls `field-drain` `status`. If `state = 'drain'`: a full-screen, non-dismissable page **"Your access has been removed"** / **"Sending the {N} files you took before that. Keep the app open or connected — this finishes by itself."** with progress **"{k} of {N} sent"**. Cases and the camera are no longer reachable. When done (or if `state = 'closed'`, or after the 7-day window): **"All files sent. This phone is now signed out."** (if some could not be sent: **"{k} files were sent. {m} could not be sent and have been removed."**), then the app calls `finish`, wipes the cache, queue, device secret and session, and returns to the sign-in screen. If `state = 'active'` the account was restored: back to normal sign-in.
 
 ### Remote sign-out contract (`supabase/functions/field-drain`)
@@ -144,8 +145,11 @@ OCR text.
 - **Server pipeline:** with text and a mean confidence ≥ 70 % (`app_settings.device_ocr_skip_confidence_pct`) the
   queued server `ocr` job of the file is set `skipped` ("device OCR present"); the server worker also skips files with a
   current `mlkit_device` row. If server OCR already read the file, the phone's row is stored beside it, not current.
-- **APK size:** the bundled models add about 6–7 MB to the arm64 release APK (measured 2026-11-19, see the build
-  notes); the unbundled Play-services variant would be smaller but needs a model download on first use.
+- **APK size:** the bundled models are expected to add roughly 6–10 MB to the arm64 release APK (about 4 MB per
+  script per ABI per Google's figures; **not measured yet**, the APK with this module has not been built — the previous
+  arm64 release APK was 39.9 MB). The unbundled Play-services variant would be smaller but needs a model download on
+  first use. The Kotlin module is also not compiled yet: check the first build (`ToyamOcrModule.kt` uses
+  `Text.Line.confidence`, ML Kit ≥ 16.0.0).
 - **Not built yet:** on-device timing log; skipping the Devanagari pass on photos without Devanagari-like noise (would
   halve the time); a battery-saver check; OCR of PDFs on the phone.
 
