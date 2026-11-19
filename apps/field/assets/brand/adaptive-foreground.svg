@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(0.74) translate(-512 -512)">
+    
+    <circle cx="512" cy="488" r="282" fill="#FFFDF8"/>
+    <path d="M 238 452 A 286 286 0 0 1 786 452" fill="none" stroke="#E8650F" stroke-width="40" stroke-linecap="round"/>
+    <!-- shoulders -->
+    <path d="M 366 690 C 372 628 420 596 480 590 L 544 590 C 604 596 652 628 658 690 Z" fill="#141414"/>
+    
+    <path d="M 478 600 L 512 652 L 546 600 Z" fill="#FFFDF8"/>
+    <path d="M 503 612 L 521 612 L 527 668 L 512 686 L 497 668 Z" fill="#3DBB4E"/>
+    <!-- head -->
+    <circle cx="512" cy="522" r="62" fill="#141414"/>
+    <!-- mortarboard: cap band, board, tassel -->
+    <path d="M 450 454 L 574 454 L 574 498 Q 512 516 450 498 Z" fill="#141414"/>
+    <path d="M 512 384 L 662 436 L 512 488 L 362 436 Z" fill="#141414"/>
+    <path d="M 512 436 L 628 452 L 628 520" fill="none" stroke="#F2B233" stroke-width="9" stroke-linecap="round"/>
+    <path d="M 618 516 L 638 516 L 644 556 L 612 556 Z" fill="#F2B233"/>
+    
+    <path d="M 214 676 L 290 676 L 290 772 L 214 772 L 244 724 Z" fill="#E9C98A" stroke="#3B2A14" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M 810 676 L 734 676 L 734 772 L 810 772 L 780 724 Z" fill="#E9C98A" stroke="#3B2A14" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M 262 660 Q 512 628 762 660 L 762 758 Q 512 726 262 758 Z" fill="#FFF3D9" stroke="#3B2A14" stroke-width="7" stroke-linejoin="round"/>
+    <text x="512" y="736" text-anchor="middle" font-family="'Liberation Sans', 'Arial', 'DejaVu Sans', sans-serif" font-weight="900" font-size="100" letter-spacing="5" fill="#E8400C">TOYAM</text></g></svg>

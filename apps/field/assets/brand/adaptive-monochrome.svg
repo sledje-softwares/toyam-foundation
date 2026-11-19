@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><g transform="translate(512 512) scale(0.74) translate(-512 -512)">
+    
+    <!-- shoulders -->
+    <path d="M 366 690 C 372 628 420 596 480 590 L 544 590 C 604 596 652 628 658 690 Z" fill="#FFFFFF"/>
+    
+    <!-- head -->
+    <circle cx="512" cy="522" r="62" fill="#FFFFFF"/>
+    <!-- mortarboard: cap band, board, tassel -->
+    <path d="M 450 454 L 574 454 L 574 498 Q 512 516 450 498 Z" fill="#FFFFFF"/>
+    <path d="M 512 384 L 662 436 L 512 488 L 362 436 Z" fill="#FFFFFF"/>
+    <path d="M 512 436 L 628 452 L 628 520" fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+    <path d="M 618 516 L 638 516 L 644 556 L 612 556 Z" fill="#FFFFFF"/>
+    <text x="512" y="742" text-anchor="middle" font-family="'Liberation Sans', 'Arial', 'DejaVu Sans', sans-serif" font-weight="900" font-size="104" letter-spacing="6" fill="#FFFFFF">TOYAM</text></g></svg>
