@@ -8,12 +8,15 @@ import { useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { attachState } from '../capture/context';
 import { drafts } from '../capture/draft';
-import { buildNewItems, MAX_FILES_PER_MESSAGE, MAX_TEXT, NO_TASK_TEXT, type PreparedFile } from '../capture/item';
+import { buildNewItems, fileCountLine, MAX_FILES_PER_MESSAGE, MAX_TEXT, NO_TASK_TEXT, type PreparedFile } from '../capture/item';
 import { CaptureError, discardPrepared, preparePicked, type Picked } from '../capture/prepare';
 import { useCaptureContext } from '../capture/useCaptureContext';
 import { colors, s } from '../theme';
 import { Sheet } from './components';
 import { useOffline } from './OutboxProvider';
+
+/** Picked-file list height before it scrolls (about four 44 px rows). */
+const FILE_LIST_MAX_HEIGHT = 196;
 
 const errorText = (e: unknown) => (e instanceof CaptureError ? e.message : 'This file could not be added. Please try again.');
 
@@ -132,7 +135,9 @@ export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskI
         </ScrollView>
       ) : null}
       {draft.files.length > 0 || preparing > 0 ? (
-        <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
+        // gap 5: at most ~4 rows tall, then the list scrolls, so the caption box and Send stay visible
+        <ScrollView style={{ maxHeight: FILE_LIST_MAX_HEIGHT, paddingHorizontal: 16, paddingTop: 6 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          {draft.files.length > 3 ? <Text style={s.muted}>{fileCountLine(draft.files.length)}</Text> : null}
           {draft.files.map((f) => (
             <View key={f.sha256} style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44 }}>
               <Text style={[s.text, { flex: 1 }]} numberOfLines={1}>{f.original_filename ?? (f.evidence_type === 'document' ? 'Document' : 'Photo')}</Text>
@@ -147,7 +152,7 @@ export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskI
               <Text style={s.muted}>Preparing {preparing} {preparing === 1 ? 'file' : 'files'}…</Text>
             </View>
           ) : null}
-        </View>
+        </ScrollView>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingTop: 6, gap: 8 }}>
         {attach.kind === 'ready' ? (

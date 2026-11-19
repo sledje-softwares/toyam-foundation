@@ -9,6 +9,8 @@ import { colors, s } from '../src/theme';
 import { caseListMenuItems, type CaseListMenuKey } from '../src/ui-logic/caseListMenu';
 import { outboxMenuLabel } from '../src/ui-logic/offline';
 import { Sheet } from '../src/ui/components';
+import { useShareInbox } from '../src/ui/ShareIntake';
+import { inboxBanner } from '../src/share/intent';
 import { useOffline } from '../src/ui/OutboxProvider';
 import { StatusStack } from '../src/ui/StatusStack';
 
@@ -16,6 +18,7 @@ export default function Cases() {
   const router = useRouter();
   const { snapshot, requestSignOut, rememberNames, cache, applyOpenTasks } = useOffline();
   const outboxLabel = outboxMenuLabel(snapshot.items);
+  const shareLabel = inboxBanner(useShareInbox());
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [tab, setTab] = useState<CaseTab>('open');
   const [refreshing, setRefreshing] = useState(false);
@@ -74,6 +77,11 @@ export default function Cases() {
         ),
       }} />
       <StatusStack storage />
+      {shareLabel ? (
+        <Pressable onPress={() => router.push('/share')} accessibilityRole="button" style={{ minHeight: 56, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: '#fff3d6' }}>
+          <Text style={[s.text, { fontWeight: '600' }]}>{shareLabel}</Text>
+        </Pressable>
+      ) : null}
       {outboxLabel ? (
         <Pressable onPress={() => router.push('/outbox')} accessibilityRole="button" style={{ minHeight: 56, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
           <Text style={[s.text, { fontWeight: '600' }]}>{outboxLabel}</Text>

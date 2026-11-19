@@ -44,6 +44,12 @@ export function buildNewItems(input: SendInput): BuildResult {
   return { ok: true, items };
 }
 
+/** Line above a long picked-file list in the composer (gap 5): "13 files · sent as 1 message" / "… as 2 messages". */
+export function fileCountLine(n: number): string {
+  const messages = Math.max(1, Math.ceil(n / MAX_FILES_PER_MESSAGE));
+  return `${n} ${n === 1 ? 'file' : 'files'} · sent as ${messages} ${messages === 1 ? 'message' : 'messages'}`;
+}
+
 /** Sandbox file name: `<uuid>.<ext>` (the original name is kept in `original_filename`). */
 export function sandboxName(id: string, ext: string): string {
   const safeId = id.toLowerCase().replace(/[^0-9a-f-]/g, '');

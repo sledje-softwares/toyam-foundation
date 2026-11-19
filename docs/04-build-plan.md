@@ -103,7 +103,7 @@ Detailed UX: `docs/11-field-app.md`.
 | 5.3 | Case thread | Messages, system events, requests, replies; read pointer | 🗄 / ⬜ |
 | 5.4 | In-app camera | Compression, GPS, time, SHA-256, burst capture | 🟡 built, not run on a device |
 | 5.5 | Gallery & document picker | Multi-select; EXIF kept | 🟡 built, not run on a device |
-| 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build) | ⬜ |
+| 5.6 | Android share target | "Share → Toyam" → pick case thread → send (needs a custom dev build). **Built 2026-11-19, not yet on a device:** `expo-share-intent` 9.0.0 (config plugin adds `SEND` / `SEND_MULTIPLE` filters for `image/*`, `video/*`, `audio/*`, `application/pdf`), share inbox, `app/share.tsx` (open cases only), files into the composer draft like gallery picks (`capture_source = 'share'`); docs/11 "Share to Toyam". Needs a native rebuild (prebuild + APK) to test | 🟨 |
 | 5.7 | Offline queue & ticks | 🕓 saved on this phone → ✓ stored → ✓✓ processed → blue ✓✓ seen by office; idempotent resend (`client_message_id`). D43 offline experience (docs/11): amber offline bar, Outbox screen, WorkManager background upload, freshness labels, hollow pending ticks, "All N files sent ✓", low-storage warning; late uploads after a task closes (72 h); `report_outbox_status()` → office sees files waiting on a phone (`case_outbox_status()`). Outbox core + signed-in presigner wired (`apps/field/src/outbox`) | 🗄 / 🟡 app |
 | 5.8 | Pinned checklist & tags | Progress from `v_case_checklist`; optional one-tap category on send | 🗄 / ⬜ |
 | 5.9 | Voice notes & text | Recorded statements with consent prompt | ⬜ |
