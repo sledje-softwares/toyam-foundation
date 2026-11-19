@@ -122,8 +122,19 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 | `v_report_progress` | Per case and section: fields / required total and filled, values from email / suggestions / entered, last change and by whom (staff only through RLS) |
 | `case_field_history(case)` | Who changed which field from what to what (from the audit log; staff only) |
 | `evidence_labels.description` | LLM's short description of a file, only where useful (D35) |
-| `evidence_field_matches` | Report fields a file is evidence for, from the label call; `score` = the model's confidence (D35; pipeline output; staff read only) |
+| `evidence_field_matches` | Report fields a file is evidence for, from the label call; `score` = the model's confidence (D35; pipeline output; staff read only). Since `20261119500000` also rows with `model = 'category_map'` derived from the file's labels and the template map (below) |
 | Realtime | `case_messages`, `case_field_values`, `evidence_labels`, `notifications` in the `supabase_realtime` publication (RLS applies) |
+
+### Category → field map (`20261119500000_category_field_map.sql`, docs/14 gap 26)
+
+| Object | Purpose |
+|---|---|
+| `case_template_category_fields` | `(template_id, category_id, field_id, score)`, primary key on the three ids; the field must belong to the same template version (FK on `case_template_fields (id, template_id)`); score in (0, 1]. Staff read, admin write; filled by `load_case_template()` from the config's `category_fields` (unknown category or field key fails the load). Source: `config/templates/maps/*.yaml` (docs/09) |
+| `evidence_field_matches.category_id` | Category whose map produced a `category_map` row; null for model rows (check: set exactly when `model = 'category_map'`) |
+| `private.derive_category_field_matches(evidence)` | Recomputes the file's `category_map` rows (`pipeline_version 'map-v1'`): score = map score × label confidence (null → 1), best per field; labels from `operator` / `filename_rule` / `text_rule` / `human` always, `llm` / `model` labels only while the file has no model match; stale map rows deleted; model rows never touched |
+| `trg_evidence_labels_category_map` | AFTER INSERT / UPDATE OF `is_active` on `evidence_labels`: derive (never fails the write) |
+| `trg_field_matches_model` | AFTER INSERT on `evidence_field_matches` for non-`category_map` rows: derive, so model fields replace the LLM-label fallback |
+| `backfill_category_field_matches(limit)` | Service role only: derives files that have a mapped, counting label and no map rows yet; returns the number of files filled |
 
 ### Label first (D34)
 

@@ -163,3 +163,132 @@ export function resolveTemplateLayout(t: TemplateYaml, templateFile: string): { 
   }
   return { config: { ...t, report_layout: layout }, errors: errors.map((e) => `report_layout ${e}`) };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Category → field map (docs/09-template-model.md "Category → field map", docs/14 gap 26). A template names its map:
+//   category_map: maps/icl-motor-od.yaml            (relative to the template file)
+// The map file holds `categories: {<category code>: {<field key>: score}}` plus review metadata (`generated_by`,
+// `reviewed`, `unmapped_fields`). Only the scores travel to the database, as `category_fields` in the template JSON
+// (load_case_template() stores them in case_template_category_fields), so the scores are covered by config_sha256
+// (a score change is a new template version) while flipping `reviewed` is not.
+
+export interface CategoryMapFile {
+  generated_by?: string;
+  reviewed?: boolean;
+  categories?: Record<string, Record<string, number> | null>;
+  unmapped_fields?: string[];
+}
+
+export type CategoryFields = Record<string, Record<string, number>>;
+
+export interface CategoryMapReport {
+  /** Validation errors (unknown category / field, bad score): the load fails. */
+  errors: string[];
+  /** Template categories (and all others) that the map does not list at all: not reviewed yet. */
+  missingCategories: string[];
+  /** Categories listed with `{}`: reviewed, evidence for no field. */
+  emptyCategories: string[];
+  /** Fields no category maps to and not listed in unmapped_fields: not reviewed yet. */
+  unreviewedFields: string[];
+  /** Fields listed in unmapped_fields. */
+  acceptedUnmappedFields: string[];
+  pairs: number;
+}
+
+export function templateFieldKeys(t: TemplateYaml): string[] {
+  return (t.sections ?? []).flatMap((s) => (s.fields ?? []).map((f) => f.key));
+}
+
+/** Validates a map file against the template's fields and the category codes; pure. */
+export function checkCategoryMap(map: CategoryMapFile, t: TemplateYaml, categoryCodes: Iterable<string>): CategoryMapReport {
+  const codes = [...categoryCodes];
+  const known = new Set(codes);
+  const fields = templateFieldKeys(t);
+  const fieldSet = new Set(fields);
+  const errors: string[] = [];
+  const mapped = new Set<string>();
+  const cats = map.categories ?? {};
+  let pairs = 0;
+  if (typeof cats !== 'object' || Array.isArray(cats)) errors.push('categories must be a map of category code → {field: score}');
+  const emptyCategories: string[] = [];
+  for (const [code, entry] of Object.entries(cats ?? {})) {
+    if (!known.has(code)) errors.push(`unknown category ${code}`);
+    if (entry === null || (typeof entry === 'object' && !Array.isArray(entry) && Object.keys(entry).length === 0)) {
+      emptyCategories.push(code);
+      continue;
+    }
+    if (typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`${code}: must be a map of field key → score`);
+      continue;
+    }
+    for (const [key, score] of Object.entries(entry)) {
+      if (!fieldSet.has(key)) errors.push(`${code}: unknown field ${key}`);
+      if (typeof score !== 'number' || !(score > 0 && score <= 1)) errors.push(`${code}.${key}: score must be a number in (0, 1]`);
+      mapped.add(key);
+      pairs += 1;
+    }
+  }
+  const accepted = map.unmapped_fields ?? [];
+  if (!Array.isArray(accepted)) errors.push('unmapped_fields must be a list of field keys');
+  const acceptedSet = new Set(Array.isArray(accepted) ? accepted : []);
+  for (const key of acceptedSet) {
+    if (!fieldSet.has(key)) errors.push(`unmapped_fields: unknown field ${key}`);
+    else if (mapped.has(key)) errors.push(`unmapped_fields: ${key} is mapped by a category`);
+  }
+  return {
+    errors,
+    missingCategories: codes.filter((c) => !(c in (cats ?? {}))),
+    emptyCategories,
+    unreviewedFields: fields.filter((k) => !mapped.has(k) && !acceptedSet.has(k)),
+    acceptedUnmappedFields: fields.filter((k) => acceptedSet.has(k)),
+    pairs,
+  };
+}
+
+/** Only the non-empty scores, in file order: what load_case_template() receives as `category_fields`. */
+export function categoryFieldsOf(map: CategoryMapFile): CategoryFields {
+  const out: CategoryFields = {};
+  for (const [code, entry] of Object.entries(map.categories ?? {})) {
+    if (entry && typeof entry === 'object' && Object.keys(entry).length) out[code] = { ...entry };
+  }
+  return out;
+}
+
+/** Reads the map file named by `category_map`. Throws on a bad path or unreadable YAML. */
+export function readCategoryMap(t: TemplateYaml, templateFile: string): CategoryMapFile | null {
+  const ref = t.category_map;
+  if (ref === undefined || ref === null) return null;
+  const path = safeRelative(dirname(templateFile), ref, 'category_map');
+  return readYaml<CategoryMapFile>(path) ?? {};
+}
+
+/**
+ * Resolves `category_map` of a template: validates the map against the template and the categories and replaces
+ * the file reference by `category_fields` (scores only). Returns the config plus errors.
+ */
+export function resolveCategoryMap(
+  t: TemplateYaml, templateFile: string, categoryCodes: Iterable<string>,
+): { config: TemplateYaml; errors: string[] } {
+  if (t.category_map === undefined || t.category_map === null) return { config: t, errors: [] };
+  let map: CategoryMapFile | null;
+  try {
+    map = readCategoryMap(t, templateFile);
+  } catch (e) {
+    return { config: t, errors: [`category_map: ${(e as Error).message}`] };
+  }
+  const report = checkCategoryMap(map ?? {}, t, categoryCodes);
+  const { category_map: _ref, ...rest } = t;
+  return {
+    config: { ...rest, category_fields: categoryFieldsOf(map ?? {}) },
+    errors: report.errors.map((e) => `category_map ${e}`),
+  };
+}
+
+/** Both resolvers in the order the loaders use (layout, then map). */
+export function resolveTemplate(
+  t: TemplateYaml, templateFile: string, categoryCodes: Iterable<string>,
+): { config: TemplateYaml; errors: string[] } {
+  const a = resolveTemplateLayout(t, templateFile);
+  const b = resolveCategoryMap(a.config, templateFile, categoryCodes);
+  return { config: b.config, errors: [...a.errors, ...b.errors] };
+}

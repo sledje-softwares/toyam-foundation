@@ -13,6 +13,7 @@ output_formats: [pdf, docx]
 default_output_format: pdf
 docx_template_path: report-templates/icl-motor-od.docx
 report_layout: layouts/icl-motor-od.yaml   # structured copy of the insurer layout (docs/13-report-layouts.md)
+category_map: maps/icl-motor-od.yaml       # category → report field map with scores (docs/09 "Category → field map")
 
 intake_rules:
   sender_domains: [icicilombard.com]

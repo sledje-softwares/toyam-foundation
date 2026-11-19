@@ -329,6 +329,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"case_template_category_fields": {
+                  Row: {
+                    "category_id": string,"field_id": string,"score": number,"template_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category_id": string,"field_id": string,"score": number,"template_id": string
+                  }
+                  Update: {
+                    "category_id"?: string,"field_id"?: string,"score"?: number,"template_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "case_template_category_fields_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "evidence_categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "case_template_category_fields_field_id_template_id_fkey"
+      columns: ["field_id","template_id"]
+isOneToOne: false
+      referencedRelation: "case_template_fields"
+      referencedColumns: ["id","template_id"]
+    },{
+      foreignKeyName: "case_template_category_fields_template_id_fkey"
+      columns: ["template_id"]
+isOneToOne: false
+      referencedRelation: "case_templates"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"case_template_checklists": {
                   Row: {
                     "checklist_template_id": string,"is_default": boolean,"template_id": string
@@ -833,17 +865,23 @@ isOneToOne: false
                   ]
                 },"evidence_field_matches": {
                   Row: {
-                    "created_at": string,"evidence_id": string,"field_id": string,"id": string,"model": string,"pipeline_version": string,"score": number
+                    "category_id": string | null,"created_at": string,"evidence_id": string,"field_id": string,"id": string,"model": string,"pipeline_version": string,"score": number
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"evidence_id": string,"field_id": string,"id"?: string,"model": string,"pipeline_version"?: string,"score": number
+                    "category_id"?: string | null,"created_at"?: string,"evidence_id": string,"field_id": string,"id"?: string,"model": string,"pipeline_version"?: string,"score": number
                   }
                   Update: {
-                    "created_at"?: string,"evidence_id"?: string,"field_id"?: string,"id"?: string,"model"?: string,"pipeline_version"?: string,"score"?: number
+                    "category_id"?: string | null,"created_at"?: string,"evidence_id"?: string,"field_id"?: string,"id"?: string,"model"?: string,"pipeline_version"?: string,"score"?: number
                   }
                   Relationships: [
                     {
+      foreignKeyName: "evidence_field_matches_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "evidence_categories"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "evidence_field_matches_evidence_id_fkey"
       columns: ["evidence_id"]
 isOneToOne: false
@@ -1636,6 +1674,9 @@ isOneToOne: false
                            },
 "approve_own_report":
 { Args: { "p_comment"?: string,"p_report_id": string }; Returns: string
+                           },
+"backfill_category_field_matches":
+{ Args: { "p_limit"?: number }; Returns: number
                            },
 "backfill_filename_labels":
 { Args: { "p_limit"?: number }; Returns: number

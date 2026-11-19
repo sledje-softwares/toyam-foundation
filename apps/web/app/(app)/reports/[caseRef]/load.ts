@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import {
+  bestMatchOrigins,
   bestMatchScores,
   buildWorkspace,
   focusSection,
@@ -140,7 +141,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     ? await Promise.all([
         supabase
           .from("evidence_field_matches")
-          .select("evidence_id, score, evidence!inner(case_id)")
+          .select("evidence_id, score, model, evidence!inner(case_id)")
           .eq("evidence.case_id", c.id)
           .in("field_id", focusedFieldIds)
           .gte("score", MATCH_MIN_SCORE)
@@ -154,6 +155,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       ])
     : [null, null];
   const scores = bestMatchScores(matchesRes?.data ?? []);
+  const origins = bestMatchOrigins(matchesRes?.data ?? []);
   const processing = new Map((processingRes.data ?? []).map((p) => [p.evidence_id, p.state]));
 
   const files: PanelFile[] = (evidenceRes.data ?? []).map((e) => {
@@ -172,6 +174,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       description: labels.find((l) => l.description)?.description ?? null,
       processing: processing.get(e.id) ?? null,
       matchScore: scores.get(e.id) ?? null,
+      matchFrom: origins.get(e.id) ?? null,
       // Thumbnails / previews load in the browser through the hash-checked file cache (no links signed per render).
       file: e.storage_path ? toCachedFile(e) : null,
     };

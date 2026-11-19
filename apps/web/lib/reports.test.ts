@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   approvalModel,
+  bestMatchOrigins,
   bestMatchScores,
   buildWorkspace,
   canManageCase,
@@ -306,6 +307,19 @@ describe("sectionEvidence", () => {
 
   it("keeps the best score per file", () => {
     expect(bestMatchScores([{ evidence_id: "a", score: 0.3 }, { evidence_id: "a", score: 0.7 }]).get("a")).toBe(0.7);
+  });
+
+  it("tells category-map matches from model matches (best score wins, model on a tie)", () => {
+    const o = bestMatchOrigins([
+      { evidence_id: "a", score: 0.86, model: "category_map" },
+      { evidence_id: "a", score: 0.6, model: "anthropic/claude-haiku-5-5" },
+      { evidence_id: "b", score: 0.7, model: "category_map" },
+      { evidence_id: "b", score: 0.7, model: "anthropic/claude-haiku-5-5" },
+      { evidence_id: "c", score: 0.9, model: "anthropic/claude-haiku-5-5" },
+    ]);
+    expect(o.get("a")).toBe("category");
+    expect(o.get("b")).toBe("model");
+    expect(o.get("c")).toBe("model");
   });
 });
 

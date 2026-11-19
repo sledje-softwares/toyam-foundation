@@ -12,6 +12,7 @@ output_formats: [pdf, docx]
 default_output_format: pdf
 docx_template_path: report-templates/igi-motor-od.docx   # upload the firm's Word layout here
 report_layout: layouts/igi-motor-od.yaml   # structured copy of the insurer layout (docs/13-report-layouts.md)
+category_map: maps/igi-motor-od.yaml       # category → report field map with scores (docs/09 "Category → field map")
 
 intake_rules:
   sender_domains: [indusindinsurance.com]

@@ -3,13 +3,13 @@
 //   node scripts/gen-template-seed.ts            rewrite both blocks in place
 //   node scripts/gen-template-seed.ts --check    exit 1 when seed.sql is out of date (nothing written)
 //
-// Uses the same loader as `npm run templates:load` (resolveTemplateLayout), so each template's report
-// layout is resolved, its asset files are embedded and it is validated exactly as on a hosted project.
+// Uses the same loader as `npm run templates:load` (resolveTemplate), so each template's report layout and
+// category → field map are resolved, its asset files are embedded and it is validated exactly as on a hosted project.
 // Blocks: "-- BEGIN GENERATED CATEGORIES" … "-- END GENERATED CATEGORIES" and the same for TEMPLATES.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import {
-  TEMPLATES_DIR, type TemplateYaml, readYaml, resolveTemplateLayout, templateFiles, validateTemplate,
+  TEMPLATES_DIR, type TemplateYaml, readYaml, resolveTemplate, templateFiles, validateTemplate,
 } from '../src/template-config.ts';
 
 const SEED = new URL('../../../supabase/seed.sql', import.meta.url).pathname;
@@ -27,7 +27,7 @@ const categoriesSql = `select public.load_evidence_categories(${dollarQuote(JSON
 let failed = false;
 const templateSql: string[] = [];
 for (const file of templateFiles()) {
-  const { config, errors: layoutErrors } = resolveTemplateLayout(readYaml<TemplateYaml>(file), file);
+  const { config, errors: layoutErrors } = resolveTemplate(readYaml<TemplateYaml>(file), file, codes);
   const errors = [...validateTemplate(config, codes), ...layoutErrors];
   for (const e of errors) console.error(`${basename(file)}: ✖ ${e}`);
   if (errors.length) failed = true;
