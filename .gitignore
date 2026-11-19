@@ -23,3 +23,6 @@ cloudflare-env.d.ts
 bakeoff-results/
 .claude/worktrees/
 .env
+
+# Gradle cache of the local Expo module (build output)
+apps/field/modules/*/android/.gradle/
