@@ -1,0 +1,201 @@
+# Reliance General (now IndusInd General Insurance; mails from indusindinsurance.com, RCU dept.)
+# Motor — Theft. DERIVED from igi-motor-theft.yaml (no theft sample report exists): shared sections keep the OD field keys and
+# extract labels so intake fills the same way; theft sections are drafted from the insurer's theft points and need the
+# firm's review. Subject "THEFT || <claim no> || <insured> || TWL" (variant group of the OD subject_pattern).
+# Load with public.load_case_template().
+#
+# insurer_code must match the insurer created in Admin → Insurers (code is a placeholder: confirm).
+insurer_code: IGI
+claim_type: motor
+variant: theft
+name: IndusInd (Reliance) — Motor Theft investigation
+requires_approval: true
+output_formats: [pdf, docx]
+default_output_format: pdf
+docx_template_path: report-templates/igi-motor-theft.docx   # upload the firm's Word layout here
+report_layout: layouts/igi-motor-theft.yaml   # structured copy of the insurer layout (docs/13-report-layouts.md)
+category_map: maps/igi-motor-theft.yaml       # category → report field map with scores (docs/09 "Category → field map")
+
+intake_rules:
+  sender_domains: [indusindinsurance.com]
+  # e.g. "OD || 3100000001 || Ravi Sharma || TWL"  (variant, claim no, insured, vehicle class)
+  subject_pattern: '^(?:(?:re|fw|fwd):\s*)*(OD|THEFT)\s*\|\|\s*(\d{6,})\s*\|\|\s*([^|]+?)\s*\|\|\s*([A-Z]+)\s*$'
+  subject_groups: {variant: 1, insurer_claim_no: 2, insured_name: 3, vehicle_class: 4}
+  # The body has a two-column "Claim Intimation Details" table: label then value.
+  table_parser: label_value_two_column
+  # Numbered "Please ensure the following points…" list becomes the investigation points
+  investigation_points: {starts_after: 'following points', until: 'Claim Intimation Details'}
+
+report_email:
+  reply_on_thread: true
+  cc_from_original: true
+  subject: 'Re: {{original_subject}}'
+  attachment_name: '{{insurer_claim_no}}_{{insured_name}}_IR'
+
+checklists:
+  # Linked by name; a name that does not exist (and is in use) in the database is silently skipped by the loader.
+  - {name: Motor theft — spot and documents, default: true}
+  - {name: Motor OD — garage and spot visit}
+
+sections:
+  - key: insured
+    title: Insured details
+    fields:
+      - {key: insured_name, label: Insured name, source: intake, required: true, extract: {labels: [Insured Name]}}
+      - {key: insurer_claim_no, label: Claim no, source: intake, required: true, extract: {labels: [Claim Number]}}
+      - {key: policy_no, label: Policy number, source: intake, required: true, extract: {labels: [Policy Number]}}
+      - {key: present_address, label: Present address, type: long_text}
+      - {key: permanent_address, label: Permanent address, type: long_text}
+      - {key: policy_address, label: Policy address, type: long_text, source: intake, extract: {labels: [Address Line 1, Address Line 2, City, State, PinCode], within: Insured Details}}
+      - {key: insured_mobile, label: Insured contact number, source: intake, extract: {labels: [Mobile Number], within: Insured Details}}
+      - {key: insured_email, label: Insured email ID, source: intake, extract: {labels: [Email Id], within: Insured Details}}
+      - {key: vehicle_no, label: Vehicle number, source: intake, extract: {labels: [Vehicle Number]}}
+      - {key: vehicle_class, label: Vehicle type, source: intake, help: 'From the subject, e.g. TWL'}
+      - {key: investigation_points, label: RCU trigger (points to address), type: long_text, source: intake, help: 'Numbered points, one per line; printed as a numbered list'}
+
+  - key: loss_and_policy
+    title: Loss, intimation and policy
+    fields:
+      - {key: loss_datetime, label: Loss date and time, type: datetime, source: intake, extract: {labels: [Date Of Loss, Time of Loss]}}
+      - {key: intimation_datetime, label: Intimation to insurer date and time, type: datetime, source: intake, extract: {labels: [Intimation Date, Intimation Time]}}
+      - {key: intimation_delay_days, label: Delay in intimation (days), type: number, help: 'Computed from the two dates; confirm'}
+      - {key: delay_reason, label: Reason for delay in intimation, type: long_text, source: intake, extract: {labels: [Reason For Delay in Intimation]}}
+      - {key: policy_type, label: Policy type, source: intake, extract: {labels: [Product]}}
+      - {key: policy_period, label: Policy period, source: intake, extract: {labels: [Start Date, End Date]}}
+      - {key: within_policy_period, label: Is the loss within policy period, type: choice, options: ['Yes', 'No']}
+      - {key: rollover_policy_no, label: 'If rollover, policy number'}
+      - {key: previous_year_claim, label: Any claim lodged in previous year, type: choice, options: ['Yes', 'No', 'Not known']}
+      - {key: close_proximity, label: Claim in close proximity, type: choice, options: ['Yes', 'No']}
+
+  - key: basic_details
+    title: Basic details
+    fields:
+      - {key: loss_dt_claim_form, label: Loss date/time as per claim form}
+      - {key: loss_dt_statement, label: Loss date/time as per intimation / written statement}
+      - {key: loss_dt_fir, label: Loss date/time as per FIR / GD}
+      - {key: mismatch_reason, label: 'If mismatching, reason', type: long_text}
+      - {key: brief_remarks, label: Brief remarks of the theft, type: long_text, required: true}
+
+  - key: theft
+    title: Theft details
+    fields:
+      - {key: loss_type, label: Loss type, source: intake, extract: {labels: [Primary Type Of Loss]}}
+      - {key: loss_type_secondary, label: Loss type (secondary), source: intake, extract: {labels: [Secondary Type Of Loss]}}
+      - {key: cause_of_loss_intimated, label: Cause of loss as intimated, type: long_text, source: intake, extract: {labels: [Cause/Description Of Loss]}}
+      - {key: loss_location, label: Location of loss as intimated, source: intake, extract: {labels: [Location Of Loss]}}
+      - {key: parked_place, label: Place where the vehicle was parked, type: long_text}
+      - {key: parked_datetime, label: Date and time parked}
+      - {key: missing_datetime, label: Date and time noticed missing}
+      - {key: noticed_by, label: Who noticed the vehicle missing}
+      - {key: security_measures, label: 'How the vehicle was secured (lock, steering lock, guard, tracker)', type: long_text}
+      - {key: vehicle_recovered, label: Vehicle recovered, type: choice, options: ['No', 'Yes', 'Partly']}
+      - {key: theft_remarks, label: Other details regarding the theft, type: long_text}
+
+  - key: keys
+    title: Keys and vehicle photographs
+    categories: [vehicle_photo]
+    fields:
+      - {key: keys_issued, label: Number of keys issued with the vehicle, type: number}
+      - {key: keys_submitted, label: Number of keys submitted to the insurer, type: number, required: true}
+      - {key: key_missing_detail, label: 'Any key missing or duplicated, details', type: long_text}
+      - {key: key_remarks, label: Observation on the keys, type: long_text}
+
+  - key: ownership
+    title: Ownership, sale and RTO check
+    categories: [vehicle_invoice]
+    fields:
+      - {key: sold_check, label: Was the vehicle sold or transferred, type: choice, options: ['No', 'Yes', 'Not known']}
+      - {key: sold_details, label: 'If yes, buyer and details', type: long_text}
+      - {key: rto_transfer_check, label: Transfer of ownership recorded at RTO, type: choice, options: ['No', 'Yes', 'Not checked']}
+      - {key: transfer_forms, label: 'Forms and NOC found (Form 28 / 29 / 30, NOC)', type: long_text}
+      - {key: papers_genuine, label: Vehicle papers found genuine, type: choice, options: ['Yes', 'No', 'Not verified']}
+      - {key: rto_remarks, label: RTO verification remarks, type: long_text}
+
+  - key: finance
+    title: Finance / hypothecation
+    categories: [loan_document]
+    fields:
+      - {key: financed, label: Vehicle under finance, type: choice, options: ['No', 'Yes']}
+      - {key: financer_name, label: Financer name and branch}
+      - {key: loan_status, label: Loan status (running / closed, arrears)}
+      - {key: loan_statement, label: Loan statement obtained, type: choice, options: ['Yes', 'No', 'Not applicable']}
+      - {key: non_repossession_letter, label: Non-repossession letter from the financer, type: choice, options: ['Yes', 'No', 'Not applicable']}
+      - {key: finance_remarks, label: Finance remarks, type: long_text}
+
+  - key: tracking
+    title: CCTV, mobile location and call records
+    categories: [cctv_footage, location_timeline]
+    fields:
+      - {key: cctv_checked, label: CCTV footage of the parking place checked, type: choice, options: ['Yes', 'No', 'Not available']}
+      - {key: cctv_details, label: CCTV findings, type: long_text}
+      - {key: mobile_location, label: Mobile location of the last user of the vehicle, type: long_text}
+      - {key: call_records, label: Call records / timeline checked, type: long_text}
+      - {key: tracker_gps, label: Tracker / GPS details, type: long_text}
+
+  - key: fir
+    title: FIR / GD and untraced report
+    categories: [fir_police_document]
+    fields:
+      - {key: fir_no_date, label: FIR / GD date and number}
+      - {key: fir_delay, label: Any delay in FIR / GD and reason, type: long_text}
+      - {key: police_station, label: Police station name and address}
+      - {key: io_details, label: Investigating officer and contact}
+      - {key: fir_narration, label: Brief FIR / GD narration, type: long_text}
+      - {key: untraced_report, label: Final / untraced (non-traceable) report number and date}
+      - {key: untraced_court, label: Court acceptance of the final report, type: choice, options: ['Not yet', 'Accepted', 'Not applicable']}
+      - {key: police_followup, label: Police follow-up and investigation status, type: long_text}
+
+  - key: registration
+    title: Vehicle registration details
+    categories: [rc_document, chassis_engine_photo]
+    fields:
+      - {key: reg_number, label: Registration number}
+      - {key: reg_date, label: Registration date, type: date}
+      - {key: reg_rto, label: Registration RTO}
+      - {key: vehicle_make, label: Vehicle make, source: intake, extract: {labels: [Make]}}
+      - {key: vehicle_model, label: Vehicle model, source: intake, extract: {labels: [Model]}}
+      - {key: fuel_type, label: Fuel type}
+      - {key: seating_capacity, label: Seating capacity, type: number}
+      - {key: engine_no, label: Engine number}
+      - {key: chassis_no, label: Chassis number}
+      - {key: modifications, label: Any modifications in vehicle, type: choice, options: ['Yes', 'No']}
+      - {key: hypothecation, label: Hypothecation / other observation, type: long_text}
+
+  - key: spot
+    title: Spot verification (parking place)
+    categories: [spot_photo]
+    fields:
+      - {key: spot_matches, label: Intimation / claim form spot matching, type: choice, options: ['Yes', 'No']}
+      - {key: actual_spot, label: 'If no, proper loss location'}
+      - {key: spot_witness, label: Spot witness name(s)}
+      - {key: spot_details, label: Other details regarding the spot, type: long_text}
+
+  - key: statements
+    title: Written statements
+    categories: [written_statement, avr_recording, insured_photo, id_document]
+    fields:
+      - {key: statements, label: 'Statements (name, relation, version)', type: long_text, required: true, help: 'One statement per block, blocks separated by a line with --- ; the first line of a block is the name and relation (e.g. Mr. X (Rider''s Statement)), the rest is the statement'}
+
+  - key: findings
+    title: Observations / findings
+    categories: [echallan_check]
+    fields:
+      - {key: findings, label: Observations and findings (numbered), type: long_text, required: true, help: 'Start each finding with 1. 2. 3. ; lines that follow belong to the same finding; blank line for a new paragraph inside it'}
+      - {key: documents_collected, label: Documents collected, type: long_text, help: 'One document per line (or numbered); blank lines are ignored'}
+
+  - key: reminders
+    title: Reminder letter / document deficiency letter
+    categories: [reminder_letter, proof_of_dispatch]
+    fields:
+      - {key: reminder_1_date, label: 1st letter date, type: date}
+      - {key: reminder_2_date, label: 2nd letter date, type: date}
+      - {key: deficiency_list, label: Document deficiency list, type: long_text}
+
+  - key: conclusion
+    title: Conclusion
+    fields:
+      - {key: conclusion, label: Conclusion, type: long_text, required: true}
+      - {key: investigation_status, label: Investigation status, type: choice, required: true, options: [Recommended, Repudiate, Insurer discretion]}
+      - {key: repudiate_ground, label: Repudiate ground}
+      - {key: submission_date, label: Report submission date, type: date}
+      - {key: compiled_by, label: Compiled by}

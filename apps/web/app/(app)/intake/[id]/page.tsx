@@ -13,6 +13,7 @@ import {
 } from "@/lib/intake-review";
 import { Badge, Button, ErrorState, InlineAlert, PageHeader, Select, StatusBadge } from "@/components/ui";
 import { fileHref } from "@/lib/evidence-view-core";
+import { reparseForTemplate, type ReparseResult } from "@/lib/intake-reparse";
 import { RejectDialog, ReviewForm } from "./review-form";
 
 export const metadata = { title: "Intake review" };
@@ -46,11 +47,11 @@ export default async function IntakeReviewPage({
     supabase
       .from("intake_extractions")
       .select(
-        "id, status, template_id, missing_required, parser_action, extracted, field_confidence, reject_reason, reviewed_at, emails!inner(id, subject, from_address, from_name, received_at, insurer_id, parse_notes, email_attachments(id, filename, mime_type, size_bytes, is_evidence, is_inline))",
+        "id, status, template_id, missing_required, parser_action, extracted, field_confidence, reject_reason, reviewed_at, emails!inner(id, subject, body_text, raw_storage_path, gmail_message_id, from_address, from_name, received_at, insurer_id, parse_notes, email_attachments(id, filename, mime_type, size_bytes, is_evidence, is_inline))",
       )
       .eq("id", id)
       .maybeSingle(),
-    supabase.from("case_templates").select("id, name, variant, version, insurer_id").eq("is_active", true).order("name"),
+    supabase.from("case_templates").select("id, name, variant, version, insurer_id, claim_type, intake_rules").eq("is_active", true).order("name"),
     supabase.from("insurers").select("id, name, code").eq("is_active", true).order("name"),
   ]);
 
@@ -78,11 +79,41 @@ export default async function IntakeReviewPage({
   const fieldsRes = template
     ? await supabase
         .from("case_template_fields")
-        .select("key, label, field_type, is_required, options, help_text, position, case_template_sections(position, title)")
+        .select("key, label, field_type, is_required, extract, options, help_text, position, case_template_sections(position, title)")
         .eq("template_id", template.id)
         .eq("source", "intake")
     : null;
   if (fieldsRes?.error) return <ErrorState what="The template fields" />;
+
+  // Re-read the email for the chosen template when it is not the one the parser stored values for
+  // (or nothing was stored). Read-only: the reviewer still confirms.
+  let reparsed: ReparseResult | null = null;
+  if (pending && template && fieldsRes?.data && (template.id !== x.template_id || Object.keys(asStringMap(x.extracted)).length === 0)) {
+    let raw: Uint8Array | null = null;
+    if (email.raw_storage_path) {
+      const dl = await supabase.storage.from("email-raw").download(email.raw_storage_path);
+      if (!dl.error && dl.data) raw = new Uint8Array(await dl.data.arrayBuffer());
+    }
+    const insurerCode = insurers.find((i) => i.id === template.insurer_id)?.code ?? "";
+    try {
+      reparsed = await reparseForTemplate(
+        { subject: email.subject, from_address: email.from_address, received_at: email.received_at, body_text: email.body_text, message_id: email.gmail_message_id },
+        raw,
+        {
+          id: template.id,
+          insurer_id: template.insurer_id,
+          insurer_code: insurerCode,
+          claim_type: template.claim_type,
+          variant: template.variant,
+          version: template.version,
+          intake_rules: template.intake_rules,
+          fields: fieldsRes.data,
+        },
+      );
+    } catch {
+      reparsed = null;
+    }
+  }
 
   const form = template
     ? buildReviewForm(
@@ -91,9 +122,9 @@ export default async function IntakeReviewPage({
           section_position: f.case_template_sections?.position ?? 0,
           section_title: f.case_template_sections?.title ?? null,
         })),
-        asStringMap(x.extracted),
-        asNumberMap(x.field_confidence),
-        x.missing_required,
+        reparsed ? reparsed.values : asStringMap(x.extracted),
+        reparsed ? reparsed.confidence : asNumberMap(x.field_confidence),
+        reparsed ? reparsed.missing : x.missing_required,
       )
     : null;
 
@@ -143,6 +174,15 @@ export default async function IntakeReviewPage({
             <dt className="text-text-muted">Received</dt>
             <dd>{formatDateTime(email.received_at)}</dd>
           </dl>
+
+          <h3 className="mt-5 text-sm font-semibold">Message</h3>
+          {email.body_text?.trim() ? (
+            <pre className="mt-2 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-bg p-3 font-sans text-sm">
+              {email.body_text}
+            </pre>
+          ) : (
+            <p className="mt-2 text-sm text-text-muted">No text in this email.</p>
+          )}
 
           <h3 className="mt-5 text-sm font-semibold">Attachments ({attachments.length})</h3>
           {attachments.length ? (
@@ -241,6 +281,14 @@ export default async function IntakeReviewPage({
 
           {pending && template && form && (
             <div className="mt-4">
+              {reparsed && (
+                <div className="mb-4">
+                  <InlineAlert tone="info">
+                    Values read again from the email for this template
+                    {reparsed.source === "body" ? " (from the message text only)" : ""}. Check them before confirming.
+                  </InlineAlert>
+                </div>
+              )}
               {form.issueCount > 0 && (
                 <div className="mb-4">
                   <InlineAlert tone="warning">

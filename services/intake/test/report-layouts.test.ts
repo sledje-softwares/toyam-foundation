@@ -81,7 +81,7 @@ function dataFor(template: TemplateYaml, opts: { withAssets: boolean }): ReportD
   };
 }
 
-for (const [file, name] of [['icl-motor-od.yaml', 'ICICI Lombard Motor OD'], ['igi-motor-od.yaml', 'IndusInd / Reliance Motor OD']] as const) {
+for (const [file, name] of [['icl-motor-od.yaml', 'ICICI Lombard Motor OD'], ['igi-motor-od.yaml', 'IndusInd / Reliance Motor OD'], ['igi-motor-theft.yaml', 'IndusInd / Reliance Motor Theft']] as const) {
   describe(`layout: ${name}`, () => {
     const { template, layout } = load(file);
     const slug = file.replace('.yaml', '');

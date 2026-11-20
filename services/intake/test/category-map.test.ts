@@ -65,7 +65,8 @@ describe('config/templates maps', () => {
       assert.ok(Object.keys(cf).length > 10);
       assert.equal(cf.other, undefined, 'empty entries are not sent');
       for (const fields of Object.values(cf)) for (const s of Object.values(fields)) assert.ok(s > 0 && s <= 1);
-      assert.ok(cf.dl_document.dl_number >= 0.9, 'a DL is evidence for the DL number');
+      if (file.endsWith('theft.yaml')) assert.ok(cf.loan_document.loan_statement >= 0.9, 'a loan document is evidence for the loan statement');
+      else assert.ok(cf.dl_document.dl_number >= 0.9, 'a DL is evidence for the DL number');
     });
   }
 

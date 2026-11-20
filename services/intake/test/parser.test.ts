@@ -39,7 +39,7 @@ describe('html helpers', () => {
 describe('templates from config/templates', () => {
   it('loads both drafted templates with intake fields', () => {
     const keys = cfg.templates.map((t) => `${t.insurer_code}/${t.variant}`).sort();
-    assert.deepEqual(keys, ['ICL/od', 'IGI/od']);
+    assert.deepEqual(keys, ['ICL/od', 'IGI/od', 'IGI/theft']);
     for (const t of cfg.templates) assert.ok(t.fields.some((f) => f.key === 'insurer_claim_no' && f.required));
   });
 });
@@ -85,12 +85,16 @@ describe('IndusInd (Reliance) motor OD', () => {
     assert.equal(d.attachments.length, 1);
     assert.equal(d.attachments[0].evidence, false);
   });
-  it('THEFT subject without a theft template goes to review with a note', async () => {
+  it('THEFT subject matches the theft template and fills the shared fields', async () => {
     const d = await decide('igi-new-theft.eml');
-    assert.equal(d.action, 'review');
+    assert.ok(d.action === 'create_case' || d.action === 'review');
     assert.equal(d.insurer_id, 'ins-IGI');
-    assert.equal(d.template_id, null);
-    assert.match(d.notes.join(' '), /variant "theft"/);
+    assert.equal(d.template_id, 'tpl-IGI-motor-theft');
+    assert.equal(d.claim_no, '3200000002');
+    assert.equal(v(d, 'insured_name'), 'Mohan Lal');
+    assert.ok(v(d, 'policy_no'), 'policy number read from the table');
+    assert.equal(v(d, 'vehicle_class'), 'TWL');
+    assert.match(v(d, 'investigation_points') ?? '', /^1\. Verify the identity/);
   });
   it('missing required field goes to review', async () => {
     const d = await decide('igi-missing-policy.eml');

@@ -1,0 +1,163 @@
+# Category → report field map of igi-motor-theft.yaml (docs/09-template-model.md "Category → field map").
+#
+# For each evidence category (config/templates/_categories.yaml): the report fields a file of that category is
+# evidence for, with a score 0–1 (how directly the file shows the field's value). When a file is labelled without
+# the vision LLM (insurer file name, operator tag, office correction) its field matches come from this map:
+# match score = map score × label confidence. Loaded with the template (`category_map:`), so a change here is a
+# new template version; cases keep the version they started with.
+#
+# Every category is listed: `{}` means "reviewed, a file of this kind is evidence for no field of this template".
+# `unmapped_fields` lists fields no file is evidence for (written by people from the visit, the enquiry or the
+# conclusion). `npm run maps:check -w services/intake` reports categories and fields missing from both.
+generated_by: claude (derived from the OD map; theft rows drafted, 2026-11-20)
+reviewed: false
+
+categories:
+  vehicle_photo:
+    modifications: 0.6
+    vehicle_no: 0.55
+    vehicle_model: 0.5
+    key_remarks: 0.3
+    theft_remarks: 0.3
+  odometer_photo: {}
+  chassis_engine_photo:
+    chassis_no: 0.95
+    engine_no: 0.95
+  spot_photo:
+    spot_details: 0.9
+    spot_matches: 0.85
+    actual_spot: 0.8
+    parked_place: 0.8
+  insured_photo:
+    statements: 0.6
+    insured_name: 0.5
+    spot_witness: 0.4
+  rc_document:
+    reg_number: 0.95
+    reg_date: 0.95
+    reg_rto: 0.9
+    vehicle_make: 0.85
+    vehicle_model: 0.85
+    fuel_type: 0.8
+    seating_capacity: 0.8
+    chassis_no: 0.8
+    engine_no: 0.8
+    vehicle_no: 0.8
+    hypothecation: 0.75
+    papers_genuine: 0.6
+    transfer_forms: 0.5
+    rto_transfer_check: 0.5
+  dl_document: {}
+  policy_document:
+    policy_no: 0.95
+    policy_period: 0.95
+    policy_type: 0.9
+    within_policy_period: 0.8
+    policy_address: 0.7
+    rollover_policy_no: 0.7
+    financed: 0.4
+  claim_form:
+    loss_dt_claim_form: 0.95
+    cause_of_loss_intimated: 0.75
+    loss_datetime: 0.7
+    intimation_datetime: 0.6
+    spot_matches: 0.6
+    delay_reason: 0.5
+    loss_location: 0.6
+  estimate: {}
+  job_card: {}
+  towing_bill: {}
+  id_document:
+    insured_name: 0.7
+    permanent_address: 0.6
+    present_address: 0.55
+    sold_details: 0.2
+  fir_police_document:
+    fir_no_date: 0.95
+    fir_narration: 0.95
+    loss_dt_fir: 0.9
+    police_station: 0.9
+    io_details: 0.85
+    fir_delay: 0.7
+    untraced_report: 0.85
+    untraced_court: 0.5
+    police_followup: 0.6
+  medical_document: {}
+  written_statement:
+    statements: 0.95
+    loss_dt_statement: 0.85
+    brief_remarks: 0.6
+    noticed_by: 0.5
+    parked_place: 0.5
+    security_measures: 0.5
+    key_missing_detail: 0.4
+    theft_remarks: 0.4
+    sold_details: 0.3
+  avr_recording:
+    statements: 0.8
+    brief_remarks: 0.5
+    security_measures: 0.3
+  cctv_footage:
+    findings: 0.6
+    brief_remarks: 0.6
+    cctv_checked: 0.95
+    cctv_details: 0.95
+    missing_datetime: 0.6
+    parked_datetime: 0.5
+    noticed_by: 0.3
+  location_timeline:
+    findings: 0.6
+    mobile_location: 0.9
+    call_records: 0.6
+    cctv_details: 0.2
+  echallan_check:
+    findings: 0.7
+    documents_collected: 0.5
+  vehicle_invoice:
+    vehicle_make: 0.8
+    vehicle_model: 0.8
+    chassis_no: 0.75
+    engine_no: 0.75
+    hypothecation: 0.5
+    sold_check: 0.4
+    papers_genuine: 0.4
+  loan_document:
+    hypothecation: 0.9
+    financed: 0.9
+    financer_name: 0.9
+    loan_status: 0.85
+    loan_statement: 0.9
+    non_repossession_letter: 0.9
+    finance_remarks: 0.5
+  reminder_letter:
+    reminder_1_date: 0.9
+    reminder_2_date: 0.9
+    deficiency_list: 0.9
+  proof_of_dispatch:
+    reminder_1_date: 0.7
+    reminder_2_date: 0.7
+  other: {}
+
+# Reviewed: no evidence category shows these (typed from the visit, the enquiry, intake or the conclusion).
+unmapped_fields:
+  - insurer_claim_no
+  - insured_mobile
+  - insured_email
+  - vehicle_class
+  - investigation_points
+  - intimation_delay_days
+  - previous_year_claim
+  - close_proximity
+  - mismatch_reason
+  - loss_type
+  - loss_type_secondary
+  - vehicle_recovered
+  - keys_issued
+  - keys_submitted
+  - rto_remarks
+  - tracker_gps
+  - conclusion
+  - investigation_status
+  - repudiate_ground
+  - submission_date
+  - compiled_by
