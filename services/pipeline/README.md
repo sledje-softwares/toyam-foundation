@@ -40,7 +40,7 @@ One always-on container (D38) that takes the jobs the database queues for every 
 | `ANTHROPIC_API_KEY` (or `GEMINI_API_KEY`, `OPENAI_API_KEY`, …) | – | Per `services/labeller/src/providers.ts` |
 | `LABEL_MODEL` | `claude-haiku-5-5` for anthropic | Model id; other providers must set it |
 | `LABEL_ESCALATION_MODEL` | `claude-sonnet-5-5` for anthropic | `off` disables; `provider:model-id` for another provider |
-| `LABEL_ESCALATION_THRESHOLD` | `0.7` | Top label confidence below this → escalation (set from the bake-off, Q20) |
+| `LABEL_ESCALATION_THRESHOLD` | `0.6` | Top label confidence below this → escalation. 0.6 from the 2026-11-26 Haiku test (0.7 sent 26 % of field photos to Sonnet, 7 of 8 of them already right); confirm with the bake-off (Q20) |
 | `LABEL_EFFORT` | `default` | Anthropic `output_config.effort` (`low`, `medium`, `high`); default = the model's own, as in the bake-off |
 | `LABEL_MANUAL_DIR`, `LABEL_MANUAL_NAME`, `LABEL_MANUAL_TIMEOUT_S` | –, `human`, `1800` | Manual stand-in (below). The folder must be outside the repository |
 | `LABEL_PDF_TEXT_CHARS` | `4000` | PDF text sent to the model, at most |

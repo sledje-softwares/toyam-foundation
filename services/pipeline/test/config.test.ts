@@ -19,12 +19,12 @@ describe('config', () => {
     assert.equal(config.supabaseUrl, 'http://127.0.0.1:54321');
   });
 
-  test('with ANTHROPIC_API_KEY: Haiku 5.5 first, Sonnet 5.5 escalation, threshold 0.7 (D37)', () => {
+  test('with ANTHROPIC_API_KEY: Haiku 5.5 first, Sonnet 5.5 escalation, threshold 0.6 (D37, 2026-11-26 test)', () => {
     const { config } = loadConfig({ ...base, ANTHROPIC_API_KEY: 'sk-test' });
     assert.equal(config.label.mode, 'api');
     assert.deepEqual(config.label.primary, { provider: 'anthropic', model: 'claude-haiku-5-5' });
     assert.deepEqual(config.label.escalation, { provider: 'anthropic', model: 'claude-sonnet-5-5' });
-    assert.equal(config.label.threshold, 0.7);
+    assert.equal(config.label.threshold, 0.6);
     assert.equal(config.label.effort, null, 'model default effort unless LABEL_EFFORT is set');
   });
 

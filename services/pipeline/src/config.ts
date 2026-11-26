@@ -164,7 +164,7 @@ export function loadConfig(env: Record<string, string | undefined>): { config: C
       primary,
       escalation,
       apiKeys,
-      threshold: num(env, 'LABEL_ESCALATION_THRESHOLD', 0.7, 0, 1, errors),
+      threshold: num(env, 'LABEL_ESCALATION_THRESHOLD', 0.6, 0, 1, errors),   // 0.6 from the 2026-11-26 Haiku test; set from the bake-off (Q20)
       effort,
       manualDir: env.LABEL_MANUAL_DIR ?? null,
       manualName: (env.LABEL_MANUAL_NAME || 'human').replace(/[^a-z0-9_.-]/gi, '').slice(0, 30) || 'human',
