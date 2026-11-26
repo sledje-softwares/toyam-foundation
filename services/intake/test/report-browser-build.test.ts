@@ -167,7 +167,7 @@ describe('report files built as in the browser (pdfmake browser build)', () => {
       assert.equal(photos.length, 30, 'every photo with bytes is recorded as placed');
       assert.deepEqual(new Set(photos.map((p) => p.evidence_id)).size, 30);
       assert.deepEqual(warnings, []);
-      // runtime letterhead / seal assets have no source yet (as in the edge function): placeholders + warnings only
+      // letterhead / seal assets are embedded in the layouts
       assert.ok(out.warnings.every((w) => /asset|runtime/i.test(w)), out.warnings.join('\n'));
       const pngs = [...store.values()].filter((b) => b[0] === 0x89).reduce((s, b) => s + b.length, 0);
       t.diagnostic(`${name}: PDF ${(pdf.bytes.length / 1e6).toFixed(2)} MB, Word ${(docx.bytes.length / 1e6).toFixed(2)} MB ` +

@@ -1,6 +1,6 @@
 # ICICI Lombard — Motor OD investigation report. Structure and fixed wording copied from the firm's sample
-# (docs/13-report-layouts.md); every case value is a placeholder. Letterhead bands, logo, seal and signature are
-# runtime assets (the firm supplies the files; without them the layout draws dashed boxes).
+# (docs/13-report-layouts.md); every case value is a placeholder. Letterhead bands, logo and company stamp are image
+# files in assets/, cut from the firm's ICICI sample report and embedded by the template loader. No signature is included.
 version: 1
 name: Investigation Report
 page:
@@ -33,10 +33,10 @@ table_styles:
   plain: {border: none, padding_x_mm: 0, padding_y_mm: 0, space_after_pt: 0}
 
 assets:
-  band_top: {runtime: true, description: Orange band across the top edge (firm letterhead)}
-  logo: {runtime: true, description: Firm logo (firm letterhead)}
-  band_bottom: {runtime: true, description: Orange band along the bottom edge (firm letterhead)}
-  seal: {runtime: true, description: Seal and signature of the authorised signatory}
+  band_top: {file: assets/toyam-band-top.png}
+  logo: {file: assets/toyam-logo.png}
+  band_bottom: {file: assets/toyam-band-bottom.png}
+  seal: {file: assets/toyam-seal.png}
 
 header:
   - {type: image, asset: band_top, width_mm: 201, height_mm: 7, align: center}
@@ -46,7 +46,7 @@ header:
     style: plain
     rows:
       - cells:
-          - blocks: [{type: image, asset: logo, width_mm: 30, height_mm: 13}]
+          - blocks: [{type: image, asset: logo, width_mm: 17.4, height_mm: 13}]
           - runs:
               - {text: 'TOYAM ', style: brand_orange}
               - {text: INVESTIGATION AND VALUATION PVT. LTD, style: brand_rest}

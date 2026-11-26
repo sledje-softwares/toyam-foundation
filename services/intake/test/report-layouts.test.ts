@@ -118,11 +118,11 @@ for (const [file, name] of [['icl-motor-od.yaml', 'ICICI Lombard Motor OD'], ['i
       assert.ok(!html.includes('**'), 'no literal ** left in the output');
     });
 
-    it('renders both writers with and without the runtime assets', async () => {
+    it('renders both writers, with the embedded letterhead assets or overrides', async () => {
       for (const withAssets of [true, false]) {
         const data = dataFor(template, { withAssets });
         const out = renderReportHtml(layout, data, { now: NOW });
-        if (!withAssets) assert.ok(out.warnings.length > 0, 'missing runtime assets are reported');
+        if (!withAssets) assert.deepEqual(out.warnings.filter((w) => w.startsWith('asset ')), [], 'the layout carries its own images');
         const docx = await renderReportDocx(layout, data, { now: NOW, creator: 'Report tests' });
         const parts = readZip(docx);
         assert.ok(parts.has('word/document.xml'));
