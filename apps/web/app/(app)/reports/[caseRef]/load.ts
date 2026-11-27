@@ -14,6 +14,7 @@ import {
 import type { Enums } from "@/lib/database.types";
 import { toCachedFile } from "@/lib/file-cache/view-core";
 import { ocrDisplay } from "@/lib/ocr-display";
+import { toFileComments } from "@/lib/evidence-comments";
 import type { SendRow, SendTarget } from "@/lib/report-send-core";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -100,7 +101,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
     supabase
       .from("evidence")
       .select(
-        "id, case_id, sha256, size_bytes, evidence_type, mime_type, original_filename, storage_backend, storage_path, capture_source, server_received_at, relevance, evidence_labels(category_id, confidence, source, is_active, description), evidence_derivatives(width, sha256, size_bytes, pixel_width), evidence_ocr(engine, text, summary, is_current, created_at, page_no, mean_confidence)",
+        "id, case_id, sha256, size_bytes, evidence_type, mime_type, original_filename, storage_backend, storage_path, capture_source, server_received_at, relevance, evidence_labels(category_id, confidence, source, is_active, description), evidence_derivatives(width, sha256, size_bytes, pixel_width), evidence_ocr(engine, text, summary, is_current, created_at, page_no, mean_confidence), comments:evidence_comments(id, body, created_at, author:profiles(full_name))",
       )
       .eq("case_id", c.id)
       .is("withdrawn_at", null)
@@ -173,6 +174,7 @@ export async function loadWorkspace(supabase: Supabase, caseRef: string, request
       backend: e.storage_backend,
       labels: labels.map((l) => ({ categoryId: l.category_id, name: catName.get(l.category_id) ?? "Unknown", confidence: l.confidence, source: l.source })),
       description: labels.find((l) => l.description)?.description ?? null,
+      comments: toFileComments(e.comments),
       ocr: ocrDisplay(e.evidence_ocr),
       processing: processing.get(e.id) ?? null,
       matchScore: scores.get(e.id) ?? null,

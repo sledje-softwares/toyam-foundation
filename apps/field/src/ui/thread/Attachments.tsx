@@ -3,6 +3,7 @@ import { memo } from 'react';
 import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 import { chipLabel, gridLayout, KIND_ICON, LABEL, type FileState, type ThreadFile } from '../../thread/model';
 import { colors } from '../../theme';
+import { commentBadge } from '../../ui-logic/fileInfo';
 import { useImageUri } from './useImageUri';
 
 const GAP = 4;
@@ -26,14 +27,26 @@ function StateBadge({ state, progress }: { state: FileState; progress: number | 
   );
 }
 
+/** 💬 n in the top-left corner of a thumbnail whose file has comments (D54). */
+function CommentBadge({ f }: { f: ThreadFile }) {
+  const text = commentBadge(f);
+  if (!text) return null;
+  return (
+    <View style={{ position: 'absolute', left: 4, top: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{text}</Text>
+    </View>
+  );
+}
+
 const Tile = memo(function Tile({ f, size, online, more, onPress }: {
   f: ThreadFile; size: number; online: boolean; more: number; onPress: () => void;
 }) {
   const img = useImageUri(f, 'thumb', online);
+  const comments = f.comments.length;
   return (
     <Pressable
       onPress={onPress} accessibilityRole="imagebutton"
-      accessibilityLabel={more > 0 ? `${more} more photos` : `${f.name}${f.state ? `, ${STATE_TEXT[f.state]}` : ''}`}
+      accessibilityLabel={more > 0 ? `${more} more photos` : `${f.name}${f.state ? `, ${STATE_TEXT[f.state]}` : ''}${comments > 0 ? `, ${comments} ${comments === 1 ? 'comment' : 'comments'}` : ''}`}
       style={{ width: size, height: size, borderRadius: 8, overflow: 'hidden', backgroundColor: '#dfe3e8' }}
     >
       {img.uri ? (
@@ -54,7 +67,10 @@ const Tile = memo(function Tile({ f, size, online, more, onPress }: {
           <Text style={{ color: '#fff', fontSize: 26, fontWeight: '700' }}>+{more}</Text>
         </View>
       ) : (
-        <StateBadge state={f.state} progress={f.progress} />
+        <>
+          <CommentBadge f={f} />
+          <StateBadge state={f.state} progress={f.progress} />
+        </>
       )}
     </Pressable>
   );
@@ -80,14 +96,19 @@ export function ImageGrid({ images, width, online, onOpen }: {
   );
 }
 
-/** PDFs, documents, audio and video: icon, name and size, plus the sending state while on the phone. */
-export function FileChips({ files }: { files: readonly ThreadFile[] }) {
+/**
+ * PDFs, documents, audio and video: icon, name and size, plus the sending state while on the phone.
+ * Tap → the file's details and comments (D54) when `onOpen` is given.
+ */
+export function FileChips({ files, onOpen }: { files: readonly ThreadFile[]; onOpen?: (f: ThreadFile) => void }) {
   if (files.length === 0) return null;
   return (
     <View style={{ gap: 6, marginTop: 6 }}>
       {files.map((f) => (
-        <View
-          key={f.key} accessibilityLabel={`${chipLabel(f)}${f.state ? `, ${STATE_TEXT[f.state]}` : ''}`}
+        <Pressable
+          key={f.key} disabled={!onOpen} onPress={() => onOpen?.(f)} accessibilityRole={onOpen ? 'button' : undefined}
+          accessibilityLabel={`${chipLabel(f)}${f.state ? `, ${STATE_TEXT[f.state]}` : ''}${f.comments.length > 0 ? `, ${f.comments.length} comments` : ''}`}
+          accessibilityHint={onOpen ? 'Shows details and comments' : undefined}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.05)' }}
         >
           <Text style={{ fontSize: 22 }}>{KIND_ICON[f.kind]}</Text>
@@ -96,8 +117,10 @@ export function FileChips({ files }: { files: readonly ThreadFile[] }) {
             <Text style={{ fontSize: 13, color: colors.muted }}>
               {f.state === 'sending' ? `${Math.round((f.progress ?? 0) * 100)}%` : STATE_TEXT[f.state]}
             </Text>
+          ) : commentBadge(f) ? (
+            <Text style={{ fontSize: 13, color: colors.muted }}>{commentBadge(f)}</Text>
           ) : null}
-        </View>
+        </Pressable>
       ))}
     </View>
   );

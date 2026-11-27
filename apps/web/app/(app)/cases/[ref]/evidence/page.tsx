@@ -11,6 +11,8 @@ import { toCachedFile } from "@/lib/file-cache/view-core";
 import { CachedImage, PreviewButton } from "@/components/evidence/cached-image";
 import { OcrText } from "@/components/evidence/ocr-text";
 import { ocrDisplay } from "@/lib/ocr-display";
+import { toFileComments } from "@/lib/evidence-comments";
+import { OperatorComments } from "@/components/evidence/operator-comments";
 import { loadCase, refParam } from "../load";
 
 const LIST: ListConfig = {
@@ -20,7 +22,7 @@ const LIST: ListConfig = {
 };
 
 const SELECT =
-  "id, case_id, sha256, original_filename, evidence_type, mime_type, size_bytes, capture_source, server_received_at, is_flagged, flag_reason, relevance, withdrawn_at, captured:profiles!evidence_captured_by_fkey(full_name), task:tasks!evidence_task_id_fkey(title), message:case_messages!evidence_message_id_fkey(visibility), labels:evidence_labels!evidence_labels_evidence_id_fkey(id, is_active, source, confidence, description, needs_detail, category:evidence_categories!evidence_labels_category_id_fkey(name)), evidence_derivatives(width, sha256, size_bytes, pixel_width), ocr:evidence_ocr!evidence_ocr_evidence_id_fkey(engine, text, summary, is_current, created_at, page_no, mean_confidence)";
+  "id, case_id, sha256, original_filename, evidence_type, mime_type, size_bytes, capture_source, server_received_at, is_flagged, flag_reason, relevance, withdrawn_at, captured:profiles!evidence_captured_by_fkey(full_name), task:tasks!evidence_task_id_fkey(title), message:case_messages!evidence_message_id_fkey(visibility), labels:evidence_labels!evidence_labels_evidence_id_fkey(id, is_active, source, confidence, description, needs_detail, category:evidence_categories!evidence_labels_category_id_fkey(name)), evidence_derivatives(width, sha256, size_bytes, pixel_width), ocr:evidence_ocr!evidence_ocr_evidence_id_fkey(engine, text, summary, is_current, created_at, page_no, mean_confidence), comments:evidence_comments(id, body, created_at, author:profiles(full_name))";
 
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
@@ -100,6 +102,7 @@ export default async function CaseEvidencePage({
                 </span>
               )}
               {ocr && <OcrText ocr={ocr} />}
+              <OperatorComments comments={toFileComments(r.comments)} />
             </span>
           </span>
         );
@@ -118,10 +121,12 @@ export default async function CaseEvidencePage({
     { key: "server_received_at", header: "Received", sortable: true, width: "w-40", cell: (r) => formatDateTime(r.server_received_at) },
     {
       key: "labels",
+      mobile: "wide",
       header: "Labels",
       cell: (r) => {
         const active = (r.labels ?? []).filter((l) => l.is_active);
         if (!active.length) return <span className="text-text-muted">Not labelled</span>;
+        const description = active.find((l) => l.description)?.description;
         return (
           <span className="flex max-w-80 flex-wrap gap-1">
             {active.map((l) => (
@@ -133,6 +138,7 @@ export default async function CaseEvidencePage({
               </span>
             ))}
             {active.some((l) => l.needs_detail) && <Badge tone="warning">Needs detail</Badge>}
+            {description && <span className="block w-full text-xs text-text-muted">{description}</span>}
           </span>
         );
       },
@@ -147,6 +153,7 @@ export default async function CaseEvidencePage({
     },
     {
       key: "flags",
+      mobile: "wide",
       header: "Flags",
       cell: (r) => (
         <span className="flex flex-wrap gap-1">

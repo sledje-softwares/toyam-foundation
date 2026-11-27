@@ -2,19 +2,21 @@
 import { memo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { relativeTime } from '../../lib/time';
-import { rowFallbackText, rowMeta, type ThreadRow } from '../../thread/model';
+import { rowFallbackText, rowMeta, type ThreadFile, type ThreadRow } from '../../thread/model';
 import { colors } from '../../theme';
 import { FileChips, ImageGrid } from './Attachments';
 
 const BLUE = '#1e88e5';
 
-export const Bubble = memo(function Bubble({ row, width, online, now, onOpenImage, onPending, onRetry, showLabel }: {
+export const Bubble = memo(function Bubble({ row, width, online, now, onOpenImage, onOpenFile, onPending, onRetry, showLabel }: {
   row: ThreadRow;
   /** Content width of the bubble (for the grid). */
   width: number;
   online: boolean;
   now: Date;
   onOpenImage: (row: ThreadRow, index: number) => void;
+  /** A PDF / audio / video chip: its details and comments (D54). */
+  onOpenFile: (row: ThreadRow, file: ThreadFile) => void;
   onPending: (clientMessageId: string) => void;
   /** "Retry" on a stuck item: send now (resets the backoff, retries held files). */
   onRetry: () => void;
@@ -38,7 +40,8 @@ export const Bubble = memo(function Bubble({ row, width, online, now, onOpenImag
       {row.images.length > 0 ? (
         <ImageGrid images={row.images} width={width} online={online} onOpen={(i) => onOpenImage(row, i)} />
       ) : null}
-      <FileChips files={row.others} />
+      {/* on the phone, tapping the bubble opens the 🕓 sheet instead */}
+      <FileChips files={row.others} onOpen={row.pending ? undefined : (f) => onOpenFile(row, f)} />
       {text ? (
         <Text style={{ fontSize: system ? 15 : 17, color: system ? colors.muted : colors.text, marginTop: row.fileCount > 0 ? 6 : 0, fontStyle: row.withdrawn ? 'italic' : 'normal' }}>
           {text}

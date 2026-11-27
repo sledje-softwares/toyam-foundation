@@ -252,3 +252,7 @@ G1 (nothing creates versions) and G2 (no value snapshot per version) are closed 
 | O3 | Should "Record portal / other submission" also accept emails sent outside the system? (The sender exists since 8.2; still useful when a report goes out by hand from Gmail.) |
 | O5 | Should settling an unknown send be limited to orchestrators / admins in the database too (today only the UI limits it)? |
 | O4 | Does reopening require a new approval even when only the insurer's query is answered without changing the report? (Today: yes, the case returns to office review.) |
+
+## D54: operator comments in the files panel
+
+Each file tile in the report workspace shows its operator comments (compact, two lines each, "Show all" expands) beside the image; `PanelFile.comments` is loaded in `load.ts` with the evidence read. Same component as the case evidence tab.

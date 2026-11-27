@@ -29,6 +29,8 @@ import { clearCaptureContext } from '../capture/useCaptureContext';
 import { clearInbox } from '../share/inbox';
 import { clearFileStore } from '../thread/fileStore';
 import { confirmDelivery, emptyDelivery, restoreDelivery, trackDelivery, type Delivery } from '../thread/model';
+import { getCommentQueue } from '../comments/runtime';
+import { commentSignOutView } from '../ui-logic/fileInfo';
 
 interface DrainState {
   phase: DrainPhase;
@@ -220,6 +222,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     const sent = Math.max(0, drainStartRef.current - left);
     try { await (await drainClient())?.finish(left); } catch { /* wipe anyway */ }
     await o.wipe();
+    await getCommentQueue().then((q) => q.wipe()).catch(() => {}); // file comments are not drained (D54)
     await cacheRef.current?.clear().catch(() => {});
     clearCaptureContext();
     await clearInbox().catch(() => {}); // files shared to the app but never sent
@@ -265,6 +268,19 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     return false;
   }, [storage, router]);
 
+  const signOutNow = useCallback(async () => {
+    if (outbox) await outbox.wipe();
+    await getCommentQueue().then((q) => q.wipe()).catch(() => {});
+    await cache?.clear().catch(() => {});
+    clearCaptureContext();
+    await clearInbox().catch(() => {}); // files shared to the app but never sent to a case
+    await clearFileStore(); // thread thumbnails / viewer copies
+    setDelivery(emptyDelivery());
+    await forgetDevice(secretStore).catch(() => {});
+    await unregisterOutboxBackgroundTask().catch(() => {});
+    await supabase.auth.signOut();
+  }, [outbox, cache]);
+
   const requestSignOut = useCallback(async () => {
     const v = signOutView(snapRef.current.items);
     if (!v.allowed) {
@@ -275,16 +291,19 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
       ]);
       return;
     }
-    if (outbox) await outbox.wipe();
-    await cache?.clear().catch(() => {});
-    clearCaptureContext();
-    await clearInbox().catch(() => {}); // files shared to the app but never sent to a case
-    await clearFileStore(); // thread thumbnails / viewer copies
-    setDelivery(emptyDelivery());
-    await forgetDevice(secretStore).catch(() => {});
-    await unregisterOutboxBackgroundTask().catch(() => {});
-    await supabase.auth.signOut();
-  }, [outbox, router, cache]);
+    // comments on files still on the phone (D54): say they would be lost; the operator may still sign out
+    const queue = await getCommentQueue().catch(() => null);
+    const c = commentSignOutView(queue?.snapshot().comments ?? []);
+    if (!c.allowed) {
+      Alert.alert(c.title, c.body, [
+        { text: c.sendNow, onPress: () => void queue?.sendNow() },
+        { text: c.signOut, style: 'destructive', onPress: () => void signOutNow() },
+        { text: c.stay, style: 'cancel' },
+      ]);
+      return;
+    }
+    await signOutNow();
+  }, [outbox, router, signOutNow]);
 
   const rememberNames = useCallback((n: Record<string, CaseName>) => setNames((p) => ({ ...p, ...n })), []);
   const markSynced = useCallback((k: string) => setSynced((p) => ({ ...p, [k]: new Date().toISOString() })), []);
@@ -295,6 +314,11 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
     const held = new Set(snapRef.current.items.filter((i) => i.state === 'held').map((i) => i.case_id));
     const known = await cache.getKnownTasks();
     for (const r of newTasksForHeld(open, known, held)) await outbox.retryHeld(r.caseId, r.taskId);
+    // comments refused for lack of an open task get another go on a case with a new task (D54)
+    if (known) {
+      const queue = await getCommentQueue().catch(() => null);
+      for (const caseId of new Set(open.filter((t) => !known.has(t.task_id)).map((t) => t.case_id))) await queue?.retryHeld(caseId);
+    }
     await cache.putKnownTasks(open.map((t) => t.task_id));
   }, [outbox, cache]);
   const dismissPrompt = useCallback(() => setBanner(null), []);

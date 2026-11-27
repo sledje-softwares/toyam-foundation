@@ -8,6 +8,7 @@ import type { CachedFile } from "@/lib/file-cache/view-core";
 import type { OcrDisplay } from "./ocr-display";
 import type { Tone } from "@/components/ui/badge";
 import type { Enums } from "@/lib/database.types";
+import type { FileComment } from "@/lib/evidence-comments";
 
 type CaseStatus = Enums<"case_status">;
 type UserRole = Enums<"user_role">;
@@ -520,6 +521,8 @@ export type PanelFile = PanelEvidence & {
   file: CachedFile | null;
   labels: { categoryId: string; name: string; confidence: number | null; source: Enums<"label_source"> }[];
   description: string | null;
+  /** D54: operator comments added after sending, oldest first. */
+  comments: FileComment[];
   /** Gap 35: description made on the field phone + full OCR text (staff only, RLS). */
   ocr: OcrDisplay | null;
   /** v_evidence_processing.state */

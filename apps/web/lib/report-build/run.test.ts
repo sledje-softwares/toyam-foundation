@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Box, OcrRowLike } from "@shared/report/aadhaar.ts";
 import { photoKey } from "@shared/report/assemble.ts";
 import { LayoutError } from "@shared/report/bind.ts";
 import type { RenderFilesInput, RenderFilesOutput } from "@shared/report/files.ts";
@@ -6,7 +7,7 @@ import { defaultLayout } from "@shared/report/spec.ts";
 import type { PreparedPhoto, PreparedReport } from "@shared/report-generate/logic.ts";
 import { asCreated, asPrepared, expectedSha, isAlreadyExists, isResumable, renderFailure, variantFor } from "./core";
 import { runGenerate, runPreview, type CreateVersionArgs, type RunDeps } from "./run";
-import { buttonState, IDLE, previewFileName, progressText, userMessage, type Progress } from "./ui";
+import { buttonState, IDLE, MASKING_PREFIX, previewFileName, progressText, splitWarnings, userMessage, type Progress } from "./ui";
 
 // Fictional data only.
 const CASE = "7e500000-0000-4000-8000-000000000001";
@@ -53,8 +54,17 @@ function prepared(over: Partial<PreparedReport> = {}): PreparedReport {
 }
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+const MASKED = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 9, 9]);
 
-type Calls = { prepare: string[]; fetch: string[]; render: RenderFilesInput[]; upload: string[]; create: CreateVersionArgs[] };
+type Calls = {
+  prepare: string[];
+  fetch: string[];
+  ocr: string[][];
+  paint: Box[][];
+  render: RenderFilesInput[];
+  upload: string[];
+  create: CreateVersionArgs[];
+};
 
 function fakeDeps(o: {
   prepared?: unknown;
@@ -65,8 +75,10 @@ function fakeDeps(o: {
   objectSize?: number | null;
   create?: (args: CreateVersionArgs, n: number) => { data: unknown; error: { code: string; message: string } | null };
   ids?: string[];
+  ocr?: OcrRowLike[] | null | (() => never);
+  paint?: RunDeps["paintMask"];
 } = {}): { deps: RunDeps; calls: Calls } {
-  const calls: Calls = { prepare: [], fetch: [], render: [], upload: [], create: [] };
+  const calls: Calls = { prepare: [], fetch: [], ocr: [], paint: [], render: [], upload: [], create: [] };
   const ids = [...(o.ids ?? ["7e900000-0000-4000-8000-000000000001", "7e900000-0000-4000-8000-000000000002"])];
   const deps: RunDeps = {
     async prepare(id, mode) {
@@ -78,6 +90,18 @@ function fakeDeps(o: {
       calls.fetch.push(`${p.position}:${v}`);
       return o.fetch ? o.fetch(v, p) : JPEG;
     },
+    async loadOcr(ids) {
+      calls.ocr.push(ids);
+      if (typeof o.ocr === "function") return o.ocr();
+      return o.ocr === undefined ? [] : o.ocr;
+    },
+    paintMask:
+      o.paint ??
+      (async (image, rectsFor) => {
+        const rects = rectsFor({ width: image.width ?? 1600, height: image.height ?? 1200 });
+        calls.paint.push(rects);
+        return rects.length ? { bytes: MASKED, mime: "image/jpeg", width: image.width, height: image.height } : image;
+      }),
     async render(input, onStep) {
       calls.render.push(input);
       if (o.render) return o.render(input);
@@ -350,5 +374,115 @@ describe("runPreview", () => {
   it("works for a template without output formats and in locked statuses (the database decides)", async () => {
     const { deps } = fakeDeps({ prepared: prepared({ template: { id: "t", output_formats: [] } }) });
     expect((await runPreview(deps, CASE, () => {})).ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// D55: Aadhaar masking of the placed copies
+
+// fictional number in the format only (not a real Aadhaar)
+const ocrRow = (n: number, over: Partial<OcrRowLike> = {}): OcrRowLike => ({
+  evidence_id: evId(n),
+  page_no: 1,
+  engine: "mlkit_device",
+  source_width: 1600,
+  is_current: true,
+  text: "2345 6789 0123",
+  blocks: [{ text: "2345 6789 0123", bbox: [400, 600, 700, 60], conf: 0.9, line: 0 }],
+  ...over,
+});
+
+describe("Aadhaar masking in the run", () => {
+  it("loads the OCR rows of the photos to place and embeds the masked copy", async () => {
+    const { deps, calls } = fakeDeps({ ocr: [ocrRow(1)] });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(calls.ocr).toEqual([[evId(1), evId(2)]]);
+    expect(calls.paint).toHaveLength(1);
+    expect(calls.paint[0].length).toBe(1);
+    const garage = calls.render[0].data.photos?.garage ?? [];
+    expect(garage[0].image?.bytes).toBe(MASKED);
+    expect(garage[1].image?.bytes).toBe(JPEG);
+    // the masked copy counts as placed
+    expect(calls.create[0].p_photos.map((p) => p.evidence_id)).toEqual([evId(1), evId(2)]);
+    expect(r.warnings.filter((w) => w.startsWith(MASKING_PREFIX))).toEqual([]);
+  });
+
+  it("warns for an ID photo with no number found, and still generates", async () => {
+    const id = prepared({ photos: [photo(1, { category_code: "id_document", caption: "Aadhaar front" }), photo(2)] });
+    const { deps, calls } = fakeDeps({ prepared: id, ocr: [ocrRow(1, { text: "GOVERNMENT OF INDIA", blocks: [] })] });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(calls.paint).toHaveLength(0);
+    const masking = splitWarnings(r.warnings).masking;
+    expect(masking).toHaveLength(1);
+    expect(masking[0]).toMatch(/^ID photo "Aadhaar front" \(Garage visit\) could not be masked automatically: no Aadhaar number was found/);
+  });
+
+  it("warns for an ID photo without OCR", async () => {
+    const id = prepared({ photos: [photo(1, { category_code: "id_document" })] });
+    const { deps } = fakeDeps({ prepared: id, ocr: [] });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(splitWarnings(r.warnings).masking[0]).toMatch(/no text has been read from it yet/);
+  });
+
+  it("OCR rows that cannot be read: one general warning, generation goes on", async () => {
+    const { deps } = fakeDeps({ ocr: null });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(splitWarnings(r.warnings).masking).toEqual([expect.stringMatching(/could not be loaded, so no Aadhaar number/)]);
+    const thrown = fakeDeps({
+      ocr: () => {
+        throw new Error("network");
+      },
+    });
+    const r2 = await runGenerate(thrown.deps, { caseId: CASE }, () => {});
+    expect(r2.ok).toBe(true);
+    expect(splitWarnings(r2.warnings).masking).toHaveLength(1);
+  });
+
+  it("a painter failure places the photo unmasked with a warning", async () => {
+    const { deps, calls } = fakeDeps({
+      ocr: [ocrRow(1)],
+      paint: async () => {
+        throw new Error("no canvas");
+      },
+    });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(calls.render[0].data.photos?.garage?.[0].image?.bytes).toBe(JPEG);
+    expect(splitWarnings(r.warnings).masking[0]).toMatch(/could not be edited in this browser/);
+  });
+
+  it("server OCR of the original cannot be placed on the 1600 px copy: warning", async () => {
+    const { deps, calls } = fakeDeps({ ocr: [ocrRow(1, { source_width: null, engine: "paddleocr" })] });
+    const r = await runGenerate(deps, { caseId: CASE }, () => {});
+    expect(r.ok).toBe(true);
+    expect(calls.paint).toEqual([[]]);
+    expect(splitWarnings(r.warnings).masking[0]).toMatch(/could not be placed on the image/);
+  });
+
+  it("preview masks the 384 px copy from OCR of the 1600 px copy", async () => {
+    let size: { width: number; height: number } | null = null;
+    const { deps, calls } = fakeDeps({
+      ocr: [ocrRow(1)],
+      paint: async (image, rectsFor) => {
+        size = { width: image.width ?? 0, height: image.height ?? 0 };
+        calls.paint.push(rectsFor({ width: 384, height: 288 }));
+        return { ...image, bytes: MASKED };
+      },
+    });
+    const r = await runPreview(deps, CASE, () => {});
+    expect(r.ok).toBe(true);
+    expect(size).toEqual({ width: 384, height: 288 });
+    const [rect] = calls.paint[0];
+    // first 8 digits of "2345 6789 0123" (x 400 + 1100) plus one digit each side ≈ 346..913 in the 1600 px copy,
+    // × 0.24 → 82..220; height 600 - 9 .. 660 + 9 → 141..161
+    expect(rect).toEqual({ x: 82, y: 141, w: 138, h: 20 });
+  });
+
+  it("splitWarnings strips the prefix and keeps the others", () => {
+    expect(splitWarnings([`${MASKING_PREFIX}a`, "b"])).toEqual({ masking: ["a"], other: ["b"] });
   });
 });

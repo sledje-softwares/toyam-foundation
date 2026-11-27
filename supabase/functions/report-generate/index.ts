@@ -12,6 +12,7 @@
 // Tokens and signed URLs are never logged.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { type Gateway, handleReportGenerate, type Reply } from '../_shared/report-generate/handler.ts';
+import type { OcrRowLike } from '../_shared/report/aadhaar.ts';
 import {
   createRateLimit, GENERATE_LIMITS, type ImageSource, parseRetryAfter, PDF_TIMEOUT_MS, pdfRequest, PREVIEW_LIMITS,
 } from '../_shared/report-generate/logic.ts';
@@ -92,6 +93,17 @@ function gateway(authHeader: string): Gateway {
         console.error(`report-generate: image fetch ${src.store} failed: ${(e as Error).name}`);
         return null;
       }
+    },
+    async loadOcr(ids) {
+      const rows: OcrRowLike[] = [];
+      for (let i = 0; i < ids.length; i += 80) {
+        const { data, error } = await caller.from('evidence_ocr')
+          .select('evidence_id, page_no, engine, text, blocks, source_width, is_current')
+          .in('evidence_id', ids.slice(i, i + 80)).eq('page_no', 1);
+        if (error || !data) return null;
+        rows.push(...data);
+      }
+      return rows;
     },
     async renderPdf(html, pdfOptions) {
       const req = pdfRequest(CF_ACCOUNT_ID, html, pdfOptions);

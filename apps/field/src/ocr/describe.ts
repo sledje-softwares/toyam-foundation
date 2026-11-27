@@ -4,8 +4,7 @@
 //
 //   "<category name if tagged, else Photo / Document>; text read from the 1600 px copy: <line> · <line> · <line>"
 //   "<…>; no text read"
-// At most DESCRIPTION_MAX characters. Input text must already be masked (Aadhaar); masked again anyway.
-import { maskAadhaar } from './mask';
+// At most DESCRIPTION_MAX characters. Text is quoted as read (D55: no masking before the report step).
 
 export const DESCRIPTION_MAX = 200;
 const MAX_LINES = 3;
@@ -36,7 +35,7 @@ export function describePhoto(input: { categoryName: string | null; lines: reado
   const seen = new Set<string>();
   const quoted: string[] = [];
   for (const raw of input.lines) {
-    const l = maskAadhaar(raw.replace(/\s+/g, ' ').trim());
+    const l = raw.replace(/\s+/g, ' ').trim();
     const key = l.toLowerCase();
     if (!meaningful(l) || seen.has(key)) continue;
     seen.add(key);

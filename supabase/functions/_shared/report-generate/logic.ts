@@ -108,6 +108,7 @@ export interface PreparedPhoto extends PreparedFile {
   section_key: string;
   position: number;
   caption: string | null;
+  category_code?: string | null;
   category_name?: string | null;
 }
 export interface PreparedField {

@@ -120,7 +120,7 @@ original). The server never decodes images.
 ## Device OCR of photos (gap 35)
 
 Every photo that got copies is also read on the phone (ML Kit, Latin + Devanagari, bundled models; native module
-`modules/toyam-ocr`, pure logic `src/ocr/`): text and blocks of the **1600 px copy**, Aadhaar-like numbers masked, plus a
+`modules/toyam-ocr`, pure logic `src/ocr/`): text and blocks of the **1600 px copy**, text as read (D55: no masking before the report), plus a
 short description (`<tag or Photo/Document>; text read from the 1600 px copy: …`). Spec: docs/11 "Device OCR and description".
 
 | Piece | Where |
@@ -137,6 +137,16 @@ short description (`<tag or Photo/Document>; text read from the 1600 px copy: �
   pauses. Never in `post_thread_message` items, never visible to the operator; a sent row stays until its copies and text are
   done. Drain mode: neither read nor sent.
 - `whenIdle()` resolves once no copy job, OCR job or sending pass is left (tests).
+
+## File comments (D54): sibling queue, not an item kind
+
+Comments on a file are not thread messages, so they do not go through this engine: `src/comments/queue.ts`
+(`CommentQueue`) is a small sibling with the same rules — saved first, oldest first, **this module's `backoffDelay`**,
+idempotent `client_comment_id` on `add_evidence_comment`, refusals kept as `held` with a reason (never "failed"),
+`classifyPgError` classes (`src/comments/server.ts`). Own SQLite file `comments.db` (table `outbox_comments`), so the
+outbox's transactions on `outbox.db` are never shared with comment writes. Not counted in this module's totals, ticks,
+sign-out check or drain; `OutboxProvider` asks separately at sign-out (`commentSignOutView`), wipes it with the outbox,
+and `background.ts` runs it after `outbox.run()`. Spec: docs/11 "File details and comments".
 
 ## Behaviour notes
 

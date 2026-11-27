@@ -70,3 +70,17 @@ export function buttonState(ui: GenerateUi, ready: boolean): { disabled: boolean
 export function previewFileName(caseRef: string): string {
   return `${caseRef.replace(/[^A-Za-z0-9_-]+/g, "_")}_preview.pdf`;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Aadhaar masking warnings (D55)
+
+/** Same text as MASK_WARNING_PREFIX in shared/report/aadhaar.ts (kept here so this file stays dependency-free). */
+export const MASKING_PREFIX = "Aadhaar masking: ";
+
+/** Masking warnings first (shown prominently: a number may be visible in the report), then the others. */
+export function splitWarnings(warnings: string[]): { masking: string[]; other: string[] } {
+  const masking: string[] = [];
+  const other: string[] = [];
+  for (const w of warnings) (w.startsWith(MASKING_PREFIX) ? masking : other).push(w);
+  return { masking: masking.map((w) => w.slice(MASKING_PREFIX.length)), other };
+}

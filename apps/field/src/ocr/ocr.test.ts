@@ -1,4 +1,4 @@
-// Device OCR logic (gap 35): Aadhaar masking, block mapping / merging, description, the read step.
+// Device OCR logic (gap 35; D55: text kept as read, mask.ts unused here): Aadhaar regex helper, block mapping / merging, description, the read step.
 import { describe, expect, it } from 'vitest';
 import type { OutboxFile } from '../outbox/types';
 import { mergeReadings, overlap, type NativeLine, type NativeOcrResult } from './blocks';
@@ -66,10 +66,10 @@ describe('mergeReadings (block mapping)', () => {
     expect(r.lang).toBe('latin+devanagari');
   });
 
-  it('masks Aadhaar numbers in the text and every block', () => {
+  it('keeps Aadhaar-like numbers as read in the text and every block (D55)', () => {
     const r = mergeReadings(result([line('2345 6789 0123', 10, 10)]));
-    expect(r.text).toBe('XXXX XXXX 0123');
-    expect(r.blocks[0]!.text).toBe('XXXX XXXX 0123');
+    expect(r.text).toBe('2345 6789 0123');
+    expect(r.blocks[0]!.text).toBe('2345 6789 0123');
   });
 
   it('no text: empty text, no blocks, null confidence and language; missing confidences ignored', () => {
@@ -108,9 +108,9 @@ describe('describePhoto', () => {
     expect(d.endsWith('…')).toBe(true);
   });
 
-  it('masks Aadhaar numbers and drops duplicates / noise', () => {
+  it('keeps Aadhaar-like numbers as read (D55) and drops duplicates / noise', () => {
     expect(describePhoto({ categoryName: 'ID card', lines: ['2345 6789 0123', '2345 6789 0123', '|||'], coverage: 0.1 }))
-      .toBe('ID card; text read from the 1600 px copy: XXXX XXXX 0123');
+      .toBe('ID card; text read from the 1600 px copy: 2345 6789 0123');
     expect(meaningful('ab')).toBe(false);
     expect(meaningful('रजिस्ट्रेशन')).toBe(true);
   });
@@ -136,13 +136,13 @@ describe('readPhoto (the read step)', () => {
     },
   });
 
-  it('reads the 1600 px copy and returns the masked result with its description', async () => {
+  it('reads the 1600 px copy and returns the result as read with its description', async () => {
     const seen: string[] = [];
     const o = await readPhoto(engine(result([line('Aadhaar 2345 6789 0123', 10, 10)]), seen), file(), 'ID card');
     expect(seen).toEqual(['file:///o/copy-f1-w1600.jpg']);
     expect(o).toMatchObject({
-      engine_version: 'mlkit-test', lang: 'latin', text: 'Aadhaar XXXX XXXX 0123', source_width: 1600, attempts: 0,
-      description: 'ID card; text read from the 1600 px copy: Aadhaar XXXX XXXX 0123',
+      engine_version: 'mlkit-test', lang: 'latin', text: 'Aadhaar 2345 6789 0123', source_width: 1600, attempts: 0,
+      description: 'ID card; text read from the 1600 px copy: Aadhaar 2345 6789 0123',
     });
   });
 

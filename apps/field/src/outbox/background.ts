@@ -3,6 +3,7 @@
 // WorkManager job; each run drains what it can and returns.
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
+import { getCommentQueue } from '../comments/runtime';
 import { getOutbox } from './runtime';
 
 export const OUTBOX_TASK = 'toyam-outbox-send';
@@ -11,6 +12,8 @@ TaskManager.defineTask(OUTBOX_TASK, async () => {
   try {
     const outbox = await getOutbox();
     await outbox.run();
+    // file comments (D54) wait in their own queue; best effort, the outbox result decides
+    await getCommentQueue().then((q) => q.run()).catch(() => {});
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;

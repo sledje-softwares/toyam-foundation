@@ -17,6 +17,10 @@ import {
   OFFLINE_TEXT, OFFLINE_TITLE, taskDoneConfirm, taskDoneMenuItems, taskDoneOutcome, type OpenTaskRow,
 } from '../../src/ui-logic/taskDone';
 import { checklistMenuLabel, threadOutboxLabel } from '../../src/ui-logic/threadMenu';
+import { fileInfoView, newlySentComments, NOT_SENT_COMMENT_TEXT } from '../../src/ui-logic/fileInfo';
+import { useComments } from '../../src/comments/useComments';
+import { serverCommentIds } from '../../src/thread/info';
+import { FileInfoSheet, type CommentActions } from '../../src/ui/thread/FileInfo';
 import { ChecklistSheet, ClockSheet, Fresh, Sheet } from '../../src/ui/components';
 import { Composer } from '../../src/ui/Composer';
 import { useOffline } from '../../src/ui/OutboxProvider';
@@ -51,8 +55,13 @@ export default function Thread() {
   const [openTasks, setOpenTasks] = useState<OpenTaskRow[] | null>(null);
   const [completing, setCompleting] = useState(false);
   const [contextKey, setContextKey] = useState(0);
-  const [viewer, setViewer] = useState<{ images: ThreadFile[]; start: number; n: number } | null>(null);
-  const { width } = useWindowDimensions();
+  // viewer / file sheet remember the row and file; what they show follows the live thread (new comments, labels)
+  const [viewer, setViewer] = useState<{ rowKey: string; images: ThreadFile[]; start: number; n: number } | null>(null);
+  const [fileSheet, setFileSheet] = useState<{ rowKey: string; file: ThreadFile } | null>(null);
+  const { width, height } = useWindowDimensions();
+  const { queue: comments, snapshot: commentSnap } = useComments();
+  const filesRef = useRef(files.files);
+  useEffect(() => { filesRef.current = files.files; }, [files.files]);
 
   // the thread is open: no "all sent" notification for it
   useEffect(() => {
@@ -93,7 +102,7 @@ export default function Thread() {
     loading.current = true;
     try {
       await markThreadRead(id);
-      const [fresh, f] = await Promise.all([fetchMessages(id), fetchThreadFiles(id)]);
+      const [fresh, f] = await Promise.all([fetchMessages(id), fetchThreadFiles(id, filesRef.current)]);
       if (!fresh) {
         setError('Could not load the messages.');
         return;
@@ -158,6 +167,21 @@ export default function Thread() {
   }, [caseItems, storedSeen, loadThread]);
   useEffect(() => () => { if (refetchTimer.current) clearTimeout(refetchTimer.current); }, []);
 
+  // D54: a comment of this case was sent → fetch soon so it shows from the server; fetched ones leave the queue
+  const sentSeen = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const sent = newlySentComments(sentSeen.current, commentSnap.comments, id ?? '');
+    if (!sent) return;
+    sentSeen.current = new Set(sent);
+    if (!refetchTimer.current) {
+      refetchTimer.current = setTimeout(() => { refetchTimer.current = null; void loadThread(); }, AFTER_DELIVERY_MS);
+    }
+  }, [commentSnap.comments, id, loadThread]);
+  useEffect(() => {
+    const ids = serverCommentIds(files.files);
+    if (ids.size > 0) void comments?.confirm(ids);
+  }, [files.files, comments]);
+
   const send = { online, paused: snapshot.paused, next_retry_at: snapshot.next_retry_at };
   const thread = useMemo(
     () => mergeThread({ server: msgs, files: files.files, outbox: deliveryItems(tracked, id), me, staffLastReadAt: files.staff_last_read_at, send, now }),
@@ -193,7 +217,27 @@ export default function Thread() {
   // a bubble is at most 84 % of the screen; minus its padding and border
   const gridWidth = Math.floor(width * 0.84) - 22;
 
-  const openImage = useCallback((row: ThreadRow, index: number) => setViewer((v) => ({ images: row.images, start: index, n: (v?.n ?? 0) + 1 })), []);
+  const openImage = useCallback((row: ThreadRow, index: number) => setViewer((v) => ({ rowKey: row.key, images: row.images, start: index, n: (v?.n ?? 0) + 1 })), []);
+  const openFile = useCallback((row: ThreadRow, file: ThreadFile) => setFileSheet({ rowKey: row.key, file }), []);
+  const liveRow = (key: string) => thread.find((r) => r.key === key);
+  const viewerImages = viewer ? liveRow(viewer.rowKey)?.images ?? viewer.images : [];
+  const sheetFile = fileSheet ? liveRow(fileSheet.rowKey)?.others.find((f) => f.key === fileSheet.file.key) ?? fileSheet.file : null;
+  const infoFor = useCallback((f: ThreadFile) => fileInfoView(f, commentSnap, me, now), [commentSnap, me, now]);
+  const commentActions = useMemo<CommentActions>(() => ({
+    onSend: async (f, body) => {
+      if (!f.evidenceId || !id) return NOT_SENT_COMMENT_TEXT;
+      if (!comments) return 'Comments are not ready yet. Try again in a moment.';
+      const r = await comments.add({ case_id: id, evidence_id: f.evidenceId, body });
+      return r.ok ? null : r.error;
+    },
+    onRetry: () => { void comments?.sendNow(id); },
+    onRemove: (cid) => {
+      Alert.alert('Remove this comment?', 'It was not sent and will be deleted from this phone.', [
+        { text: 'Keep', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => { void comments?.remove(cid); } },
+      ]);
+    },
+  }), [comments, id]);
   const openPending = useCallback((cid: string) => setClockId(cid), []);
   const retry = useCallback(() => { void outbox?.sendNow(id); }, [outbox, id]);
 
@@ -260,7 +304,7 @@ export default function Thread() {
           initialNumToRender={10} maxToRenderPerBatch={6} windowSize={7} removeClippedSubviews
           contentContainerStyle={{ paddingVertical: 8 }}
           renderItem={({ item }) => (
-            <Bubble row={item} width={gridWidth} online={online} now={now} onOpenImage={openImage} onPending={openPending} onRetry={retry}
+            <Bubble row={item} width={gridWidth} online={online} now={now} onOpenImage={openImage} onOpenFile={openFile} onPending={openPending} onRetry={retry}
               showLabel={!item.fromServer || item.key === lastOwnKey} />
           )}
         />
@@ -297,7 +341,13 @@ export default function Thread() {
         </Pressable>
       </Sheet>
       <ChecklistSheet view={checkOpen ? check : null} loading={false} onClose={() => setCheckOpen(false)} />
-      {viewer ? <Viewer key={viewer.n} images={viewer.images} start={viewer.start} online={online} onClose={() => setViewer(null)} /> : null}
+      {viewer ? (
+        <Viewer key={viewer.n} images={viewerImages} start={viewer.start} online={online} onClose={() => setViewer(null)} info={infoFor} actions={commentActions} />
+      ) : null}
+      {fileSheet ? (
+        <FileInfoSheet key={fileSheet.file.key} file={sheetFile} view={sheetFile ? infoFor(sheetFile) : null} actions={commentActions}
+          onClose={() => setFileSheet(null)} maxHeight={Math.round(height * 0.45)} />
+      ) : null}
       {id ? <Composer caseId={id} refreshKey={contextKey} /> : null}
     </SafeAreaView>
   );

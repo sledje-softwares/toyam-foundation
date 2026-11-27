@@ -4,6 +4,7 @@ import {
 } from '../../../supabase/functions/_shared/report-generate/logic.ts';
 import { type Env, type Gateway, handleReportGenerate } from '../../../supabase/functions/_shared/report-generate/handler.ts';
 import { defaultLayout } from '../../../supabase/functions/_shared/report/spec.ts';
+import type { OcrRowLike } from '../../../supabase/functions/_shared/report/aadhaar.ts';
 import { photoA, photoB } from './report-helpers.ts';
 
 export const CASE = '7e500000-0000-4000-8000-000000000001';
@@ -66,6 +67,8 @@ interface FakeOpts {
   uploadError?: { statusCode: string; message?: string };
   createError?: { code: string; message?: string };
   createdVersion?: number;
+  /** evidence_ocr rows loadOcr returns (default none; null = cannot be read). */
+  ocr?: OcrRowLike[] | null;
 }
 
 export function fakeGateway(o: FakeOpts = {}) {
@@ -89,6 +92,10 @@ export function fakeGateway(o: FakeOpts = {}) {
       calls.push({ fn: 'fetchImage', args: [src.store, src.path, max] });
       const b = images.get(src.path);
       return b && b.length <= max ? b.slice() : null;
+    },
+    async loadOcr(ids) {
+      calls.push({ fn: 'loadOcr', args: [ids] });
+      return o.ocr === undefined ? [] : o.ocr;
     },
     async renderPdf(html, pdfOptions) {
       calls.push({ fn: 'renderPdf', args: [html, pdfOptions] });

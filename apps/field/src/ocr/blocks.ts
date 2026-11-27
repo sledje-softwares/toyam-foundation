@@ -3,7 +3,6 @@
 //   pixel coordinates of the image that was read (the 1600 px copy), reading order, `line` = index.
 // Pure; the native module (modules/toyam-ocr) returns `NativeOcrResult`.
 import type { OcrBlock } from '../outbox/types';
-import { maskAadhaar } from './mask';
 
 export interface NativeFrame {
   left: number;
@@ -78,13 +77,13 @@ export function overlap(a: OcrBlock['bbox'], b: OcrBlock['bbox']): number {
  * Merge the Latin and Devanagari readings: the Latin model is the base (better on numbers and English);
  * a Devanagari-model line that contains Devanagari script replaces the Latin lines it overlaps (there
  * the Latin model read noise). Reading order: top to bottom, then left to right within a line height.
- * Text, blocks are masked (Aadhaar).
+ * Text is kept as read (D55: no masking before the report step).
  */
 export function mergeReadings(r: NativeOcrResult): ReadText {
   const latin = linesOf(r.latin);
   const deva = linesOf(r.devanagari).filter((l) => DEVANAGARI.test(l.text));
   const kept = latin.filter((l) => !deva.some((d) => overlap(l.bbox, d.bbox) >= 0.5));
-  const all = [...kept, ...deva].map((b) => ({ ...b, text: maskAadhaar(b.text) }));
+  const all = [...kept, ...deva].map((b) => ({ ...b }));
   all.sort((a, b) => {
     const rowTol = Math.max(4, Math.min(a.bbox[3], b.bbox[3]) / 2);
     const ca = a.bbox[1] + a.bbox[3] / 2;

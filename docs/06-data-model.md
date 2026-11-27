@@ -18,8 +18,9 @@ Source of truth: all files in `supabase/migrations/` applied in order. Tests: `s
 | `20261115800000_report_guards` | `save_case_field_values()`, claim / policy no. sync, approval request rules, submission records, acknowledgement, manual submission, reopen (D44/D45, below) |
 | `20261117300000_device_derivative_target` | `device_derivative_target()`: presign check for the shrunk copies the field app uploads (below) |
 | `20261117000000_report_versions` | Report versions from the generator (7.7, D51): `case_templates.report_layout`, `evidence_derivatives` (shrunk image copies), `prepare_report_version()`, `create_report_version()`, value snapshot per version, generated versions as records, `reports` bucket scheme for generated files (below) |
-| `20261119600000_device_ocr` | Device OCR on the field phone (gap 35): `evidence_ocr.summary` / `source_width`, `record_device_ocr()`, `private.mask_aadhaar()`, field inserts only through the RPC (guard trigger, insert policy dropped), queued server OCR skipped on confident device text |
+| `20261119600000_device_ocr` | Device OCR on the field phone (gap 35): `evidence_ocr.summary` / `source_width`, `record_device_ocr()`, `private.mask_aadhaar()` (unused upstream since D55, kept for report-time use), field inserts only through the RPC (guard trigger, insert policy dropped), queued server OCR skipped on confident device text |
 | `20261119810000_field_thread_files` | Field thread attachments (docs/14 gaps 6, 7, 9): policy `p_derivatives_field_r` — a field user reads the `evidence_derivatives` rows of evidence they can see (own files, visible office files), so `evidence-view` serves them the 384 / 1600 px copies for thread thumbnails and the viewer |
+| `20261127100000_evidence_comments` | File comments (D54): `evidence_comments` (append-only), `add_evidence_comment()`, the file's `label` job re-queued on a comment, `complete_processing_job()` re-queues a label job that finished while a comment arrived, realtime (below) |
 
 ## Core entities
 
@@ -33,6 +34,7 @@ Source of truth: all files in `supabase/migrations/` applied in order. Tests: `s
 | `emails`, `email_attachments`, `intake_extractions` | Intake record and review queue | Idempotent on message id |
 | `tasks`, `task_checklist_items` | Field work | Checklist copied from a template; items carry an evidence `category_id` |
 | `evidence` | Files and notes | Immutable core; GPS, device/server time, SHA-256, `capture_source`, `message_id`, withdraw, relevance, archive columns |
+| `evidence_comments` | Field operator's comments on a file after sending it (D54) | Part of the file, not thread messages; append-only; idempotent on `client_comment_id`; read by staff in scope and by field users who see the file; given to the labeller |
 | `reports`, `report_files`, `report_annexures` | Report versions, generated files (pdf/docx), chosen images | |
 | `report_approvals` | Approval per report version | Decided once by orchestrator/admin |
 | `submissions` | Delivery to insurer | Formats, recipients, sent message / thread ids |
@@ -73,7 +75,7 @@ Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, 
 | `case_messages` | Kinds text / media / voice / system / request; `client_message_id` for offline idempotency; no edit, no delete; withdraw only |
 | `case_thread_reads` | Read pointer per user per case (ticks, unread counts) |
 | `post_thread_message(case, client_id, kind, body, task, reply_to, items)` | Runs as the caller (RLS decides); stores files as evidence with operator tag; first upload starts the field task. A field user's `ocr` item is ignored since `20261119600000` (device OCR goes through `record_device_ocr`) |
-| `record_device_ocr(case, original_sha256, source_width, engine_version, lang, text, blocks, mean_confidence, description)` | Field operator who captured the photo, while they still see the case or within the D43 late window (same rule as `record_device_derivative`); photos only, not withdrawn; `source_width` 1600; text ≤ 20 000 chars, blocks ≤ 2 000 `{text, bbox[4] ≥ 0, conf 0–1/null, line ≥ 0}`, description ≤ 240; Aadhaar masked again in SQL; idempotent per file (`recorded: false` on a retry); confident text skips the queued server `ocr` job. Returns `{evidence_id, ocr_id, recorded, is_current, server_ocr_skipped}`. Errcodes 42501 / P0002 / 22023 / 55000 |
+| `record_device_ocr(case, original_sha256, source_width, engine_version, lang, text, blocks, mean_confidence, description)` | Field operator who captured the photo, while they still see the case or within the D43 late window (same rule as `record_device_derivative`); photos only, not withdrawn; `source_width` 1600; text ≤ 20 000 chars, blocks ≤ 2 000 `{text, bbox[4] ≥ 0, conf 0–1/null, line ≥ 0}`, description ≤ 240; text, blocks and description stored as sent (D55, `20261127200000_ocr_unmasked`: no masking); idempotent per file (`recorded: false` on a retry); confident text skips the queued server `ocr` job. Returns `{evidence_id, ocr_id, recorded, is_current, server_ocr_skipped}`. Errcodes 42501 / P0002 / 22023 / 55000 |
 | `withdraw_message(id)` | Sender only, within `withdraw_window_minutes`; hides message and files |
 | `mark_thread_read(case)`, `case_thread_state(case)` | Read state for ticks |
 | `field_case_list()` | Field app home: Open / Completed, last message, unread |
@@ -84,7 +86,7 @@ Load from config: `load_evidence_categories(jsonb)`, `load_case_template(jsonb, 
 |---|---|
 | `processing_jobs` | One row per evidence × stage × pipeline version; queued / running / done / failed / skipped; back-off retries |
 | `evidence_ocr` | Text + blocks (bbox, confidence) per page and engine; newest is current (a device row arriving after server OCR is stored not current). `summary`: short description made on the field phone (applies to the original and its copies); `source_width`: copy that was read (1600). One `mlkit_device` row per file and page |
-| `evidence_labels` | Category labels with source (operator / filename_rule / text_rule / model / llm / human); corrections deactivate, never delete |
+| `evidence_labels` | Category labels with source (operator / filename_rule / text_rule / model / llm / human); corrections deactivate, never delete. Field users read the labels (incl. `description`) of files they can see (D54) |
 | `field_suggestions` | Proposed field values from OCR with block reference; accepted / rejected |
 | `claim_processing_jobs`, `complete_processing_job`, `enqueue_reprocessing` | Worker API, service role only |
 | `set_evidence_labels(evidence, categories[])` | Office correction → human labels |
@@ -126,7 +128,7 @@ Insurer files become `evidence` with `capture_source = email_attachment`, `stora
 | `case_field_history(case)` | Who changed which field from what to what (from the audit log; staff only) |
 | `evidence_labels.description` | LLM's short description of a file, only where useful (D35) |
 | `evidence_field_matches` | Report fields a file is evidence for, from the label call; `score` = the model's confidence (D35; pipeline output; staff read only). Since `20261119500000` also rows with `model = 'category_map'` derived from the file's labels and the template map (below) |
-| Realtime | `case_messages`, `case_field_values`, `evidence_labels`, `notifications` in the `supabase_realtime` publication (RLS applies) |
+| Realtime | `case_messages`, `case_field_values`, `evidence_labels`, `notifications` in the `supabase_realtime` publication (RLS applies); `evidence_comments` added by `20261127100000` (D54) |
 
 ### Category → field map (`20261119500000_category_field_map.sql`, docs/14 gap 26)
 
@@ -202,6 +204,15 @@ Approval, `approve_own_report`, `request_report_send`, `request_portal_pack` and
 | `close_case(case, note)` | Security definer; owner / orchestrator / admin. Only from `submitted`, no open field task, and the **latest submission acknowledged** (`record_submission_ack`). Orchestrator / admin may close without an acknowledgement with a reason of 3–500 characters (P7); office staff record the acknowledgement first. Status `closed` (history row and `closed_at` by the status trigger), note in the history ("Closed: …" / "Closed without acknowledgement: …"), staff-only thread event, owner notified `case_closed` when someone else closed, audit `CASE_CLOSED`. A closed case is final: `reopen_case` still accepts only `submitted` |
 | `cases_closed_guard` | API roles cannot move a case into or out of `closed` with a direct `UPDATE` (the staff case policy allows status writes); `close_case` and system jobs are not affected |
 
+### File comments (`20261127100000_evidence_comments.sql`, D54)
+
+| Object | Purpose |
+|---|---|
+| `evidence_comments` | `id`, `evidence_id`, `case_id` (copied from the evidence row by the insert trigger, never from the caller), `author_id`, `body` (trimmed, 1–1000 characters), `client_comment_id` (unique, offline idempotency), `created_at` (server time). Part of the file, **not** a thread message (no bubble, no unread count). Shown to staff beside the image, passed to the per-image labeller, kept for report drafting. Append-only: `evidence_comments_guard` refuses every update and delete (table owner included); audited on insert. Read: staff through `can_manage_evidence` (D44), field users for the files they can see (RLS on `evidence`). No insert / update / delete policy or grant for API roles. In the `supabase_realtime` publication |
+| `add_evidence_comment(evidence, body, client_comment_id)` → comment id | Security definer. Field operator only; file sent in a thread message visible to everyone (`visibility = 'all'`), not withdrawn, and the caller may post on the case (`field_can_post`: a non-cancelled task on an open case). At most 50 comments per file and author. A retry with the same `client_comment_id`, author and file returns the stored id before any other check. Errcodes: 42501 (not a field user / "You have no open task on this case"), 22023 (missing id, blank or > 1000 characters, file not sent in the thread), P0002 "File not found" (also unknown, other operators' and staff-only files), 55000 withdrawn, 54000 cap, 23505 `client_comment_id` used for another file or author |
+| `trg_evidence_comments_requeue` | After a comment: the file's newest `label` job, when `queued` / `done` / `failed`, goes back to `queued` with `run_after = now() + 2 minutes` (several comments in a row are labelled once), attempts 0, lock / error / finish cleared. Running and skipped jobs are left alone; files without a label job get none |
+| `complete_processing_job` (changed) | A `label` job finishing `done` is re-queued the same way when a comment on its file was created after the job started (the labeller had read the comments before it existed). Otherwise unchanged |
+
 ## Case status automation
 
 | Event | Status change |
@@ -224,6 +235,7 @@ Every change is written to `case_status_history` and shown in the thread as a sy
 |---|---|
 | No duplicate cases / emails / evidence | Unique `(insurer_id, insurer_claim_no)`, message id, `(case_id, sha256)` |
 | Evidence immutable | `evidence_guard`: only flag, relevance (staff), withdraw (via function, once), archive (archive job, once) may change; no delete |
+| File comments append-only (D54) | `evidence_comments_guard`: no update, no delete; `case_id` from the evidence row, server time |
 | Trusted time | `server_received_at`, `created_at` set by the database; messages stamped on insert |
 | Files from gallery / share accepted, unmarked (D18) | `evidence_autoflag` no longer flags; origin kept in `capture_source` |
 | Thread consistency | Evidence message must be in the same case and sent by the uploader; replies and tasks in the same case |
@@ -242,7 +254,7 @@ Every change is written to `case_status_history` and shown in the thread as a sy
 | Admin | Everything, incl. templates, categories, settings, audit log |
 | Orchestrator | Operational read/write; assignment rules; reassign; approve |
 | Office | Operational read/write; request approval; cannot change the case owner or decide approvals |
-| Field | Cases where they hold a task; intake fields of those cases; thread messages except staff-only ones; own files plus files posted into those threads (not withdrawn, not staff-only); categories; own notifications; own outbox rows. Never emails, extractions, reports, approvals, submissions, OCR, field matches or templates |
+| Field | Cases where they hold a task; intake fields of those cases; thread messages except staff-only ones; own files plus files posted into those threads (not withdrawn, not staff-only); the labels of those files incl. the LLM description (`evidence_labels`, D54), their shrunk copies and the comments on them (`evidence_comments`, written only through `add_evidence_comment`); categories; own notifications; own outbox rows. Never emails, extractions, reports, approvals, submissions, OCR, field matches or templates |
 | Service role | Intake, pipeline, sender, archive and escalation jobs |
 
 ## Deliberate omissions
