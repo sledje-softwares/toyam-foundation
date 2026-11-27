@@ -17,13 +17,36 @@ const req = (over: Partial<LabelRequest> = {}): LabelRequest => ({
 
 const fastSleep = () => new Promise<void>((r) => setTimeout(r, 5));
 
+// A model waits up to 30 min for an answer. If an assertion fails while label() is still polling, the poll
+// would keep the test process alive (the whole `npm test` run hung under load), so every model a test starts
+// gets a short timeout and an abort signal fired when the test ends.
+const TEST_TIMEOUT_MS = 10_000;
+function stopOnEnd(t: { after: (fn: () => void) => void }): AbortSignal {
+  const ctrl = new AbortController();
+  t.after(() => ctrl.abort());
+  return ctrl.signal;
+}
+
+/** Wait until the model has written the request file (a fixed delay was flaky on a busy machine). */
+async function waitForFile(path: string, ms = TEST_TIMEOUT_MS): Promise<string> {
+  const until = Date.now() + ms;
+  for (;;) {
+    try {
+      return await readFile(path, 'utf8');
+    } catch (e) {
+      if (Date.now() > until) throw e;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  }
+}
+
 describe('manual stand-in model', () => {
-  test('writes the request (prompt, image, meta) and returns the answer file once written', async () => {
+  test('writes the request (prompt, image, meta) and returns the answer file once written', async (t) => {
     const dir = await mkdtemp(join(tmpdir(), 'manual-'));
-    const m = createManualModel({ dir, pollMs: 5, sleep: fastSleep });
-    const pending = m.label(req());
-    await new Promise((r) => setTimeout(r, 30));
-    const meta = JSON.parse(await readFile(join(dir, 'requests', 'e1.v1.json'), 'utf8'));
+    const m = createManualModel({ dir, pollMs: 5, timeoutMs: TEST_TIMEOUT_MS, sleep: fastSleep });
+    const pending = m.label(req({ signal: stopOnEnd(t) }));
+    pending.catch(() => {}); // rejected only when an assertion below already failed
+    const meta = JSON.parse(await waitForFile(join(dir, 'requests', 'e1.v1.json')));
     assert.equal(meta.evidence_id, 'e1');
     assert.deepEqual(meta.categories, ['vehicle_photo']);
     assert.equal(meta.answer_file, 'answers/e1.v1.json');
@@ -38,15 +61,16 @@ describe('manual stand-in model', () => {
     assert.equal((await readdir(join(dir, 'done'))).length, 3);
   });
 
-  test('the answer may name the model that answered; answers.json works too', async () => {
+  test('the answer may name the model that answered; answers.json works too', async (t) => {
     const dir = await mkdtemp(join(tmpdir(), 'manual-'));
+    const signal = stopOnEnd(t);
     await writeFile(join(dir, 'answers.json'), JSON.stringify({ 'e2.v1': { model: 'anthropic/claude-opus-5-5', labels: [{ code: 'other', confidence: 0.5 }] } }));
-    const m = createManualModel({ dir, pollMs: 5, sleep: fastSleep, name: 'agent' });
-    const reply = await m.label(req({ requestId: 'e2.v1', image: null, instruction: 'pdf text' }));
+    const m = createManualModel({ dir, pollMs: 5, timeoutMs: TEST_TIMEOUT_MS, sleep: fastSleep, name: 'agent' });
+    const reply = await m.label(req({ requestId: 'e2.v1', image: null, instruction: 'pdf text', signal }));
     assert.equal(reply.model, 'anthropic/claude-opus-5-5');
     const bad = await (async () => {
       await writeFile(join(dir, 'answers.json'), JSON.stringify({ 'e3.v1': { model: 'not a model; drop table', labels: [] } }));
-      return m.label(req({ requestId: 'e3.v1' }));
+      return m.label(req({ requestId: 'e3.v1', signal }));
     })();
     assert.equal(bad.model, 'manual/agent', 'invalid model names fall back to manual/<name>');
   });
@@ -57,7 +81,7 @@ describe('manual stand-in model', () => {
     const m = createManualModel({ dir, pollMs: 5, timeoutMs: 20, now: () => (t += 10), sleep: fastSleep });
     await assert.rejects(m.label(req()), ManualTimeout);
     const ctrl = new AbortController();
-    const m2 = createManualModel({ dir, pollMs: 5, sleep: fastSleep });
+    const m2 = createManualModel({ dir, pollMs: 5, timeoutMs: TEST_TIMEOUT_MS, sleep: fastSleep });
     const p = m2.label(req({ requestId: 'e9.v1', signal: ctrl.signal }));
     setTimeout(() => ctrl.abort(), 20);
     await assert.rejects(p, Aborted);
