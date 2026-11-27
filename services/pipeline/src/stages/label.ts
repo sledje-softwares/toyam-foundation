@@ -14,7 +14,7 @@ import type { LabelModel, LabelReply } from '../models.ts';
 import type { TemplateCache, TemplateContext } from '../template-context.ts';
 import type { Logger } from '../log.ts';
 import { errorText } from '../log.ts';
-import type { Evidence, EvidenceComment, Job, LabelResult, OcrRow, StageOutcome } from '../types.ts';
+import type { Evidence, Job, LabelResult, OcrRow, StageOutcome } from '../types.ts';
 
 export const ESCALATION_SUFFIX = '+esc';
 export const LABEL_EDGE = 384;
@@ -34,7 +34,6 @@ export interface LabelDeps {
   maxOriginalBytes: number;            // originals fetched for resizing / PDF text
   pdfTextChars: number;                // PDF text sent to the model, at most
   ocrExcerptChars?: number;            // OCR excerpt added after the image (default 600; 0 = off)
-  commentChars?: number;               // operator comments added after the OCR excerpt (default 1500; 0 = off)
 }
 
 export function isEscalationVersion(v: string): boolean {
@@ -70,82 +69,50 @@ export function ocrExcerpt(rows: OcrRow[], max: number): string | null {
   return excerpt(text, max);
 }
 
-/**
- * Operator comments on the file (D54) for the label request, oldest first, one trimmed line each (sent as written, D55: no masking before the report).
- * Capped at `max` characters in total: the newest comments are kept (an older one that does not fit is dropped whole;
- * a single comment longer than the cap is cut).
- */
-export function commentsBlock(comments: EvidenceComment[], max: number): string | null {
-  if (max <= 0) return null;
-  const lines = comments
-    .map((c) => ({ at: c.created_at, text: c.body.replace(/\s+/g, ' ').trim() }))
-    .filter((c) => c.text !== '')
-    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)) // stable: ties keep the loaded order
-    .map((c) => c.text);
-  if (lines.length === 0) return null;
-  const kept: string[] = [];
-  let used = 0;
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const cost = lines[i].length + (kept.length ? 1 : 0);
-    if (used + cost > max) {
-      if (kept.length === 0) kept.push(lines[i].slice(0, max));
-      break;
-    }
-    kept.unshift(lines[i]);
-    used += cost;
-  }
-  return kept.join('\n');
-}
-
-function withContext(instruction: string, rows: OcrRow[], max: number, comments: EvidenceComment[], commentMax: number): string {
-  const parts = [instruction];
+// Operator comments on the file (D54) are never sent here: they are for the office and the report drafting step.
+function withOcr(instruction: string, rows: OcrRow[], max: number): string {
   const ex = ocrExcerpt(rows, max);
-  if (ex) parts.push(`Text read from this file by OCR (excerpt, may contain errors):\n<ocr_text>\n${ex}\n</ocr_text>`);
-  const cb = commentsBlock(comments, commentMax);
-  if (cb) parts.push(`Comments the field operator added about this file (context only, oldest first):\n<operator_comments>\n${cb}\n</operator_comments>`);
-  return parts.join('\n');
+  return ex ? `${instruction}\nText read from this file by OCR (excerpt, may contain errors):\n<ocr_text>\n${ex}\n</ocr_text>` : instruction;
 }
 
 /** Choose what the model sees: the field app's 384 px copy, else the original shrunk here, else PDF text / page 1. */
-export async function prepareInput(ev: Evidence, deps: Pick<LabelDeps, 'db' | 'store' | 'resizer' | 'pdf' | 'maxOriginalBytes' | 'pdfTextChars' | 'ocrExcerptChars' | 'commentChars'>,
+export async function prepareInput(ev: Evidence, deps: Pick<LabelDeps, 'db' | 'store' | 'resizer' | 'pdf' | 'maxOriginalBytes' | 'pdfTextChars' | 'ocrExcerptChars'>,
                                    signal?: AbortSignal): Promise<Input | { skip: string }> {
   if (!ev.storage_path) return { skip: 'no_file' };
   // whatever OCR exists now (device OCR may arrive after this job was claimed: then it is simply not used)
   const ocr = await deps.db.getCurrentOcr(ev.id);
   const excerptChars = deps.ocrExcerptChars ?? 600;
-  const commentChars = deps.commentChars ?? 1500;
-  const comments = commentChars > 0 ? await deps.db.getComments(ev.id) : [];
   if (isPdf(ev.mime_type)) {
     const text = ocr.filter((r) => r.engine === 'pdf_text_layer').map((r) => r.text).join('\n\n').trim();
     if (text.length >= MIN_PDF_TEXT) {
       return {
         image: null,
         source: 'pdf_text',
-        instruction: withContext([
+        instruction: [
           'This file is a PDF document; instead of an image, here is the text of its first pages.',
           'Label it with the same rules and answer format.',
           '<document_text>',
           text.slice(0, deps.pdfTextChars),
           '</document_text>',
-        ].join('\n'), [], 0, comments, commentChars),
+        ].join('\n'),
       };
     }
     const bytes = await getVerified(deps.store, ev.storage_backend, ev.storage_path, ev.sha256, { maxBytes: deps.maxOriginalBytes, signal });
     const page = await deps.pdf.renderFirstPage(bytes, LABEL_EDGE);
     if (!page) return { skip: 'pdf_without_text_layer_no_renderer' };
-    return { image: { base64: b64(page.bytes), mimeType: 'image/jpeg', longEdge: Math.max(page.width, page.height) }, instruction: withContext(USER_INSTRUCTION, ocr, excerptChars, comments, commentChars), source: 'pdf_render' };
+    return { image: { base64: b64(page.bytes), mimeType: 'image/jpeg', longEdge: Math.max(page.width, page.height) }, instruction: withOcr(USER_INSTRUCTION, ocr, excerptChars), source: 'pdf_render' };
   }
   const copy = await deps.db.getDerivative(ev.id, LABEL_EDGE);
   if (copy) {
     // copies sit next to the field files (R2 today; D53 adds a backend column when evidence moves)
     const bytes = await getVerified(deps.store, 'r2', copy.storage_path, copy.sha256, { maxBytes: 2_000_000, signal });
     const edge = Math.max(copy.pixel_width ?? LABEL_EDGE, copy.pixel_height ?? 0) || LABEL_EDGE;
-    return { image: { base64: b64(bytes), mimeType: 'image/jpeg', longEdge: edge }, instruction: withContext(USER_INSTRUCTION, ocr, excerptChars, comments, commentChars), source: 'copy' };
+    return { image: { base64: b64(bytes), mimeType: 'image/jpeg', longEdge: edge }, instruction: withOcr(USER_INSTRUCTION, ocr, excerptChars), source: 'copy' };
   }
   if (!RESIZABLE_MIME.has((ev.mime_type ?? '').toLowerCase())) return { skip: 'unsupported_image_type' };
   const bytes = await getVerified(deps.store, ev.storage_backend, ev.storage_path, ev.sha256, { maxBytes: deps.maxOriginalBytes, signal });
   const small = await deps.resizer.toJpeg(bytes, LABEL_EDGE);
-  return { image: { base64: b64(small.bytes), mimeType: 'image/jpeg', longEdge: Math.max(small.width, small.height) }, instruction: withContext(USER_INSTRUCTION, ocr, excerptChars, comments, commentChars), source: 'resized_original' };
+  return { image: { base64: b64(small.bytes), mimeType: 'image/jpeg', longEdge: Math.max(small.width, small.height) }, instruction: withOcr(USER_INSTRUCTION, ocr, excerptChars), source: 'resized_original' };
 }
 
 function b64(bytes: Uint8Array): string {

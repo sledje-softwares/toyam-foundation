@@ -35,8 +35,8 @@ export interface InfoComment {
 export interface FileInfoView {
   chips: InfoChip[];
   description: string | null;
-  /** "Being read…": nothing found yet and the file is still waiting for its reading. */
-  reading: boolean;
+  /** Shown on the description line: no description yet and the AI has not finished with the file. */
+  generating: boolean;
   comments: InfoComment[];
   /** Comments need the file on the server (an evidence id). */
   canComment: boolean;
@@ -46,7 +46,7 @@ export interface FileInfoView {
   count: number;
 }
 
-export const READING_TEXT = 'Being read…';
+export const GENERATING_TEXT = 'Description being generated…';
 export const NOT_SENT_COMMENT_TEXT = 'You can add a comment once this file is sent.';
 export const COMMENT_PLACEHOLDER = 'Add comment';
 
@@ -111,8 +111,10 @@ export function fileInfoView(
 ): FileInfoView {
   const chips = labelChips(f.labels);
   const description = labelDescription(f.labels);
-  const found = f.labels.some((l) => l.source !== 'operator') || description !== null;
-  const reading = !found && (f.processing === 'pending' || f.processing === 'processing');
+  // An 'llm' label means the AI has answered (it describes only where useful, D35), even if other stages still run.
+  // Comments never depend on this: they need only the file on the server.
+  const answered = description !== null || f.labels.some((l) => l.source === 'llm');
+  const generating = !answered && (f.processing === 'pending' || f.processing === 'processing');
 
   const onServer = new Set(f.comments.map((c) => c.client_comment_id).filter((x): x is string => !!x));
   const comments: InfoComment[] = f.comments.map((c) => {
@@ -135,7 +137,7 @@ export function fileInfoView(
   }
   const canComment = f.evidenceId !== null;
   return {
-    chips, description, reading, comments, canComment,
+    chips, description, generating, comments, canComment,
     cannotCommentText: canComment ? null : NOT_SENT_COMMENT_TEXT,
     count: comments.length,
   };

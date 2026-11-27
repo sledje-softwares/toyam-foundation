@@ -1,7 +1,7 @@
 -- File comments (20261127100000, D54): a field operator with a task comments on files they can see in the
 -- case thread; idempotent on client_comment_id; other operators, staff-only and withdrawn files refused;
--- staff read in scope (D44); append-only; the file's label job is re-queued (and a running one re-queued
--- when it finishes); field users read labels + LLM description but never OCR. Self-contained; rolled back.
+-- staff read in scope (D44); append-only; comments never re-queue or re-run labelling (20261127300000);
+-- field users read labels + LLM description but never OCR. Self-contained; rolled back.
 begin;
 create extension if not exists pgtap with schema extensions;
 select plan(45);
@@ -156,47 +156,27 @@ set local request.jwt.claims to '{"sub":"33500000-0000-4000-8000-0000000000c1","
 select is((select count(*)::int from public.evidence_comments), 52, 'the orchestrator reads every comment');
 reset role; reset request.jwt.claims;
 
--- [34-37] label job re-queued
+-- [34-42] comments are independent of labelling (20261127300000): no re-queue, no re-run
 select is((select status::text from public.processing_jobs
-            where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 'queued',
-    'the done label job of the commented file is queued again');
-select ok((select run_after > now() and attempts = 0 and locked_by is null and last_error is null and finished_at is null
+            where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 'done',
+    'a done label job stays done when the file gets a comment');
+select ok((select finished_at < now() and locked_by = 'w1' and attempts = 1
              from public.processing_jobs where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'),
-    'run_after is in the future, attempts and lock cleared');
+    'the finished label job is not touched');
 select is((select status::text from public.processing_jobs
             where evidence_id = (select v from t_out where k = 'e3') and stage = 'label'), 'running',
     'a running label job is left alone when a comment arrives');
 select is((select array_agg(status::text order by stage) from public.processing_jobs
             where evidence_id = (select v from t_out where k = 'e1') and stage <> 'label'),
     array['queued', 'queued'], 'other stages are untouched');
-
--- [38-40] the running job finishes: a comment arrived after it started, so it goes back to the queue
 select lives_ok($$select public.complete_processing_job((select id from public.processing_jobs
                    where evidence_id = (select v from t_out where k = 'e3') and stage = 'label'), 'done', null)$$,
     'the worker finishes the running label job');
-select ok((select status = 'queued' and attempts = 0 and run_after > now() and locked_at is null and finished_at is null
-             from public.processing_jobs where evidence_id = (select v from t_out where k = 'e3') and stage = 'label'),
-    'it is queued again because a comment arrived while it ran');
--- a job that started after the last comment finishes normally
-update public.processing_jobs j set status = 'running', attempts = 1, locked_at = now() + interval '1 minute',
-       locked_by = 'w1', started_at = now() + interval '1 minute'
- where j.evidence_id = (select v from t_out where k = 'e1') and j.stage = 'label';
-select public.complete_processing_job((select id from public.processing_jobs
-        where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 'done', null);
 select is((select status::text from public.processing_jobs
-            where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 'done',
-    'a label job that started after the last comment finishes as done');
-
--- [41-42] skipped label job stays skipped; files without a label job get none
-update public.processing_jobs j set status = 'skipped', finished_at = now()
- where j.evidence_id = (select v from t_out where k = 'e1') and j.stage = 'label';
-set local role authenticated;
-set local request.jwt.claims to '{"sub":"33500000-0000-4000-8000-0000000000f1","role":"authenticated"}';
-select public.add_evidence_comment((select v from t_out where k = 'e1'), 'after skip', gen_random_uuid());
-reset role; reset request.jwt.claims;
-select is((select status::text from public.processing_jobs
-            where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 'skipped',
-    'a skipped label job is not re-queued');
+            where evidence_id = (select v from t_out where k = 'e3') and stage = 'label'), 'done',
+    'it finishes as done although a comment arrived while it ran');
+select hasnt_trigger('public', 'evidence_comments', 'trg_evidence_comments_requeue', 'no re-queue trigger on comments');
+select hasnt_function('private', 'evidence_comments_requeue_label', 'the re-queue function is gone');
 select is((select count(*)::int from public.processing_jobs where evidence_id = (select v from t_out where k = 'e1') and stage = 'label'), 1,
     'no extra label job is created');
 

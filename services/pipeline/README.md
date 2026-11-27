@@ -44,7 +44,6 @@ One always-on container (D38) that takes the jobs the database queues for every 
 | `LABEL_EFFORT` | `default` | Anthropic `output_config.effort` (`low`, `medium`, `high`); default = the model's own, as in the bake-off |
 | `LABEL_MANUAL_DIR`, `LABEL_MANUAL_NAME`, `LABEL_MANUAL_TIMEOUT_S` | –, `human`, `1800` | Manual stand-in (below). The folder must be outside the repository |
 | `LABEL_PDF_TEXT_CHARS` | `4000` | PDF text sent to the model, at most |
-| `LABEL_COMMENT_CHARS` | `1500` | Operator comments on the file (D54) added after the OCR excerpt in `<operator_comments>`, newest kept, sent as written (D55, no masking); `0` = off. A new comment re-queues the file's `label` job (DB), which labels again and supersedes the earlier LLM labels |
 | `LABEL_OCR_EXCERPT_CHARS` | `600` | Existing OCR text added after the image (as read, D55: no masking); `0` = off |
 | `OCR_ENGINE` | `none` | `none` or `http` |
 | `OCR_URL`, `OCR_TOKEN`, `OCR_TIMEOUT_S`, `OCR_MAX_PAGES` | –, –, `120`, `10` | PaddleOCR sidecar |

@@ -105,14 +105,22 @@ describe('labelChips / labelDescription', () => {
 });
 
 describe('fileInfoView', () => {
-  it('"Being read…" only while processing is pending and nothing was found; the operator tag alone does not count', () => {
+  it('description line says it is being generated until the AI answers; labels from tags or rules do not count', () => {
     const own = [{ code: 'spot', name: 'Spot photo', source: 'operator', description: null }];
-    expect(fileInfoView(tf({ processing: 'pending', labels: own }), snap(), ME, NOW)).toMatchObject({ reading: true, chips: [{ text: 'Spot photo', own: true }] });
-    expect(fileInfoView(tf({ processing: 'processing' }), snap(), ME, NOW).reading).toBe(true);
-    expect(fileInfoView(tf({ processing: 'done' }), snap(), ME, NOW).reading).toBe(false);
-    expect(fileInfoView(tf({ processing: 'failed' }), snap(), ME, NOW).reading).toBe(false);
+    expect(fileInfoView(tf({ processing: 'pending', labels: own }), snap(), ME, NOW)).toMatchObject({ generating: true, chips: [{ text: 'Spot photo', own: true }] });
+    const rule = [{ code: 'rc', name: 'RC book', source: 'filename_rule', description: null }];
+    expect(fileInfoView(tf({ processing: 'processing', labels: rule }), snap(), ME, NOW).generating).toBe(true);
+    expect(fileInfoView(tf({ processing: 'done' }), snap(), ME, NOW).generating).toBe(false);
+    expect(fileInfoView(tf({ processing: 'failed' }), snap(), ME, NOW).generating).toBe(false);
+    const answered = [{ code: 'rc', name: 'RC book', source: 'llm', description: null }];
+    expect(fileInfoView(tf({ processing: 'pending', labels: answered }), snap(), ME, NOW).generating).toBe(false);
     const found = fileInfoView(tf({ processing: 'pending', labels: [{ code: 'rc', name: 'RC book', source: 'llm', description: 'RC of the car' }] }), snap(), ME, NOW);
-    expect([found.reading, found.description]).toEqual([false, 'RC of the car']);
+    expect([found.generating, found.description]).toEqual([false, 'RC of the car']);
+  });
+
+  it('comments do not wait for any label or description: a file on the server takes them at once', () => {
+    const v = fileInfoView(tf({ processing: 'pending', labels: [] }), snap(), ME, NOW);
+    expect([v.canComment, v.cannotCommentText, v.generating, v.description]).toEqual([true, null, true, null]);
   });
 
   it('server comments: "You" or "Office", with time; the phone\'s own follow until fetched', () => {
@@ -138,7 +146,7 @@ describe('fileInfoView', () => {
 
   it('files still on the phone cannot be commented on', () => {
     const v = fileInfoView(tf({ evidenceId: null, processing: null }), snap([pending('x')]), ME, NOW);
-    expect([v.canComment, v.cannotCommentText, v.comments, v.reading]).toEqual([false, NOT_SENT_COMMENT_TEXT, [], false]);
+    expect([v.canComment, v.cannotCommentText, v.comments, v.generating]).toEqual([false, NOT_SENT_COMMENT_TEXT, [], false]);
   });
 });
 

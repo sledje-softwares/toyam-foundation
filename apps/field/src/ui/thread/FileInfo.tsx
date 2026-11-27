@@ -6,7 +6,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Pressable, ScrollView, 
 import { COMMENT_MAX } from '../../comments/types';
 import { chipLabel, KIND_ICON, type ThreadFile } from '../../thread/model';
 import { colors } from '../../theme';
-import { COMMENT_PLACEHOLDER, READING_TEXT, type FileInfoView, type InfoComment } from '../../ui-logic/fileInfo';
+import { COMMENT_PLACEHOLDER, GENERATING_TEXT, type FileInfoView, type InfoComment } from '../../ui-logic/fileInfo';
 
 const AMBER = '#8a5a00';
 const AMBER_DARK = '#ffcc66';
@@ -88,7 +88,6 @@ export function FileInfoPanel({ file, view, dark, draft, onDraft, actions, maxHe
                 <Text style={{ fontSize: 14, color: p.text, fontWeight: '600' }}>{c.own ? `🏷 ${c.text}` : c.text}</Text>
               </View>
             ))}
-            {view.reading ? <Text style={{ fontSize: 14, color: p.muted, fontStyle: 'italic', paddingVertical: 4 }}>{READING_TEXT}</Text> : null}
           </View>
           {onHide ? (
             <Pressable onPress={onHide} accessibilityRole="button" accessibilityLabel="Hide details" style={{ minHeight: 40, minWidth: 56, alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -97,6 +96,7 @@ export function FileInfoPanel({ file, view, dark, draft, onDraft, actions, maxHe
           ) : null}
         </View>
         {view.description ? <Text style={{ fontSize: 16, color: p.text, marginTop: 8 }}>{view.description}</Text> : null}
+        {view.generating ? <Text style={{ fontSize: 15, color: p.muted, fontStyle: 'italic', marginTop: 8 }}>{GENERATING_TEXT}</Text> : null}
         <Text style={{ fontSize: 15, color: p.muted, fontWeight: '700', marginTop: 12, marginBottom: 2 }}>
           {view.comments.length > 0 ? `Comments (${view.comments.length})` : 'Comments'}
         </Text>
