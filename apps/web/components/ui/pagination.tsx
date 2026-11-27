@@ -19,7 +19,7 @@ export function Pagination({
   const last = pageCount(total, pageSize);
   const disabled = `${buttonClass("secondary")} pointer-events-none opacity-60`;
   return (
-    <nav aria-label="Pagination" className="mt-4 flex items-center justify-between text-sm">
+    <nav aria-label="Pagination" className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
       <p className="text-text-muted">{rangeLabel(page, pageSize, total)}</p>
       <div className="flex gap-2">
         {page > 1 ? (

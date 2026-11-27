@@ -50,7 +50,7 @@ export function Toaster() {
   }, [pathname, add]);
 
   return (
-    <div aria-live="polite" className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col gap-2 sm:left-auto sm:w-80">
       {items.map((i) => (
         <div key={i.id} role={i.kind === "error" ? "alert" : "status"} className={`pointer-events-auto flex items-start gap-3 rounded border px-4 py-3 text-sm shadow ${STYLES[i.kind]}`}>
           <p className="flex-1">{i.message}</p>

@@ -154,7 +154,7 @@ export default async function IntakeReviewPage({
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <section aria-labelledby="email-h" className="self-start rounded border border-border bg-surface p-5">
+        <section aria-labelledby="email-h" className="min-w-0 self-start rounded border border-border bg-surface p-4 sm:p-5">
           <h2 id="email-h" className="text-lg font-semibold">
             Email
           </h2>
@@ -225,7 +225,7 @@ export default async function IntakeReviewPage({
           )}
         </section>
 
-        <section aria-labelledby="fields-h" className="rounded border border-border bg-surface p-5">
+        <section aria-labelledby="fields-h" className="min-w-0 rounded border border-border bg-surface p-4 sm:p-5">
           <h2 id="fields-h" className="text-lg font-semibold">
             Intake fields
           </h2>
@@ -233,7 +233,7 @@ export default async function IntakeReviewPage({
 
           {pending && (
             <form method="get" className="mt-4 flex flex-wrap items-end gap-3 border-b border-border pb-4">
-              <div className="w-52">
+              <div className="w-full sm:w-52">
                 <label htmlFor="pick-insurer" className="mb-1 block text-xs font-medium text-text-muted">
                   Insurer
                 </label>
@@ -245,7 +245,7 @@ export default async function IntakeReviewPage({
                   options={insurers.map((i) => ({ value: i.id, label: `${i.name} (${i.code})` }))}
                 />
               </div>
-              <div className="w-72">
+              <div className="w-full sm:w-72">
                 <label htmlFor="pick-template" className="mb-1 block text-xs font-medium text-text-muted">
                   Template
                 </label>

@@ -44,10 +44,14 @@ export function FilterBar({
     setSeenUrlQ(urlQ);
     setQ(urlQ);
   }
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
-  const go = (patch: Record<string, string | null>) =>
-    startTransition(() => router.push(buildHref(pathname, current, patch)));
+  const go = (patch: Record<string, string | null>) => startTransition(() => router.push(buildHref(pathname, current, patch)));
 
   const onSearch = (v: string) => {
     setQ(v);
@@ -55,47 +59,69 @@ export function FilterBar({
     timer.current = setTimeout(() => go({ q: v.trim() || null }), 300);
   };
 
-  const active = Boolean(urlQ) || filters.some((f) => params.get(f.name));
+  const activeFilters = filters.filter((f) => params.get(f.name)).length;
+  const active = Boolean(urlQ) || activeFilters > 0;
+  // Phones: the selects fold away behind a "Filters" button.
+  const [showFilters, setShowFilters] = useState(false);
   const clear = () => {
     const patch: Record<string, string | null> = { q: null };
     for (const f of filters) patch[f.name] = null;
     go(patch);
   };
 
+  const count = total !== undefined && (
+    <p aria-live="polite" className="text-sm text-text-muted">
+      {pending ? "Updating…" : `${total} ${total === 1 ? "result" : "results"}`}
+    </p>
+  );
+
   return (
-    <div role="search" className="mb-4 flex flex-wrap items-end gap-3">
-      {!noSearch && (
-        <div className="w-64">
-          <label htmlFor="filter-q" className="mb-1 block text-xs font-medium text-text-muted">
-            {searchLabel ?? "Search"}
-          </label>
-          <TextInput id="filter-q" type="search" value={q} onChange={(e) => onSearch(e.target.value)} autoComplete="off" />
+    <div role="search" className="mb-4">
+      <div className="flex flex-wrap items-end gap-3">
+        {!noSearch && (
+          <div className="w-full sm:w-64">
+            <label htmlFor="filter-q" className="mb-1 block text-xs font-medium text-text-muted">
+              {searchLabel ?? "Search"}
+            </label>
+            <TextInput id="filter-q" type="search" value={q} onChange={(e) => onSearch(e.target.value)} autoComplete="off" />
+          </div>
+        )}
+        {filters.length > 0 && (
+          <button
+            type="button"
+            aria-expanded={showFilters}
+            aria-controls="filter-selects"
+            onClick={() => setShowFilters((v) => !v)}
+            className="inline-flex h-9 items-center gap-2 rounded border border-border-input bg-surface px-3 text-sm font-medium sm:hidden"
+          >
+            Filters
+            {activeFilters > 0 && <span className="rounded-full bg-primary px-2 text-xs text-white">{activeFilters}</span>}
+            <span aria-hidden="true">{showFilters ? "▴" : "▾"}</span>
+          </button>
+        )}
+        <div id="filter-selects" className={`${showFilters ? "grid" : "hidden"} w-full grid-cols-2 gap-3 sm:contents`}>
+          {filters.map((f) => (
+            <div key={f.name} className="min-w-0 sm:w-44">
+              <label htmlFor={`filter-${f.name}`} className="mb-1 block text-xs font-medium text-text-muted">
+                {f.label}
+              </label>
+              <Select
+                id={`filter-${f.name}`}
+                value={params.get(f.name) ?? ""}
+                onChange={(e) => go({ [f.name]: e.target.value || null })}
+                options={f.options}
+                placeholder={f.allLabel ?? "All"}
+              />
+            </div>
+          ))}
         </div>
-      )}
-      {filters.map((f) => (
-        <div key={f.name} className="w-44">
-          <label htmlFor={`filter-${f.name}`} className="mb-1 block text-xs font-medium text-text-muted">
-            {f.label}
-          </label>
-          <Select
-            id={`filter-${f.name}`}
-            value={params.get(f.name) ?? ""}
-            onChange={(e) => go({ [f.name]: e.target.value || null })}
-            options={f.options}
-            placeholder={f.allLabel ?? "All"}
-          />
-        </div>
-      ))}
-      {active && (
-        <button type="button" onClick={clear} className="min-h-9 px-2 text-sm text-primary underline hover:no-underline">
-          Clear filters
-        </button>
-      )}
-      {total !== undefined && (
-        <p aria-live="polite" className="ml-auto pb-2 text-sm text-text-muted">
-          {pending ? "Updating…" : `${total} ${total === 1 ? "result" : "results"}`}
-        </p>
-      )}
+        {active && (
+          <button type="button" onClick={clear} className="min-h-9 px-2 text-sm text-primary underline hover:no-underline">
+            Clear filters
+          </button>
+        )}
+        {count && <div className="ml-auto pb-2">{count}</div>}
+      </div>
     </div>
   );
 }

@@ -140,6 +140,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     },
     {
       key: "stage",
+      mobile: "badge",
       header: "Stage",
       cell: (r) => {
         const s = reportStage(r.status, r.report_approvals);

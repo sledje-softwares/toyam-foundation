@@ -1,0 +1,21 @@
+// Local Expo module (autolinked from apps/field/modules): ML Kit document scanner.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'in.toyaminvestigation.field'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.toyamscanner"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  // The scanner screen and its models come from Google Play services (downloaded on first use).
+  implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
+}

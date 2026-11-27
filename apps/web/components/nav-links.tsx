@@ -17,7 +17,7 @@ export function NavLinks({ items, badges = {} }: { items: NavItem[]; badges?: Pa
         <Link
           href={i.href}
           aria-current={active ? "page" : undefined}
-          className={`flex items-center justify-between rounded px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
+          className={`flex min-h-11 items-center justify-between rounded px-3 py-2 text-sm lg:min-h-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
             active ? "bg-blue-50 font-medium text-blue-900" : "text-slate-700 hover:bg-slate-100"
           }`}
         >
