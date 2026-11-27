@@ -153,7 +153,7 @@ export default async function IntakeReviewPage({
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <section aria-labelledby="email-h" className="min-w-0 self-start rounded border border-border bg-surface p-4 sm:p-5">
           <h2 id="email-h" className="text-lg font-semibold">
             Email

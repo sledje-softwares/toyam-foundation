@@ -195,7 +195,7 @@ export default async function ReportWorkspacePage({
               This template version has no report sections.
             </InlineAlert>
           ) : (
-            <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_25rem]">
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_25rem]">
               <section aria-labelledby="sections-h" className="rounded border border-border bg-surface">
                 <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3">
                   <h2 id="sections-h" className="text-base font-semibold">

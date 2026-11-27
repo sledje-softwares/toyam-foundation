@@ -58,7 +58,6 @@ export class FakeDb implements PipelineDb {
   matches: Array<{ evidence_id: string; field_id: string; score: number }> = [];
   ocr: Array<OcrRow & { evidence_id: string; is_current: boolean }> = [];
   wanted = new Map<string, boolean>();
-  comments = new Map<string, Array<{ body: string; created_at: string }>>();
   recorded: Array<{ evidenceId: string; result: LabelResult; superseded: LabelResult | null }> = [];
   suggestions: Array<{ evidenceId: string; rows: SuggestionRow[] }> = [];
   enqueued: Array<{ ids: string[]; stages: Stage[]; version: string }> = [];
@@ -102,7 +101,6 @@ export class FakeDb implements PipelineDb {
   async getFieldMatches(id: string) { return this.matches.filter((m) => m.evidence_id === id); }
   async ocrWanted(id: string) { return this.wanted.get(id) ?? true; }
   async getCurrentOcr(id: string) { return this.ocr.filter((r) => r.evidence_id === id && r.is_current); }
-  async getComments(id: string) { return this.comments.get(id) ?? []; }
   async insertOcr(rows: NewOcrRow[]) {
     for (const r of rows) {
       for (const o of this.ocr) if (o.evidence_id === r.evidence_id && o.page_no === r.page_no) o.is_current = false;

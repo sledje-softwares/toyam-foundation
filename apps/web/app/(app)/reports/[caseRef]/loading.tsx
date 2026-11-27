@@ -4,7 +4,7 @@ export default function Loading() {
       <div className="h-8 w-64 rounded bg-slate-200" />
       <div className="h-4 w-96 rounded bg-slate-100" />
       <div className="h-20 rounded bg-slate-100" />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_25rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_25rem]">
         <div className="h-96 rounded bg-slate-100" />
         <div className="h-96 rounded bg-slate-100" />
       </div>

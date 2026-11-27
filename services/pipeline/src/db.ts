@@ -2,7 +2,7 @@
 // tested with an in-memory fake. The Supabase implementation uses the service-role key (server-side only).
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
-  ActiveLabel, CategoryRow, Derivative, Evidence, EvidenceComment, FinalStatus, Job, LabelResult, NewOcrRow, OcrRow, RecordLabelsOutcome,
+  ActiveLabel, CategoryRow, Derivative, Evidence, FinalStatus, Job, LabelResult, NewOcrRow, OcrRow, RecordLabelsOutcome,
   Stage, SuggestionRow, TemplateRows,
 } from './types.ts';
 
@@ -22,8 +22,6 @@ export interface PipelineDb {
   getFieldMatches(evidenceId: string): Promise<Array<{ field_id: string; score: number }>>;
   ocrWanted(evidenceId: string): Promise<boolean>;
   getCurrentOcr(evidenceId: string): Promise<OcrRow[]>;
-  /** Operator comments on the file (D54), oldest first, newest last. */
-  getComments(evidenceId: string): Promise<EvidenceComment[]>;
 
   insertOcr(rows: NewOcrRow[]): Promise<void>;
   recordLlmLabels(evidenceId: string, result: LabelResult, superseded?: LabelResult | null): Promise<RecordLabelsOutcome>;
@@ -110,10 +108,6 @@ export function createSupabaseDb(sb: SupabaseClient): PipelineDb {
     async getCurrentOcr(evidenceId) {
       return (must('evidence_ocr', await sb.from('evidence_ocr').select('id, page_no, engine, text, blocks, mean_confidence')
         .eq('evidence_id', evidenceId).eq('is_current', true).order('page_no')) as OcrRow[] | null) ?? [];
-    },
-    async getComments(evidenceId) {
-      return (must('evidence_comments', await sb.from('evidence_comments').select('body, created_at')
-        .eq('evidence_id', evidenceId).order('created_at', { ascending: true }).order('id', { ascending: true })) as EvidenceComment[] | null) ?? [];
     },
 
     async insertOcr(rows) {

@@ -109,7 +109,7 @@ export default async function CaseOverviewPage({ params }: { params: Promise<{ r
   if (c.closed_at) details.push({ label: "Closed", value: formatDateTime(c.closed_at) });
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="space-y-6">
         <Card title="Intake fields" id="intake-h">
           <dl className="mb-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
