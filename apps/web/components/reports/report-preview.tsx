@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useFileCache } from "@/components/file-cache/provider";
 import { Button, buttonClass, InlineAlert } from "@/components/ui";
-import { previewFileName, progressText, userMessage, type Progress } from "@/lib/report-build/ui";
+import { previewFileName, progressText, splitWarnings, userMessage, type Progress } from "@/lib/report-build/ui";
 
 type State =
   | { status: "loading"; progress: Progress }
@@ -72,6 +72,7 @@ export function ReportPreview({ caseId, caseRef }: { caseId: string; caseRef: st
       </InlineAlert>
     );
   }
+  const { masking, other } = splitWarnings(state.warnings);
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -87,11 +88,22 @@ export function ReportPreview({ caseId, caseRef }: { caseId: string; caseRef: st
           </a>
         </div>
       </div>
-      {state.warnings.length > 0 && (
+      {masking.length > 0 && (
+        <div className="mb-3">
+          <InlineAlert tone="warning" title="Aadhaar numbers that were not masked">
+            <ul className="list-disc pl-5">
+              {masking.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          </InlineAlert>
+        </div>
+      )}
+      {other.length > 0 && (
         <div className="mb-3">
           <InlineAlert tone="warning" title="Check before generating">
             <ul className="list-disc pl-5">
-              {state.warnings.map((w, i) => (
+              {other.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>

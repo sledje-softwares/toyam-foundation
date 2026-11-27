@@ -80,6 +80,12 @@ export interface OcrRow {
   mean_confidence: number | null;
 }
 
+/** One operator comment on a file (`evidence_comments`), newest last. */
+export interface EvidenceComment {
+  body: string;
+  created_at: string;
+}
+
 export interface NewOcrRow {
   evidence_id: string;
   page_no: number;

@@ -125,7 +125,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       cell: (r) => <span className="block max-w-48 truncate">{insured.get(r.id) ?? <span className="text-text-muted">—</span>}</span>,
     },
     { key: "claim_type", header: "Type", cell: (r) => CLAIM_TYPE_LABELS[r.claim_type] },
-    { key: "status", header: "Status", cell: (r) => <StatusBadge kind="case_status" value={r.status} /> },
+    { key: "status", mobile: "badge", header: "Status", cell: (r) => <StatusBadge kind="case_status" value={r.status} /> },
     {
       key: "owner",
       header: "Owner",

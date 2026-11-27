@@ -36,6 +36,7 @@ export interface Config {
     manualTimeoutMs: number;
     pdfTextChars: number;
     ocrExcerptChars: number;
+    commentChars: number;
   };
   ocr: {
     engine: 'none' | 'http';
@@ -171,6 +172,7 @@ export function loadConfig(env: Record<string, string | undefined>): { config: C
       manualTimeoutMs: num(env, 'LABEL_MANUAL_TIMEOUT_S', 1800, 5, 86_400, errors) * 1000,
       pdfTextChars: num(env, 'LABEL_PDF_TEXT_CHARS', 4000, 200, 50_000, errors),
       ocrExcerptChars: num(env, 'LABEL_OCR_EXCERPT_CHARS', 600, 0, 5000, errors),
+      commentChars: num(env, 'LABEL_COMMENT_CHARS', 1500, 0, 5000, errors),
     },
     ocr: {
       engine: ocrEngine === 'http' ? 'http' : 'none',

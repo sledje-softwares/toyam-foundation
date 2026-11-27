@@ -141,9 +141,9 @@ describe('report-generate flow', () => {
       { evidence_id: photo(1).evidence_id, section_key: 'garage', position: 1, caption: 'Photo 1' },
       { evidence_id: photo(2).evidence_id, section_key: 'garage', position: 2, caption: 'Photo 2' }]);
     assert.deepEqual(logs, []);
-    // order: prepare → render → upload → create
+    // order: prepare → OCR rows (Aadhaar check) → render → upload → create
     assert.deepEqual(calls.map((c) => c.fn).filter((f) => f !== 'fetchImage'),
-      ['prepare', 'renderPdf', 'upload', 'upload', 'createVersion']);
+      ['prepare', 'loadOcr', 'renderPdf', 'upload', 'upload', 'createVersion']);
   });
 
   it('the DOCX holds the photos and the case facts', async () => {

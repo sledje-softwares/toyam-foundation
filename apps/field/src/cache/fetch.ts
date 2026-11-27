@@ -5,6 +5,7 @@ import type { ChecklistRow } from '../ui-logic/offline';
 import type { OpenTaskRow, RpcErrorLike } from '../ui-logic/taskDone';
 import { MESSAGE_LIMIT, type OpenTask } from './logic';
 import type { ProcState, ServerFile } from '../thread/model';
+import { attachInfo, type CommentRow, type LabelRow } from '../thread/info';
 import type { CaseHeader, Msg, ThreadFiles } from './caseCache';
 
 export async function fetchCaseList(): Promise<CaseRow[] | null> {
@@ -64,9 +65,13 @@ const PROC: readonly ProcState[] = ['none', 'pending', 'processing', 'failed', '
  * Files of the thread's messages (evidence under RLS: own files and files of visible office messages; never
  * staff-only ones), the copy widths the caller can read (p_derivatives_field_r) and the processing state for ✓✓.
  * Plus the office's last read time for blue ✓✓ (case_thread_state). Null when the evidence read fails.
+ *
+ * D54: the active labels (category name + description only; rule 4: never confidence, model or OCR) and the
+ * file comments come from two separate reads, so the thread still loads when either is refused or not deployed
+ * yet; a failed one keeps the labels / comments of `previous` (the files on screen or in the cache).
  */
-export async function fetchThreadFiles(caseId: string): Promise<ThreadFiles | null> {
-  const [ev, proc, st] = await Promise.all([
+export async function fetchThreadFiles(caseId: string, previous: readonly ServerFile[] = []): Promise<ThreadFiles | null> {
+  const [ev, proc, st, lab, com] = await Promise.all([
     supabase
       .from('evidence')
       .select('id, message_id, evidence_type, mime_type, size_bytes, original_filename, sha256, withdrawn_at, evidence_derivatives(width)')
@@ -77,6 +82,19 @@ export async function fetchThreadFiles(caseId: string): Promise<ThreadFiles | nu
       .limit(1000),
     supabase.from('v_evidence_processing').select('evidence_id, state').eq('case_id', caseId).limit(2000),
     supabase.rpc('case_thread_state', { p_case_id: caseId }),
+    supabase
+      .from('evidence')
+      .select('id, labels:evidence_labels!evidence_labels_evidence_id_fkey(is_active, source, description, category:evidence_categories!evidence_labels_category_id_fkey(code, name))')
+      .eq('case_id', caseId)
+      .not('message_id', 'is', null)
+      .is('withdrawn_at', null)
+      .limit(1000),
+    supabase
+      .from('evidence_comments')
+      .select('id, evidence_id, body, author_id, created_at, client_comment_id')
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: true })
+      .limit(2000),
   ]);
   if (ev.error) return null;
   const state = new Map<string, ProcState>();
@@ -98,8 +116,14 @@ export async function fetchThreadFiles(caseId: string): Promise<ThreadFiles | nu
     copies: (r.evidence_derivatives ?? []).map((d) => Number(d.width)).sort((a, b) => a - b),
     processing: state.get(String(r.id)) ?? 'none',
   }));
+  const withInfo = attachInfo(
+    files,
+    lab.error ? null : ((lab.data ?? []) as unknown as LabelRow[]),
+    com.error ? null : ((com.data ?? []) as unknown as CommentRow[]),
+    previous,
+  );
   const row = Array.isArray(st.data) ? (st.data[0] as { staff_last_read_at?: string | null } | undefined) : undefined;
-  return { files, staff_last_read_at: row?.staff_last_read_at ?? null };
+  return { files: withInfo, staff_last_read_at: row?.staff_last_read_at ?? null };
 }
 
 /** mark_thread_read(p_case_id): the thread is on screen (gap 9). Best effort; false when it did not go. */

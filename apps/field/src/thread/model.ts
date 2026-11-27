@@ -26,6 +26,28 @@ export interface ServerFile {
   /** Widths of the shrunk copies the caller can read (evidence_derivatives; [] before the policy exists). */
   copies: number[];
   processing: ProcState;
+  /** Active labels (D54): category and description only; never confidence or model (rule 4). Absent in old caches. */
+  labels?: FileLabel[];
+  /** Comments on the file (evidence_comments, D54). Absent in old caches. */
+  comments?: ServerComment[];
+}
+
+/** One active evidence_labels row as the operator sees it (no confidence, model or pipeline version). */
+export interface FileLabel {
+  code: string | null;
+  name: string;
+  /** label_source: operator | filename_rule | text_rule | model | llm | human */
+  source: string;
+  description: string | null;
+}
+
+/** One evidence_comments row (part of the file, not a thread message). */
+export interface ServerComment {
+  id: string;
+  body: string;
+  author_id: string | null;
+  created_at: string;
+  client_comment_id: string | null;
 }
 
 export type FileKind = 'image' | 'video' | 'audio' | 'document';
@@ -56,6 +78,10 @@ export interface ThreadFile {
   state: FileState;
   /** 0–1 while sending. */
   progress: number | null;
+  /** Server files only (D54): what the office's reading found, and comments; [] / null while on the phone. */
+  labels: FileLabel[];
+  comments: ServerComment[];
+  processing: ProcState | null;
 }
 
 export type Tick = 'clock' | 'stored' | 'processed' | 'seen';
@@ -171,6 +197,9 @@ function outboxThreadFile(it: OutboxItem, f: OutboxFile, st: { state: Exclude<Fi
     copies: [],
     state: st.state,
     progress: st.progress,
+    labels: [],
+    comments: [],
+    processing: null,
   };
 }
 
@@ -188,6 +217,9 @@ function serverThreadFile(f: ServerFile): ThreadFile {
     copies: f.copies,
     state: null,
     progress: null,
+    labels: f.labels ?? [],
+    comments: f.comments ?? [],
+    processing: f.processing,
   };
 }
 

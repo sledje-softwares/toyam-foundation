@@ -11,7 +11,9 @@ import { FileFetchError, type FileCache, type LinkInfo, type Variant } from "@/l
 import { createClient } from "@/lib/supabase/browser";
 import type { ImageFetcher } from "@shared/report/assemble.ts";
 import { hex } from "@shared/report-generate/logic.ts";
+import type { OcrRowLike } from "@shared/report/aadhaar.ts";
 import { expectedSha, variantFor } from "./core";
+import { paintMask } from "./mask-image";
 import { renderReport } from "./render-client";
 import { runGenerate, runPreview, type RunDeps } from "./run";
 
@@ -20,6 +22,8 @@ export { runGenerate, runPreview };
 export type FileCacheCtx = { cache: () => FileCache; link: (evidenceId: string, variant: Variant) => Promise<LinkInfo> };
 
 const BUCKET = "reports";
+/** Evidence ids per evidence_ocr request (keeps the query string short). */
+const OCR_CHUNK = 80;
 
 /** Photo bytes through the file cache, verified against the hash the database records (never unverified bytes). */
 function cacheFetcher(ctx: FileCacheCtx, caseId: string): ImageFetcher {
@@ -53,6 +57,20 @@ export function browserRunDeps(ctx: FileCacheCtx, caseId: string): RunDeps {
       return { data, error };
     },
     fetchPhoto: cacheFetcher(ctx, caseId),
+    async loadOcr(ids) {
+      const rows: OcrRowLike[] = [];
+      for (let i = 0; i < ids.length; i += OCR_CHUNK) {
+        const { data, error } = await supabase
+          .from("evidence_ocr")
+          .select("evidence_id, page_no, engine, text, blocks, source_width, is_current")
+          .in("evidence_id", ids.slice(i, i + OCR_CHUNK))
+          .eq("page_no", 1);
+        if (error || !data) return null;
+        rows.push(...data);
+      }
+      return rows;
+    },
+    paintMask,
     render: renderReport,
     async sha256(bytes) {
       return hex(await crypto.subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>));

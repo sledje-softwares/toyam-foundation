@@ -59,11 +59,12 @@ const columns: Column<Row>[] = [
     sortable: true,
     cell: (r) => (r.from_name ? `${r.from_name} <${r.from_address}>` : r.from_address),
   },
-  { key: "subject", header: "Subject", sortable: true, cell: (r) => r.subject || "—" },
+  { key: "subject", mobile: "wide", header: "Subject", sortable: true, cell: (r) => r.subject || "—" },
   { key: "reason", header: "Failure", cell: (r) => REASON_LABELS[failureReason(r.error)] },
   { key: "attempts", header: "Attempts", cell: (r) => r.retry_attempts },
   {
     key: "error",
+    mobile: "wide",
     header: "Last error",
     cell: (r) => (
       <details>
@@ -77,6 +78,7 @@ const columns: Column<Row>[] = [
   },
   {
     key: "status",
+    mobile: "badge",
     header: "Status",
     cell: (r) => (
       <div className="space-y-1">
@@ -87,6 +89,7 @@ const columns: Column<Row>[] = [
   },
   {
     key: "retry",
+    mobile: "wide",
     header: "",
     cell: (r) => {
       const queued = r.status === "retry_requested";

@@ -4,6 +4,8 @@
  *
  *   prepare (RPC, the database checks staff / case access / editable status)
  *   → photos (cache first, SHA-256 checked; a file that fails is a placeholder + warning, never placed)
+ *   → Aadhaar masking of the placed copies (D55: OCR rows of the photos, first 8 digits blacked out; a photo that
+ *     cannot be masked is placed with a warning, generation goes on)
  *   → PDF + Word (worker) → SHA-256 → upload to `reports/{case}/{report_id}/report.{pdf|docx}` (no upsert)
  *   → create_report_version (values token → RV409; size must equal the stored object's).
  *
@@ -20,6 +22,7 @@ import {
   preparedProblem,
   reportDataFrom,
 } from "@shared/report/assemble.ts";
+import { createAadhaarMasker, OCR_UNAVAILABLE_WARNING, ocrByEvidence, type OcrRowLike, type Painter } from "@shared/report/aadhaar.ts";
 import type { RenderFilesInput, RenderFilesOutput, RenderStep } from "@shared/report/files.ts";
 import type { ReportLayout } from "@shared/report/spec.ts";
 import {
@@ -64,6 +67,10 @@ export interface RunDeps {
   prepare(caseId: string, mode: Mode): Promise<{ data: unknown; error: DbErrorLike | null }>;
   /** Verified bytes of one photo source (browser file cache), or null / a reason. */
   fetchPhoto: ImageFetcher;
+  /** evidence_ocr rows (page 1, current or not) of these files under the user's RLS; null when they cannot be read. */
+  loadOcr(evidenceIds: string[]): Promise<OcrRowLike[] | null>;
+  /** Blacks out rectangles on the placed copy of a photo (canvas); throws when it cannot. */
+  paintMask: Painter;
   /** The writers (Web Worker, or the page when no worker can run). Throws on a layout or writer error. */
   render(input: RenderFilesInput, onStep: (step: RenderStep) => void): Promise<RenderFilesOutput>;
   sha256(bytes: Uint8Array): Promise<string>;
@@ -99,10 +106,21 @@ async function build(deps: RunDeps, caseId: string, mode: Mode, onProgress: (p: 
   const warnings: string[] = [];
   const plans = planReportPhotos(prepared, mode);
   if (plans.length) onProgress({ phase: "photos", done: 0, total: plans.length });
+  const ids = [...new Set(plans.filter((x) => x.sources.length).map((x) => x.photo.evidence_id))];
+  let ocr: OcrRowLike[] | null = [];
+  if (ids.length) {
+    try {
+      ocr = await deps.loadOcr(ids);
+    } catch {
+      ocr = null;
+    }
+    if (ocr === null) warnings.push(OCR_UNAVAILABLE_WARNING);
+  }
   const loaded = await loadReportPhotos(plans, deps.fetchPhoto, {
     poolSize: PHOTO_POOL,
     warnings,
     onProgress: (done, total) => onProgress({ phase: "photos", done, total }),
+    mask: createAadhaarMasker(ocr ? ocrByEvidence(ocr) : null, deps.paintMask),
   });
   const data = reportDataFrom(prepared, loaded, deps.now().toISOString());
   let out: RenderFilesOutput;

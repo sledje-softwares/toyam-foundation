@@ -169,11 +169,46 @@ Known differences from the HTML writer:
 The workspace's **Generate report** and **Preview** build the files in the office user's browser (`apps/web/lib/report-build`), as the signed-in user (browser Supabase client, anon key + session; no service-role key):
 
 1. `prepare_report_version` (generate) / `prepare_report_preview` (preview, any status) — the database checks staff, `can_manage_case` and, for generate, the editable status.
-2. `assemble.ts`: `preparedProblem` (no / invalid layout, no output format), `planReportPhotos(prepared, mode)` (sections shown by a `photos` block, `imageSources` order, byte budget), `loadReportPhotos(plans, fetcher)` — the fetcher is the hash-checked file cache (`fetchVerified` with the SHA-256 prepare returned for the 1600 px copy / 384 px copy / original); bytes that fail are never placed, the photo becomes a placeholder + warning — and `reportDataFrom`.
+2. `assemble.ts`: `preparedProblem` (no / invalid layout, no output format), `planReportPhotos(prepared, mode)` (sections shown by a `photos` block, `imageSources` order, byte budget), `loadReportPhotos(plans, fetcher)` — the fetcher is the hash-checked file cache (`fetchVerified` with the SHA-256 prepare returned for the 1600 px copy / 384 px copy / original); bytes that fail are never placed, the photo becomes a placeholder + warning; its `mask` hook blacks out Aadhaar numbers on the placed copy, see "Aadhaar masking at report time" — and `reportDataFrom`.
 3. `files.ts`: `createReportRenderer({pdfmake, loadFont}).render({layout, data, formats, now})` binds once, builds a fresh pdfmake definition per render, loads only the font files it uses into pdfmake's virtual file system (`/fonts/<file>` from the app's origin), switches pdfmake's URL and local-file access off, writes the PDF and (if the template allows) the Word file, and returns `placedKeys` for `placedPhotoRecords` (p_photos = photos actually embedded). It runs in a **Web Worker** (Turbopack bundles `new Worker(new URL('./worker.ts', import.meta.url))` as a classic worker with pdfmake in its own chunks); without a worker it runs on the page, yielding before each writer.
 4. SHA-256 (crypto.subtle), upload to `reports/{case_id}/{report_id}/report.{pdf|docx}` (`upsert: false`), `create_report_version`. A failed upload / record keeps the files and the report id for a retry (an "already exists" object of the same size counts as uploaded; `created: false` is success); RV409 or a refusal starts over with a new prepare and a new id.
 
 Measured (`services/intake/test/report-browser-build.test.ts`, Node 22, pdfmake **browser** build, 30 photos: 27 JPEG copies of 250–400 kB + 3 PNG 1600 × 1200 of 1.7 MB, both layouts): PDF ≈ 13.9 MB and Word ≈ 14 MB for 13.9 MB of photos; plan + photos + data ≈ 3 ms (bytes in memory), PDF + Word ≈ 1.2–1.3 s wall. First load of `/reports/[caseRef]` grows by ≈ 0.7 kB gzip; pdfmake (≈ 290 kB gzip), the writers (≈ 20 kB) and supabase-js (≈ 70 kB) load on the first Generate / Preview only; fonts 80–800 kB per file, 2–4 files per report, from the HTTP cache after the first time.
+
+### Aadhaar masking at report time (D55)
+
+OCR text, blocks and descriptions are stored **as read** (`evidence_ocr`, `record_device_ocr` since `20261127200000`); office staff see the full number. Masking happens only on the copy of a photo that is **placed in a generated report or preview**: the first 8 digits of every Aadhaar-like number are blacked out (UIDAI "masked Aadhaar"; the last 4 may stay). Report **text** is not masked. The evidence file, its 1600 / 384 px copies and the file cache are never changed (rule 2): the painter works on the bytes fetched for this report.
+
+```
+planReportPhotos → loadOcr(evidence ids)            evidence_ocr rows, page 1, current or not, under the user's RLS
+                 → loadReportPhotos(…, {mask})      per photo, after the hash-checked fetch:
+                      planPhotoMask (aadhaar.ts)     numbers in the blocks → boxes in OCR pixels
+                      paintMask (mask-image.ts)      decode (EXIF orientation applied) → boxes scaled to the decoded
+                                                     size → black rectangles → JPEG q 0.9 (canvas: no EXIF / location)
+                 → reportDataFrom → PDF and Word    both writers embed the same masked bytes
+```
+
+Code: `supabase/functions/_shared/report/aadhaar.ts` (pure, Deno + Node), `apps/web/lib/report-build/mask-image.ts` (canvas painter), wired in `run.ts` (`RunDeps.loadOcr`, `RunDeps.paintMask`) and `browser.ts`. Tests: `services/intake/test/report-aadhaar.test.ts`, `apps/web/lib/report-build/run.test.ts` ("Aadhaar masking in the run").
+
+**Detection** (`findAadhaar`): 12 digits, first 2–9, plain or 4-4-4 with up to three spaces / hyphens / dots between groups, not inside a longer digit run (a 16-digit VID has its first 8 digits covered too). Devanagari digits (०–९) count as digits. Inside a number O/o/D → 0, I/l/| → 1, S → 5, B → 8 are accepted, but at least 10 of the 12 must be real digits. Rows stored before D55 hold `XXXX XXXX 1234` (masked on the phone, the picture still shows the number): that pattern is found too. Blocks (one per text line) on the same row (vertical centres within half a line height) are read together, so a number split over two blocks is found; blocks more than 1.5 line heights apart are not joined.
+
+**Boxes**: inside a block the x-range of the first 8 digits is estimated from character widths (digit 1, space 0.45, punctuation 0.4, capitals 1.15, lower case 0.9 / 0.5 for i l j t f r, Devanagari signs 0.3), padded by **one digit width on each side** and **15 % of the block height above and below**. A number split over blocks gets one box per block.
+
+**Coordinate spaces** (`ocrSpace`): device OCR (`source_width` 1600 / 384) is in that copy's pixels (`evidence_derivatives.pixel_width/height`; if the copy is not recorded, the embedded image scaled to that long edge); server OCR (`source_width` null) is in the original's pixels, which are known only when the original itself is embedded. Boxes are scaled to the decoded image, rounded outwards and clipped; an aspect ratio more than 3 % off (e.g. OCR of a rotated picture) is refused. Every OCR row of the file is used (device + server), the rectangles are combined.
+
+**Warnings** (never blocking; the photo is placed as it is unless masked; prefix `Aadhaar masking: `, shown in a separate box under Generate and in the preview):
+
+| Case | Warning |
+|---|---|
+| ID photo (category `id_document`, or a code containing aadhaar / kyc) without OCR rows | `ID photo "…" (Section) could not be masked automatically: no text has been read from it yet.` |
+| ID photo whose OCR holds no number | `… no Aadhaar number was found in the text read from it.` |
+| Number in the text that no block places, or OCR in a space the embedded image cannot be mapped to | `… the number read from it could not be placed on the image.` (or "not every number …") |
+| Canvas failed | `… the photo could not be edited in this browser.` |
+| `evidence_ocr` could not be read at all | one warning: no number was masked, generate again |
+
+Each ends with "Check it in the report and cover the number before sending, or mark the photo not relevant." The warnings are returned with the run (`GenerateResult.warnings`) but **not stored with the version** (no column for them; see the limitations below). The `report-generate` edge function has no canvas: it loads the same OCR rows and prints the placeholder box for any photo that shows a number (warning), so it never embeds an unmasked number.
+
+Limitations: the x-range inside a long block is an estimate (fonts differ; a label in wide capitals before the number can shift it by a digit, which the padding absorbs in normal cases); a photo whose OCR missed the number (blur, glare, angle, a card upside down) is not masked, and only ID-category photos warn about it; insurer attachments are masked only when server OCR has read them (no OCR engine is deployed yet, so today they are not); handwritten numbers and numbers in a PDF annexure are not covered (annexures are not embedded).
 
 ## What the two samples contain (for transcribing them)
 

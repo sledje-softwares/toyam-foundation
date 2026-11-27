@@ -3,7 +3,7 @@ import { formatDateTime, ROLE_LABELS } from "@/lib/format";
 import { TASK_KIND_LABELS } from "@/lib/cases";
 import type { Enums } from "@/lib/database.types";
 
-export type ThreadFile = { id: string; original_filename: string | null; evidence_type: Enums<"evidence_type">; withdrawn_at: string | null };
+export type ThreadFile = { id: string; original_filename: string | null; evidence_type: Enums<"evidence_type">; withdrawn_at: string | null; comments?: { id: string }[] | null };
 
 export type ThreadMessage = {
   id: string;
@@ -29,6 +29,12 @@ function Files({ files }: { files: ThreadFile[] }) {
         <li key={f.id} className="rounded border border-border bg-surface px-2 py-1">
           <span aria-hidden="true">{f.evidence_type === "photo" ? "▣" : f.evidence_type === "audio" ? "♪" : "▤"} </span>
           {f.original_filename || `${f.evidence_type} file`}
+          {f.comments && f.comments.length > 0 && (
+            <span className="text-text-muted" title={`${f.comments.length} operator comment(s), see Evidence`}>
+              {" "}
+              💬 {f.comments.length}
+            </span>
+          )}
           {f.withdrawn_at && <span className="text-text-muted"> (withdrawn)</span>}
         </li>
       ))}

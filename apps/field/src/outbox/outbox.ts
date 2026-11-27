@@ -846,7 +846,7 @@ export function toPostMessage(it: OutboxItem): PostMessage {
       category_code: it.category_code,
       ...(f.device_info ? { device_info: f.device_info } : {}),
       ...(f.exif ? { exif: f.exif } : {}),
-      // device OCR goes separately through record_device_ocr (masked, checked), never in p_items
+      // device OCR goes separately through record_device_ocr (checked), never in p_items
     })),
   };
 }

@@ -1,4 +1,4 @@
--- record_device_ocr (20261119600000): device OCR of the 1600 px copy, masking, idempotency, access
+-- record_device_ocr (20261119600000): device OCR of the 1600 px copy, stored as sent (D55: no masking; 20261127200000), idempotency, access
 -- (owner operator, other operator, staff, anon, D43 late window), field cannot read OCR, the legacy
 -- `ocr` item and direct inserts are dropped, the server OCR job is skipped. Self-contained; rolled back.
 begin;
@@ -83,13 +83,13 @@ select is((select count(*)::int from public.evidence_ocr o join public.evidence 
 select is((select count(*)::int from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d5', 32)), 0,
     'the direct insert stored nothing');
 select is((select o.text from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
-    E'MH 12 AB 3456\nAadhaar XXXX XXXX 0123\nरजिस्ट्रेशन', 'Aadhaar-like number masked in the text, other numbers kept');
+    E'MH 12 AB 3456\nAadhaar 2345 6789 0123\nरजिस्ट्रेशन', 'text stored as sent (no masking, D55)');
 select is((select o.blocks->1->>'text' from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
-    'Aadhaar XXXX XXXX 0123', 'masked in the blocks');
+    'Aadhaar 2345 6789 0123', 'blocks stored as sent');
 select is((select o.blocks->0 from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
     '{"text":"MH 12 AB 3456","bbox":[10,20,300,40],"conf":0.95,"line":0}'::jsonb, 'block shape kept');
 select is((select o.summary from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
-    'Registration certificate; text read from the 1600 px copy: MH 12 AB 3456 · Aadhaar XXXX XXXX 0123', 'masked in the description');
+    'Registration certificate; text read from the 1600 px copy: MH 12 AB 3456 · Aadhaar 2345-6789-0123', 'description stored as sent');
 select is((select row(o.engine, o.page_no, o.source_width, o.is_current, o.created_by::text, o.lang)::text
              from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
     row('mlkit_device', 1, 1600, true, '30500000-0000-4000-8000-0000000000f1', 'latin+devanagari')::text, 'engine, page, source copy, current, author');
@@ -98,13 +98,13 @@ select is((select row(j.status, j.last_error)::text from public.processing_jobs 
 select is((select j.status::text from public.processing_jobs j join public.evidence e on e.id = j.evidence_id
             where e.sha256 = repeat('d1', 32) and j.stage = 'label'), 'queued', 'the label job is untouched');
 select is(private.mask_aadhaar('a 234567890123 b 1234 5678 9012 c 98765432101234 d 2345-6789-0123'),
-    'a XXXX XXXX 0123 b 1234 5678 9012 c 98765432101234 d XXXX XXXX 0123', 'masking: 12 digits starting 2-9, plain or grouped, not inside longer numbers');
+    'a XXXX XXXX 0123 b 1234 5678 9012 c 98765432101234 d XXXX XXXX 0123', 'private.mask_aadhaar kept (unused upstream, D55): 12 digits starting 2-9, plain or grouped, not inside longer numbers');
 
 -- [22-23] staff read it
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"30500000-0000-4000-8000-0000000000b1","role":"authenticated"}';
 select is((select o.summary from public.evidence_ocr o join public.evidence e on e.id = o.evidence_id where e.sha256 = repeat('d1', 32)),
-    'Registration certificate; text read from the 1600 px copy: MH 12 AB 3456 · Aadhaar XXXX XXXX 0123', 'the case owner reads the summary');
+    'Registration certificate; text read from the 1600 px copy: MH 12 AB 3456 · Aadhaar 2345-6789-0123', 'the case owner reads the summary');
 select throws_ok($$select public.record_device_ocr('30700000-0000-4000-8000-000000000001', repeat('d2', 32), 1600, null, null, 'x', '[]', 0.9, null)$$,
     '42501', null::text, 'staff do not record device OCR');
 

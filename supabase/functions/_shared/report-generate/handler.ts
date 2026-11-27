@@ -5,6 +5,7 @@
 // the `reports` storage policies and Supabase Storage images are downloaded under `email-raw`'s, so
 // no service-role key is used (rule 4). R2 images are read with the read-only R2 token, only for keys
 // that prepare_report_version() returned to this caller.
+import { createAadhaarMasker, OCR_UNAVAILABLE_WARNING, ocrByEvidence, type OcrRowLike } from '../report/aadhaar.ts';
 import { INVALID_LAYOUT_MESSAGE, type LoadedPhoto, loadReportPhotos, placedPhotoKeys, placedPhotoRecords, planReportPhotos, preparedProblem, reportDataFrom } from '../report/assemble.ts';
 import { bindReport, LayoutError, type ReportData, type ResolvedDocument } from '../report/bind.ts';
 import { htmlFromDocument, type PdfOptions } from '../report/html.ts';
@@ -32,6 +33,8 @@ export interface Gateway {
   prepare(caseId: string, preview: boolean): Promise<{ data: PreparedReport | null; error: DbErrorLike | null }>;
   /** Bytes of one image (R2 with the read token, Storage `email-raw` with the caller's client); null when missing, refused or larger than maxBytes. */
   fetchImage(src: ImageSource, maxBytes: number): Promise<Uint8Array | null>;
+  /** evidence_ocr rows (page 1) of these files with the caller's client; null when they cannot be read. */
+  loadOcr(evidenceIds: string[]): Promise<OcrRowLike[] | null>;
   /** POST {html, pdfOptions} to Browser Rendering /pdf. */
   renderPdf(html: string, pdfOptions: PdfOptions): Promise<PdfResult>;
   /** Upload to bucket `reports` with the caller's client, no upsert. */
@@ -75,7 +78,20 @@ async function loadPhotos(gw: Gateway, env: Env, prepared: PreparedReport, mode:
     gw.logError('R2 is not configured');
     return fail(503, 'storage_not_configured', 'File storage is not available. Try again later.');
   }
-  return loadReportPhotos(plans, (src) => gw.fetchImage(src, MAX_IMAGE_BYTES), { poolSize: FETCH_POOL, warnings });
+  // D55: the edge function cannot paint (no canvas), so a photo showing an Aadhaar number is not placed here
+  const ids = [...new Set(plans.filter((x) => x.sources.length).map((x) => x.photo.evidence_id))];
+  let ocr: OcrRowLike[] | null = [];
+  if (ids.length) {
+    try {
+      ocr = await gw.loadOcr(ids);
+    } catch {
+      ocr = null;
+    }
+    if (ocr === null) warnings.push(OCR_UNAVAILABLE_WARNING);
+  }
+  return loadReportPhotos(plans, (src) => gw.fetchImage(src, MAX_IMAGE_BYTES), {
+    poolSize: FETCH_POOL, warnings, mask: createAadhaarMasker(ocr ? ocrByEvidence(ocr) : null, null),
+  });
 }
 
 export async function handleReportGenerate(method: string, hasAuth: boolean, bodyText: string, gw: Gateway, env: Env): Promise<Reply> {

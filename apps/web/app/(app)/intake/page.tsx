@@ -79,6 +79,7 @@ export default async function IntakeQueuePage({ searchParams }: { searchParams: 
     },
     {
       key: "subject",
+      mobile: "wide",
       header: "Subject",
       cell: (r) => <span className="block max-w-80 truncate">{r.emails.subject || "(no subject)"}</span>,
     },
@@ -96,6 +97,7 @@ export default async function IntakeQueuePage({ searchParams }: { searchParams: 
     },
     {
       key: "status",
+      mobile: "badge",
       header: "Status",
       cell: (r) => {
         const why = REVIEW_REASONS[reviewReason(r)];

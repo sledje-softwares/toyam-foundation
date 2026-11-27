@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLabelStage, ESCALATION_SUFFIX } from '../src/stages/label.ts';
+import { createLabelStage, commentsBlock, ESCALATION_SUFFIX } from '../src/stages/label.ts';
 import type { LabelDeps } from '../src/stages/label.ts';
 import { TemplateCache, buildContext } from '../src/template-context.ts';
 import { memoryLogger } from '../src/log.ts';
@@ -76,7 +76,7 @@ describe('label stage: input', () => {
     assert.equal(s.store.reads.length, 0, 'the PDF itself is not downloaded');
   });
 
-  test('existing OCR text (device first) is added after the image as a short excerpt, Aadhaar-like numbers masked', async () => {
+  test('existing OCR text (device first) is added after the image as a short excerpt, sent as read (D55)', async () => {
     const s = setup({ primary: [answer([['dl_document', 0.95]])] });
     s.deps.ocrExcerptChars = 120;
     withCopy(s.db, s.store);
@@ -88,8 +88,8 @@ describe('label stage: input', () => {
     assert.equal((await run(job())).status, 'done');
     const ins = s.primary.requests[0].instruction;
     assert.match(ins, /^Label this image\.\nText read from this file by OCR \(excerpt, may contain errors\):\n<ocr_text>\nUnion of India\nDriving Licence MH1220110012345/);
-    assert.match(ins, /Aadhaar XXXX XXXX 9012 and XXXX XXXX 9012/);
-    assert.ok(!ins.includes('1234 5678') && !ins.includes('server text'));
+    assert.match(ins, /Aadhaar 1234 5678 9012 and 123456789012/);
+    assert.ok(!ins.includes('XXXX') && !ins.includes('server text'));
     assert.ok(ins.length < 250, 'trimmed to the excerpt length');
     assert.ok(s.primary.requests[0].image, 'the image is still sent');
   });
@@ -234,5 +234,65 @@ describe('template context', () => {
     const ctx = buildContext(null, CATEGORIES, null);
     assert.equal(ctx.fieldKeys.size, 0);
     assert.ok(!ctx.system.includes('The investigation report has these fields'));
+  });
+});
+
+describe('label stage: operator comments (D54)', () => {
+  const c = (body: string, at: string) => ({ body, created_at: at });
+
+  test('no comments: the instruction is unchanged', () => {
+    assert.equal(commentsBlock([], 1500), null);
+    assert.equal(commentsBlock([c('   ', '2026-01-01')], 1500), null);
+    assert.equal(commentsBlock([c('x', '2026-01-01')], 0), null);
+  });
+
+  test('ordered oldest first, lines trimmed, numbers sent as written (D55)', () => {
+    const out = commentsBlock([
+      c('  second  one \n line ', '2026-01-02T10:00:00Z'),
+      c('first: Aadhaar 1234 5678 9012', '2026-01-01T10:00:00Z'),
+    ], 1500);
+    assert.equal(out, 'first: Aadhaar 1234 5678 9012\nsecond one line');
+  });
+
+  test('total cap keeps the newest comments; a single over-long one is cut', () => {
+    const out = commentsBlock([c('a'.repeat(50), '2026-01-01'), c('b'.repeat(50), '2026-01-02'), c('c'.repeat(50), '2026-01-03')], 110);
+    assert.equal(out, 'b'.repeat(50) + '\n' + 'c'.repeat(50));
+    assert.equal(commentsBlock([c('z'.repeat(500), '2026-01-01')], 100), 'z'.repeat(100));
+  });
+
+  test('the stage puts comments after the OCR excerpt and loads them from the db', async () => {
+    const s = setup({ primary: [answer([['dl_document', 0.95]])] });
+    withCopy(s.db, s.store);
+    s.db.ocr.push({ id: 'o1', evidence_id: 'e1', page_no: 1, engine: 'mlkit_device', text: 'Driving Licence', blocks: [], mean_confidence: 0.9, is_current: true });
+    s.db.comments.set('e1', [c('rear left door, taken at the garage', '2026-01-01T10:00:00Z')]);
+    assert.equal((await createLabelStage(s.deps)(job())).status, 'done');
+    const ins = s.primary.requests[0].instruction;
+    assert.match(ins, /<\/ocr_text>\nComments the field operator added about this file \(context only, oldest first\):\n<operator_comments>\nrear left door, taken at the garage\n<\/operator_comments>$/);
+  });
+
+  test('a PDF text instruction also carries the comments; commentChars 0 turns them off', async () => {
+    const s = setup({ primary: [answer([['dl_document', 0.97]]), answer([['dl_document', 0.97]])] });
+    s.db.evidence.set('e1', evidence({ evidence_type: 'document', mime_type: 'application/pdf' }));
+    s.db.ocr.push({ id: 'o1', evidence_id: 'e1', page_no: 1, engine: 'pdf_text_layer', text: 'Union of India Driving Licence issued by the transport department', blocks: [], mean_confidence: 1, is_current: true });
+    s.db.comments.set('e1', [c('scan of the licence', '2026-01-01')]);
+    await createLabelStage(s.deps)(job());
+    assert.match(s.primary.requests[0].instruction, /<operator_comments>\nscan of the licence/);
+    s.deps.commentChars = 0;
+    s.db.labels.length = 0;
+    await createLabelStage(s.deps)(job());
+    assert.ok(!s.primary.requests[1].instruction.includes('operator_comments'));
+  });
+
+  test('a re-queued label job runs again over existing labels: one more call, earlier llm labels superseded', async () => {
+    const s = setup({ primary: [answer([['vehicle_photo', 0.9]]), answer([['odometer_photo', 0.9]])] });
+    const run = createLabelStage(s.deps);
+    assert.equal((await run(job())).status, 'done');
+    s.db.comments.set('e1', [c('this is the odometer', '2026-01-01')]);
+    assert.equal((await run(job())).status, 'done');
+    assert.equal(s.primary.requests.length, 2);
+    assert.equal(s.escalation?.requests.length ?? 0, 0);
+    const active = s.db.labels.filter((l) => l.is_active);
+    assert.equal(active.length, 1);
+    assert.equal(active[0].category_id, 'c-odo');
   });
 });

@@ -2,7 +2,7 @@
 // document to the photos actually placed (create_report_version's p_photos). Shared by the office user's browser
 // (apps/web/lib/report-build, D51) and the report-generate edge function, so both pick, budget, order and record
 // photos the same way. Pure: the bytes come from an injected fetcher; no npm imports (Deno + Node type stripping).
-import type { RBlock, ReportData, ReportPhoto, ResolvedDocument } from './bind.ts';
+import type { RBlock, ReportData, ReportImage, ReportPhoto, ResolvedDocument } from './bind.ts';
 import { fieldsFromSections } from './bind.ts';
 import { sniffImage } from './image.ts';
 import { validateLayout } from './validate.ts';
@@ -83,14 +83,23 @@ export interface LoadedPhoto {
 export type ImageFetcher = (src: ImageSource, photo: PreparedPhoto) => Promise<Uint8Array | null | { reason: string }>;
 
 /**
+ * Changes the image placed for a photo after it was fetched and checked (D55: Aadhaar numbers blacked out on the
+ * report copy, aadhaar.ts). `image: null` prints the placeholder; its warnings explain why.
+ */
+export type PhotoMasker = (
+  photo: PreparedPhoto, src: ImageSource, image: ReportImage, label: string,
+) => Promise<{ image: ReportImage | null; warnings: string[] }>;
+
+/**
  * Fetches each planned photo (`poolSize` at a time, results in plan order), trying its sources in order. Bytes must be
  * a JPEG or PNG of at most MAX_IMAGE_BYTES; anything else falls through to the next source. A photo with no usable
- * file gets `image: null` (the writers print a dashed box with the caption) and a warning.
+ * file gets `image: null` (the writers print a dashed box with the caption) and a warning. `mask` runs on the first
+ * usable file of each photo.
  */
 export async function loadReportPhotos(
   plans: PhotoPlan[],
   fetchImage: ImageFetcher,
-  opts: { poolSize: number; warnings: string[]; onProgress?: (done: number, total: number) => void },
+  opts: { poolSize: number; warnings: string[]; onProgress?: (done: number, total: number) => void; mask?: PhotoMasker },
 ): Promise<LoadedPhoto[]> {
   let done = 0;
   const tick = () => opts.onProgress?.(++done, plans.length);
@@ -108,14 +117,14 @@ export async function loadReportPhotos(
       if (got.length > MAX_IMAGE_BYTES) { reason = `the file is larger than ${MAX_IMAGE_BYTES / (1024 * 1024)} MB`; continue; }
       const mime = sniffImage(got);
       if (!mime) { reason = 'the file is not a JPEG or PNG'; continue; }
+      let image: ReportImage | null = { bytes: got, mime, ...(src.width && src.height ? { width: src.width, height: src.height } : {}) };
+      if (opts.mask) {
+        const m = await opts.mask(p, src, image, label);
+        opts.warnings.push(...m.warnings);
+        image = m.image;
+      }
       tick();
-      return {
-        photo: p,
-        rp: {
-          evidence_id: p.evidence_id, caption: p.caption,
-          image: { bytes: got, mime, ...(src.width && src.height ? { width: src.width, height: src.height } : {}) },
-        },
-      };
+      return { photo: p, rp: { evidence_id: p.evidence_id, caption: p.caption, image } };
     }
     opts.warnings.push(`${label}: ${reason ?? 'not available'}; an empty box with the caption is printed instead.`);
     tick();

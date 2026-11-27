@@ -1,4 +1,4 @@
-// Thread composer (5.4 / 5.5): text, attach (camera / gallery / document), optional caption and a one-tap
+// Thread composer (5.4 / 5.5): text, attach (camera / document scan / gallery / document), optional caption and a one-tap
 // category chip. Send = outbox.enqueue() for each message; the thread shows it at once with 🕓.
 // Gallery and document files are accepted exactly like camera files, with no mark and no block (D18).
 import * as DocumentPicker from 'expo-document-picker';
@@ -9,8 +9,9 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View 
 import { attachState } from '../capture/context';
 import { drafts } from '../capture/draft';
 import { buildNewItems, fileCountLine, MAX_FILES_PER_MESSAGE, MAX_TEXT, NO_TASK_TEXT, type PreparedFile } from '../capture/item';
-import { CaptureError, discardPrepared, preparePicked, type Picked } from '../capture/prepare';
+import { CaptureError, discardPrepared, preparePicked, prepareScanPage, type Picked } from '../capture/prepare';
 import { useCaptureContext } from '../capture/useCaptureContext';
+import { scanner, type ScannedPage } from '../scan/native';
 import { colors, s } from '../theme';
 import { Sheet } from './components';
 import { useOffline } from './OutboxProvider';
@@ -30,13 +31,13 @@ export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskI
   const [busy, setBusy] = useState(false);
   const attach = attachState(ctx, NO_TASK_TEXT);
 
-  async function addPicked(list: Picked[]) {
+  async function addPrepared<T>(list: T[], prepare: (item: T, index: number) => Promise<PreparedFile>) {
     setPreparing((n) => n + list.length);
     const ok: PreparedFile[] = [];
     const errors = new Set<string>();
-    for (const p of list) {
+    for (const [i, p] of list.entries()) {
       try {
-        ok.push(await preparePicked(p, 'gallery'));
+        ok.push(await prepare(p, i));
       } catch (e) {
         errors.add(errorText(e));
       } finally {
@@ -45,6 +46,26 @@ export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskI
     }
     drafts.addFiles(caseId, ok);
     if (errors.size > 0) Alert.alert('Some files were not added', [...errors].join('\n'));
+  }
+
+  const addPicked = (list: Picked[]) => addPrepared(list, (p) => preparePicked(p, 'gallery'));
+
+  /** The scanned pages join the picked files, so the operator can add a caption before Send. */
+  async function scanDocument() {
+    setMenu(false);
+    if (!scanner || !guardCapture()) return;
+    let pages: ScannedPage[];
+    try {
+      pages = await scanner.scan(MAX_FILES_PER_MESSAGE);
+    } catch {
+      Alert.alert(
+        'Scanner not available',
+        'The first scan on a phone needs internet. Connect and try again, or use Camera to take a photo of the document.',
+      );
+      return;
+    }
+    const capturedAt = new Date().toISOString();
+    await addPrepared(pages, (page, i) => prepareScanPage(page, capturedAt, i + 1));
   }
 
   async function pickGallery() {
@@ -174,6 +195,7 @@ export function Composer({ caseId, taskId, refreshKey }: { caseId: string; taskI
       </View>
       <Sheet visible={menu} onClose={() => setMenu(false)}>
         <MenuRow label="Camera" onPress={openCamera} />
+        {scanner ? <MenuRow label="Scan document" onPress={() => void scanDocument()} /> : null}
         <MenuRow label="Photos from gallery" onPress={() => void pickGallery()} />
         <MenuRow label="Document (PDF)" onPress={() => void pickDocument()} />
         <MenuRow label="Cancel" onPress={() => setMenu(false)} muted />

@@ -12,7 +12,7 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="mb-6">
+    <header className="mb-5 sm:mb-6">
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumb" className="mb-1 text-sm text-text-muted">
           <ol className="flex flex-wrap items-center gap-1">
@@ -32,11 +32,11 @@ export function PageHeader({
         </nav>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="break-words text-xl font-semibold sm:text-2xl">{title}</h1>
           {badges}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
     </header>
   );

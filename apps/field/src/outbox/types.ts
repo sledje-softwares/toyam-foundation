@@ -34,7 +34,7 @@ export interface OcrBlock {
 
 /**
  * Text read on the phone from the 1600 px copy (ML Kit, Latin + Devanagari) with a short description,
- * waiting for record_device_ocr(). Aadhaar-like numbers are already masked (src/ocr/mask.ts).
+ * waiting for record_device_ocr(). Text is sent as read (D55: no masking before the report step).
  * Best effort and invisible to the operator, like the copies.
  */
 export interface OutboxOcr {

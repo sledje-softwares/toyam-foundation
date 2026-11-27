@@ -75,6 +75,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     { key: "region", header: "Region", sortable: true, cell: (r) => r.region || "—" },
     {
       key: "contact",
+      mobile: "wide",
       header: "Email / Mobile",
       cell: (r) => {
         const lines = contactLines(r);

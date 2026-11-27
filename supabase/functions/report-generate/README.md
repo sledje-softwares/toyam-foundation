@@ -40,6 +40,12 @@ Authorization: Bearer <signed-in staff user's access token>      (verify_jwt = t
      WebP / other types without a copy, larger files, failed fetches and non-image bytes get
      `image: null`: the writers draw a dashed box "Photo not available: caption", and the reply
      carries a warning. Images are never decoded or re-encoded.
+   - **Aadhaar (D55)**: the `evidence_ocr` rows (page 1) of the planned photos are read with the
+     caller's client (`Gateway.loadOcr`). This function has no canvas, so it cannot black out a
+     number: a photo whose OCR shows an Aadhaar-like number gets `image: null` (placeholder box) and
+     a warning starting `Aadhaar masking: `; an ID-category photo with no number found is placed
+     with a warning. The browser path masks instead (`docs/13-report-layouts.md` "Aadhaar masking at
+     report time"). OCR rows that cannot be read: one warning, photos are placed.
    - Byte budget per report: **24 MB** of images for generate (Browser Rendering's body limit is
      50 MB and base64 adds a third), 12 MB for a preview; photos past it become placeholders with a
      warning. The budget counts the recorded size of the first choice.

@@ -22,7 +22,7 @@ export default async function CaseThreadPage({ params }: { params: Promise<{ ref
   const { data, error } = await supabase
     .from("case_messages")
     .select(
-      "id, created_at, kind, body, visibility, withdrawn_at, sender:profiles!case_messages_sender_id_fkey(full_name, role), task:tasks!case_messages_task_id_fkey(title, kind, status), files:evidence!evidence_message_id_fkey(id, original_filename, evidence_type, withdrawn_at)",
+      "id, created_at, kind, body, visibility, withdrawn_at, sender:profiles!case_messages_sender_id_fkey(full_name, role), task:tasks!case_messages_task_id_fkey(title, kind, status), files:evidence!evidence_message_id_fkey(id, original_filename, evidence_type, withdrawn_at, comments:evidence_comments(id))",
     )
     .eq("case_id", c.id)
     .order("created_at", { ascending: false })

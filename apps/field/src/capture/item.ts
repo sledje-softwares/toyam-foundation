@@ -58,6 +58,12 @@ export function sandboxName(id: string, ext: string): string {
   return `${safeId}.${safeExt}`;
 }
 
+/** Name of a scanned page, so the office can tell scans from photos: `Scan_<time>_p<n>.jpg`. */
+export function scanName(capturedAtIso: string, page: number): string {
+  const stamp = capturedAtIso.replace(/\.\d+Z$/, 'Z').replace(/[-:]/g, '').replace('T', '_');
+  return `Scan_${stamp}_p${page}.jpg`;
+}
+
 /** Original name for the office: the picker's name, or a readable one for camera shots. */
 export function originalName(source: CaptureSource, pickedName: string | null | undefined, capturedAtIso: string, ext: string): string | null {
   const n = pickedName?.trim();

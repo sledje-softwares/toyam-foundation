@@ -144,3 +144,7 @@ IGI General · Motor · OD · v3                     [Change template]   step 2
 - **G3** Insured-name search reads `case_field_values` with `ilike` (fine at ~300 cases a month); add a trigram index or a `cases.insured_name` cache if it gets slow.
 - **G4** No case-level "parties" UI; parties are not filled by intake today.
 - **Q** Should office staff see only their own cases by default? Current choice: everyone sees all; "Mine" is one click (`owner=me`).
+
+## D54: operator comments on files
+
+Evidence tab: the labelling model's description is printed as text under the label badges (still the tooltip too), and operator comments added after sending show under each file (author, time, body; oldest first, newest last; only the newest 3 until "Show all"). Source: `evidence_comments` embedded from `evidence` (RLS, staff in scope). Thread tab: a file chip shows "💬 n" when it has comments. Shared component `components/evidence/operator-comments.tsx`; pure mapping in `lib/evidence-comments.ts`.

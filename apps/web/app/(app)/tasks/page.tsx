@@ -110,6 +110,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     { key: "title", header: "Task", cell: (r) => <span className="block max-w-72 truncate">{r.title}</span> },
     {
       key: "case",
+      mobile: "wide",
       header: "Case",
       cell: (r) => (
         <span className="block">
@@ -124,6 +125,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     },
     {
       key: "kind",
+      mobile: "badge",
       header: "Kind",
       cell: (r) => <TaskKindBadge kind={r.kind} />,
     },
@@ -140,7 +142,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <span className="text-text-muted">Unassigned</span>
         ),
     },
-    { key: "status", header: "Status", cell: (r) => <StatusBadge kind="task_status" value={r.status} /> },
+    { key: "status", mobile: "badge", header: "Status", cell: (r) => <StatusBadge kind="task_status" value={r.status} /> },
     {
       key: "due_at",
       header: "Due",

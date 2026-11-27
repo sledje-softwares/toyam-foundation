@@ -108,6 +108,7 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
     { key: "formats", header: "Formats", cell: (r) => formatsLabel(r.formats) },
     {
       key: "to",
+      mobile: "wide",
       header: "Recipients",
       cell: (r) => {
         const s = recipientsSummary(r.to_addresses, r.cc_addresses);
@@ -134,6 +135,7 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
     },
     {
       key: "state",
+      mobile: "badge",
       header: "State",
       cell: (r) => {
         const s = SUBMISSION_STATES[stateOf(r)];
@@ -146,6 +148,7 @@ export default async function SubmissionsPage({ searchParams }: { searchParams: 
     },
     {
       key: "actions",
+      mobile: "wide",
       header: "Actions",
       cell: (r) => {
         const c = one(r.cases);

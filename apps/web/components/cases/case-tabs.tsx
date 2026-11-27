@@ -10,8 +10,8 @@ export function CaseTabs({ tabs }: { tabs: CaseTab[] }) {
   const pathname = usePathname();
   const root = tabs[0]?.href;
   return (
-    <nav aria-label="Case sections" className="mb-6 border-b border-border">
-      <ul className="-mb-px flex flex-wrap gap-1">
+    <nav aria-label="Case sections" className="-mx-4 mb-6 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0">
+      <ul className="-mb-px flex gap-1">
         {tabs.map((t) => {
           const active = t.href === root ? pathname === root : pathname === t.href || pathname.startsWith(t.href + "/");
           return (
@@ -19,7 +19,7 @@ export function CaseTabs({ tabs }: { tabs: CaseTab[] }) {
               <Link
                 href={t.href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-10 items-center gap-2 border-b-2 px-3 text-sm ${
+                className={`inline-flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm ${
                   active ? "border-primary font-medium text-primary" : "border-transparent text-text-muted hover:text-text"
                 }`}
               >

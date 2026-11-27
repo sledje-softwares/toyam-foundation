@@ -6,7 +6,7 @@ import { clampPan, doubleTapScale, isDoubleTap, MAX_SCALE, pinchScale } from './
 
 const tf = (over: Partial<ThreadFile> = {}): ThreadFile => ({
   key: 'sha1', sha256: 'sha1', evidenceId: null, kind: 'image', name: 'a.jpg', sizeBytes: 5_000_000, mime: 'image/jpeg',
-  local: null, copies: [], state: null, progress: null, ...over,
+  local: null, copies: [], state: null, progress: null, labels: [], comments: [], processing: null, ...over,
 });
 
 describe('sourcePlan', () => {

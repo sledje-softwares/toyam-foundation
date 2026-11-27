@@ -25,7 +25,8 @@ Android app for field operators. It should feel like the chat app they already u
 |---|---|---|
 | Cases | Tabs **Open** (has an open task) / **Completed**; last message preview, time, unread badge; search by name / claim no. / vehicle. Header **⋮** menu (same style as the thread's): **Outbox** ("Outbox (N)" while files wait; always listed) and **Sign out** (2026-11-19: moved off the bottom of the list; the sign-out check of spec 9 is unchanged). The "Outbox (N)" row above the tabs stays while files wait | `field_case_list()`; menu entries `src/ui-logic/caseListMenu.ts` |
 | Thread | Case header (insured, vehicle, location, insurer points), pinned checklist, messages incl. system events and requests, **attachments** (thumbnails, file chips, full-screen viewer; see "Thread attachments"), composer. Header **⋮** menu: Checklist, Mark task done, **Outbox** (gap 30) | `case_messages`, `evidence` + `evidence_derivatives` + `v_evidence_processing` (RLS), `case_thread_state()`, `mark_thread_read()`, `case_field_values` (intake only), `v_case_checklist` |
-| Camera | In-app camera, burst, document mode (edge crop) | local |
+| Camera | In-app camera, burst | local |
+| Scan document | Attach menu → "Scan document": Google ML Kit document scanner (edge detection, perspective correction, shadow cleanup, crop and filter), up to 30 pages, one JPEG per page named `Scan_<time>_p<n>.jpg`, added to the composer. `capture_source` `camera` (the scanner's gallery import is off), no GPS. Needs Google Play services; the first scan on a phone needs internet. Camera and gallery photos are sent as taken | `modules/toyam-scanner` |
 | Picker | Gallery and documents, multi-select | local |
 | Share target | "Share → Toyam Field" from any app → choose the case (open cases, newest first) → the files land in that case's composer → optional caption and tag → send. See "Share to Toyam" | Android intent `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for `image/*`, `video/*`, `application/pdf`, `audio/*` (expo-share-intent config plugin) |
 | Checklist | Opened from the thread's menu (D41); items with progress; **ticks itself once a file is labelled and matched** (D30, D35); tap an item to capture directly into it | `task_checklist_items`, `v_case_checklist`, `evidence_labels` (realtime) |
@@ -58,7 +59,7 @@ Every message with files shows them, own messages and office messages posted to 
 
 - **Images:** a grid of square thumbnails (1 large; 2 or 4 as 2 across; 3, 5, 6 as 3 across). With more than 6 images the 6th tile shows **"+N"** (N = images not shown, the covered tile included). Thumbnails use the **384 px copy** and decode at tile size (`resizeMethod="resize"`); the server's full-size original is never loaded for a tile (only a small original ≤ 1.5 MB when there is no copy, e.g. an office photo; otherwise a placeholder tile that opens the viewer).
 - **Documents, audio, video:** a chip with an icon, the file name and size ("bill.pdf · 1.2 MB"). Duration is not stored, so it is not shown.
-- **Viewer:** tap a tile → full screen, black, swipe between the message's images ("2 of 7"), pinch to zoom (1–4×), drag to pan while zoomed, double-tap to toggle 2.5×. It uses the **1600 px copy** (or a small original ≤ 15 MB without copies), the thumbnail as a last resort. Gestures are React Native's own PanResponder: no native gesture library, so no rebuild.
+- **Viewer:** tap a tile → full screen, black, swipe between the message's images ("2 of 7"), pinch to zoom (1–4×), drag to pan while zoomed, double-tap to toggle 2.5×. It uses the **1600 px copy** (or a small original ≤ 15 MB without copies), the thumbnail as a last resort. Gestures are React Native's own PanResponder: no native gesture library, so no rebuild. Below the photo: its **details and comments** panel (see "File details and comments"); **Hide** gives the photo the whole screen, a bar **"Details and comments (n)"** brings it back.
 - **One bubble, state in place (user feedback 2026-11-19):** a sent message appears at once at the bottom and never disappears or jumps. Its state text changes in place next to the tick: **"Saved on this phone"** 🕓 → **"Sending {k} of {n} files"** 🕓 (per-file progress on the thumbnails) → **"Sent"** ✓ → **"Processed"** ✓✓ → **"Seen by the office"** blue ✓✓; held: **"Waiting for the office"**. The text shows on items still on the phone and on the newest own message; older messages keep the tick only.
 - **While on the phone:** the bubble shows the phone's own files (the 384 px copy as soon as it is made, the original before that) and a state per file: 🕓 waiting, **"{p}%"** with a bar while sending, ✓ sent, ⏸ waiting for the office (held). When something is in the way, a line under the caption says why (gap 30), never "failed": **"Waiting for network"**, **"No connection to the server — will retry"**, **"Upload refused — will retry"** (R2 / function answered an error; the engine retries with backoff), **"Checking your sign-in — will retry"**, **"Waiting to send · next try in {m} min"** (backing off), held: **"Waiting for the office — they can see these files"**; with a **Retry** button (send now: resets the backoff, retries held files) while online. Tap the bubble → the 🕓 sheet (spec 2), which repeats the reason; **Outbox** is also in the thread's ⋮ menu.
 - **Hand-over without a gap (gap 6):** a row is keyed by `client_message_id`, so the outbox item and the server message it becomes are one row (deduplicated when both are present) with the same tiles (tiles are keyed by the file's SHA-256, equal on the phone and the server; the phone's copies stay the image source while they exist). When an item of the open case is stored (✓) the thread is fetched again after ~1 s. Stored items the outbox drops are kept **app-wide** (`OutboxProvider`, persisted in the read cache as `delivered_items`) until a thread fetch has their server message with all files (`trackDelivery` / `confirmDelivery`), so the bubble also survives leaving the thread, coming back from the case list and an app restart; kept at most 7 days. Items removed from the phone, or replaced by the late-upload split, are not kept. Rows already on screen keep their order (`stableOrder`), so a hand-over never moves a bubble; new rows go where time order puts them.
@@ -70,6 +71,18 @@ Every message with files shows them, own messages and office messages posted to 
 - **Unread badge (gap 9):** the server never counted own messages, but the app never marked a thread read, so the badge only grew. Now the thread calls `mark_thread_read(case_id)` before every fetch while it is open online, and remembers on the phone the newest message it showed (also offline): a cached case-list row whose last message is not newer shows no badge (`applyLocalReads`).
 
 Code: pure logic in `apps/field/src/thread/` (`model.ts` merge / states / ticks / unread, `sources.ts` source order and cache rules, `loader.ts` batching, `zoom.ts`), native adapters `fileStore.ts` and `runtime.ts`, UI `src/ui/thread/` (`Bubble`, `Attachments`, `Viewer`, `useImageUri`, `zoomController`). JS only: no new native module, no rebuild needed beyond the current dev / release build.
+
+## File details and comments (D54, 2026-11-27)
+
+Every file the operator can see in a thread, once it is on the server, has a details panel: under the photo in the viewer, and in a sheet when a PDF / audio / video chip is tapped (chips of messages still on the phone keep opening the 🕓 sheet).
+
+- **What the office's reading found:** the **active labels** as chips (category name; one chip per category; people's labels first, then the reading, then rules), the operator's own tag marked **🏷** (also when the reading agrees), and the **description** of the active label that has one (the LLM's first, `evidence_labels.description`). Nothing found yet and `v_evidence_processing` still pending / processing → **"Being read…"**; otherwise nothing. **Never shown (rule 4):** confidence, model / pipeline version, OCR text or OCR summary; those columns are not even selected.
+- **Comments:** part of the file, **not thread messages** (`evidence_comments`, D54). The list shows author (**"You"** or **"Office"**: field users cannot read other profiles) and time, oldest first, then an **"Add comment"** input with **Send** (1–1000 characters). A thumbnail with comments shows **💬 n** in its top-left corner (chips show it on the right). Files still on the phone: "You can add a comment once this file is sent."
+- **Offline (rule 6):** Send saves the comment on the phone at once (own queue, `apps/field/src/comments`, database file `comments.db`) with a `client_comment_id` made on the phone; `add_evidence_comment(p_evidence_id, p_body, p_client_comment_id)` is called with the same id on every retry. Under the comment, in place, never "failed": **"Saved on phone — waiting for network"**, **"Sending…"**, **"No connection to the server — will retry"** (30 s → 30 min backoff, the outbox's), **"Checking your sign-in — will retry"** (paused until Retry or a connectivity change). Refused by the server (kept on the phone with **Retry** and **Remove**): 42501 → **"Not sent: you have no open task on this case. Ask the office, then tap Retry."**; invalid / unknown file → **"Not accepted by the server. Check the text, then tap Retry or Remove."** Held comments are retried by themselves when the operator gets a new open task on that case. After a comment is sent the thread is fetched again after ~1 s; the phone's copy is dropped once a fetch returns it (or after 7 days). The background job sends waiting comments too.
+- **Sign-out:** unsent comments do not block it (unlike files): **"{n} comments not sent yet"** — "… still only on this phone. If you sign out now, they are lost." → **Send now** / **Sign out anyway** / **Stay signed in**. Wiped at sign-out and at the drain wipe; `field-drain` has no comment call, so comments are not sent after a remote sign-out.
+- **Reads:** labels via `evidence` → `evidence_labels!evidence_labels_evidence_id_fkey(is_active, source, description, category:evidence_categories!evidence_labels_category_id_fkey(code, name))`, comments via `evidence_comments` by `case_id`; separate from the evidence read, so the thread still loads when either is refused, and a failed read keeps what the phone had. Same 45 s refresh; cached with the thread's files.
+
+Code: mapping `src/thread/info.ts`; queue `src/comments/` (`queue.ts` engine, `server.ts` RPC + error classes, `store.ts`, native `sqliteStore.ts` / `runtime.ts` / `useComments.ts`); view logic `src/ui-logic/fileInfo.ts`; UI `src/ui/thread/FileInfo.tsx` (`FileInfoPanel`, `FileInfoSheet`). Tests `src/comments/queue.test.ts`, `src/ui-logic/fileInfo.test.ts`.
 
 ## Offline experience (D43)
 
@@ -163,7 +176,7 @@ OCR text.
 | Native module (local Expo module, autolinked from `apps/field/modules`) | `modules/toyam-ocr` (Kotlin, `ToyamOcrModule.kt`): ML Kit text recognition v2 **16.0.1**, **bundled** Latin + Devanagari models (offline from the first launch, no Play-services download). Own low-priority thread: neither the UI thread nor the shared Expo module queue waits. |
 | JS adapter | `src/ocr/native.ts` (`requireOptionalNativeModule('ToyamOcr')`; missing module = no OCR) |
 | Block mapping, Latin + Devanagari merge | `src/ocr/blocks.ts` |
-| Aadhaar masking | `src/ocr/mask.ts` (same rule in SQL: `private.mask_aadhaar`) |
+| Aadhaar regex helper (unused here since D55; kept for report-time masking) | `src/ocr/mask.ts` (SQL twin: `private.mask_aadhaar`, also unused upstream) |
 | Description | `src/ocr/describe.ts` |
 | Read step (best effort) | `src/ocr/read.ts` (`readPhoto`) |
 | Outbox step (persist, send, retry) | `src/outbox/outbox.ts` (`startOcr`, `sendOcr`), tests `src/outbox/ocr.test.ts`, `src/ocr/ocr.test.ts` |
@@ -190,11 +203,10 @@ OCR text.
   1600 px copy: <first 3 meaningful lines joined with " · ">`, or `<…>; no text read`. "Document" when text lines cover
   ≥ 12 % of the image or there are ≥ 8 lines with ≥ 120 characters. A meaningful line has ≥ 3 letters / digits and is
   mostly letters / digits. The tag name comes from the case's cached chips.
-- **Privacy (rule 7, UIDAI):** before anything leaves the phone, every 12-digit number whose first digit is 2–9 (plain or
-  grouped 4-4-4 with spaces / hyphens), not part of a longer digit run, becomes `XXXX XXXX 1234` in the text, every
-  block and the description; the database applies the same masking again. No checksum test on purpose (a misread digit
-  would fail it and leak 11 digits). Other numbers (registration, DL, policy, chassis) are report fields and stay as
-  read; a 12-digit segment inside a policy number is masked as well (privacy first; the photo still shows it).
+- **Privacy (D55, 2026-11-27):** the text, every block and the description are sent and stored **as read** (no Aadhaar
+  masking on the phone or in SQL); office staff see the full text, field operators still never read OCR. Aadhaar numbers
+  are blacked out only on the copy of a photo placed in a report (original unchanged). Risk (UIDAI guidance on storing
+  full numbers) accepted by the client and the developer.
 - **Who sees it:** staff on cases they manage (report workspace relevant-files panel, case evidence list: description,
   "Show text", "Copy text"). Field operators never read OCR (RLS, rule 4); they also cannot write OCR rows except
   through `record_device_ocr()`.
@@ -215,7 +227,7 @@ Long-press → Withdraw (within 10 minutes, D19). The message shows "Message wit
 
 ## What operators never see
 
-Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling. The phone reads and sends the OCR text of its photos (above) but can never read OCR rows back (RLS).
+Staff-only messages (orchestrator ↔ office notes, assignment reasons, "report sent") and any file posted in them are filtered out by the database (D32); the app needs no special handling. The phone reads and sends the OCR text of its photos (above) but can never read OCR rows back (RLS). Labels show only as category names and a description (D54); confidence and model are never selected or shown.
 
 ## Mark task done
 

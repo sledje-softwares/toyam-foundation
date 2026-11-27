@@ -8,6 +8,7 @@ import { NavLinks } from "@/components/nav-links";
 import { Toaster } from "@/components/ui/toaster";
 import { FileCacheProvider } from "@/components/file-cache/provider";
 import { SignOutForm } from "@/components/file-cache/sign-out-form";
+import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
@@ -35,34 +36,33 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-4 focus:py-2 focus:text-white"
+    <>
+      <AppShell
+        brand={
+          <Link href="/dashboard" className="block truncate text-base font-semibold text-text">
+            Claims Investigation
+          </Link>
+        }
+        sidebar={
+          <>
+            <NavLinks items={items} badges={badges} />
+            <div className="mt-6 border-t border-border px-3 pt-4 text-sm">
+              <p className="font-medium">{profile.full_name}</p>
+              <p className="text-text-muted">{ROLE_LABELS[profile.role]}</p>
+              <p className="mt-2">
+                <Link href="/account" className="text-primary underline hover:no-underline">
+                  My account
+                </Link>
+              </p>
+              {/* Wipes the browser file cache, then signs out. */}
+              <SignOutForm className="mt-2" />
+            </div>
+          </>
+        }
       >
-        Skip to main content
-      </a>
-      <aside className="border-b border-slate-200 bg-white p-4 md:w-60 md:border-b-0 md:border-r">
-        <p className="px-3 text-base font-semibold">Claims Investigation</p>
-        <div className="mt-4">
-          <NavLinks items={items} badges={badges} />
-        </div>
-        <div className="mt-6 border-t border-slate-200 px-3 pt-4 text-sm">
-          <p className="font-medium">{profile.full_name}</p>
-          <p className="text-slate-600">{ROLE_LABELS[profile.role]}</p>
-          <p className="mt-2">
-            <Link href="/account" className="text-blue-800 underline hover:no-underline">
-              My account
-            </Link>
-          </p>
-          {/* Wipes the browser file cache, then signs out. */}
-          <SignOutForm className="mt-2" />
-        </div>
-      </aside>
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-screen-2xl flex-1 p-6 md:p-8">
         <FileCacheProvider userId={profile.id}>{children}</FileCacheProvider>
-      </main>
+      </AppShell>
       <Toaster />
-    </div>
+    </>
   );
 }

@@ -8,7 +8,8 @@ import type { CaptureSource, Gps } from '../outbox/types';
 import { needsCompression, nextPass, PASSES, resizeFor } from './compress';
 import { cleanExif, pickCaptureTime } from './exif';
 import { SELF_TEST_BYTES, SELF_TEST_SHA256, sha256OfFile, type FileDigester } from './hash';
-import { originalName, sandboxName, type PreparedFile } from './item';
+import type { ScannedPage } from '../scan/native';
+import { originalName, sandboxName, scanName, type PreparedFile } from './item';
 import { checkFile, evidenceTypeFor, extFor, mimeOf } from './limits';
 
 /** Native streaming digest over the file on disk (lower-case hex). */
@@ -116,6 +117,19 @@ export async function prepareCameraShot(shot: Shot): Promise<PreparedFile> {
   return finish({
     uri: c.uri, mime: c.mime, source: 'camera', capturedAt: shot.capturedAt, gps: shot.gps, pickedName: null,
     exif: shot.exif, tempUris: c.temp ? [c.uri, shot.uri] : [shot.uri],
+  });
+}
+
+/**
+ * One page from the document scanner. The scanner's gallery import is off, so it is a camera capture;
+ * it carries no GPS. `capturedAt` is the device clock when the scanner returned the pages.
+ */
+export async function prepareScanPage(page: ScannedPage, capturedAt: string, pageNumber: number): Promise<PreparedFile> {
+  const size = new File(page.uri).size;
+  const c = await compress(page.uri, 'camera', 'image/jpeg', size, page.width, page.height);
+  return finish({
+    uri: c.uri, mime: c.mime, source: 'camera', capturedAt, gps: null, pickedName: scanName(capturedAt, pageNumber),
+    exif: null, tempUris: c.temp ? [c.uri, page.uri] : [page.uri],
   });
 }
 

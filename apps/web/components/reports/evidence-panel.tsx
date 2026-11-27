@@ -2,6 +2,7 @@ import type { ActionResult, LinkResult, PanelFile } from "@/lib/reports";
 import { formatRelativeDay } from "@/lib/format";
 import { Badge } from "@/components/ui";
 import { CachedImage, PreviewButton } from "@/components/evidence/cached-image";
+import { OperatorComments } from "@/components/evidence/operator-comments";
 import { OcrText } from "@/components/evidence/ocr-text";
 import { LabelEditor, OpenFileButton, RelevanceButton } from "./evidence-actions";
 import { PlannedButton, PlannedNote } from "./planned";
@@ -70,6 +71,7 @@ function Tile({ f, caseRef, editable, labelOptions, actions }: { f: PanelFile; c
           </p>
           {f.description && <p className="line-clamp-2 text-xs text-text-muted">{f.description}</p>}
           {f.ocr && <OcrText ocr={f.ocr} compact />}
+          <OperatorComments comments={f.comments} compact />
         </div>
       </div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3">

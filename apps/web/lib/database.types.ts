@@ -837,6 +837,56 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"evidence_comments": {
+                  Row: {
+                    "author_id": string,"body": string,"case_id": string,"client_comment_id": string,"created_at": string,"evidence_id": string,"id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "author_id": string,"body": string,"case_id": string,"client_comment_id": string,"created_at"?: string,"evidence_id": string,"id"?: string
+                  }
+                  Update: {
+                    "author_id"?: string,"body"?: string,"case_id"?: string,"client_comment_id"?: string,"created_at"?: string,"evidence_id"?: string,"id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "evidence_comments_author_id_fkey"
+      columns: ["author_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "evidence_comments_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "cases"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "evidence_comments_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "v_case_dashboard"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "evidence_comments_case_id_fkey"
+      columns: ["case_id"]
+isOneToOne: false
+      referencedRelation: "v_report_progress"
+      referencedColumns: ["case_id"]
+    },{
+      foreignKeyName: "evidence_comments_evidence_id_fkey"
+      columns: ["evidence_id"]
+isOneToOne: false
+      referencedRelation: "evidence"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "evidence_comments_evidence_id_fkey"
+      columns: ["evidence_id"]
+isOneToOne: false
+      referencedRelation: "v_evidence_processing"
+      referencedColumns: ["evidence_id"]
+    }
+                  ]
                 },"evidence_derivatives": {
                   Row: {
                     "created_at": string,"evidence_id": string,"pixel_height": number | null,"pixel_width": number | null,"sha256": string,"size_bytes": number | null,"storage_path": string,"width": number
@@ -1663,6 +1713,9 @@ isOneToOne: false
           Functions: {
             "activate_checklist_template":
 { Args: { "p_id": string }; Returns: undefined
+                           },
+"add_evidence_comment":
+{ Args: { "p_body": string,"p_client_comment_id": string,"p_evidence_id": string }; Returns: string
                            },
 "admin_list_users":
 { Args: { "p_user_id"?: string }; Returns: {

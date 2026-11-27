@@ -60,6 +60,7 @@ if (config.label.mode !== 'off') {
     db, store, templates, resizer: createSharpResizer(), pdf, log, primary, escalation,
     threshold: config.label.threshold, maxOriginalBytes: config.maxOriginalBytes, pdfTextChars: config.label.pdfTextChars,
     ocrExcerptChars: config.label.ocrExcerptChars,
+    commentChars: config.label.commentChars,
   });
 } else {
   // label jobs stay queued (and the later stages of those files wait behind them)
