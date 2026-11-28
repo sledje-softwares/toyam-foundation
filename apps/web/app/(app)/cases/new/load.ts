@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { assigneeOptions, OPEN_STATUSES } from "@/lib/cases";
+import { assigneeOptions } from "@/lib/cases";
+import { workloadMaps } from "@/lib/workload";
 import { newCaseFields, type NewCaseField, type TemplateOption } from "@/lib/new-case";
 
 /** Shared by /cases/new and its server action, so both offer and accept the same template, fields and owners. */
@@ -37,20 +38,23 @@ export type TemplateForNewCase = TemplateOption & { insurer_id: string; insurer_
 
 /** The active template with its intake fields; null when it is not (or no longer) in use; "error" on failure. */
 export async function loadTemplate(supabase: Supabase, id: string): Promise<TemplateForNewCase | null | "error"> {
-  const { data: t, error } = await supabase
-    .from("case_templates")
-    .select("id, claim_type, variant, version, name, insurer_id, insurers!inner(name, is_active)")
-    .eq("id", id)
-    .eq("is_active", true)
-    .eq("insurers.is_active", true)
-    .maybeSingle();
+  // The fields query only needs the id, so both run at once (a not-in-use template wastes one cheap read).
+  const [{ data: t, error }, { data: rows, error: fErr }] = await Promise.all([
+    supabase
+      .from("case_templates")
+      .select("id, claim_type, variant, version, name, insurer_id, insurers!inner(name, is_active)")
+      .eq("id", id)
+      .eq("is_active", true)
+      .eq("insurers.is_active", true)
+      .maybeSingle(),
+    supabase
+      .from("case_template_fields")
+      .select("key, label, field_type, is_required, options, help_text, position, case_template_sections(position, title)")
+      .eq("template_id", id)
+      .eq("source", "intake"),
+  ]);
   if (error) return "error";
   if (!t) return null;
-  const { data: rows, error: fErr } = await supabase
-    .from("case_template_fields")
-    .select("key, label, field_type, is_required, options, help_text, position, case_template_sections(position, title)")
-    .eq("template_id", t.id)
-    .eq("source", "intake");
   if (fErr) return "error";
   const fields = newCaseFields(
     (rows ?? []).map((r) => {
@@ -79,10 +83,9 @@ export async function loadOwnerOptions(supabase: Supabase, now: Date): Promise<{
       .eq("is_active", true)
       .in("role", ["office", "orchestrator", "admin"])
       .order("full_name"),
-    supabase.from("cases").select("office_owner_id").in("status", OPEN_STATUSES).not("office_owner_id", "is", null).limit(10000),
+    supabase.rpc("staff_workload"),
   ]);
   if (staff.error || open.error) return null;
-  const counts = new Map<string, number>();
-  for (const r of open.data ?? []) if (r.office_owner_id) counts.set(r.office_owner_id, (counts.get(r.office_owner_id) ?? 0) + 1);
+  const counts = workloadMaps(open.data ?? []).openCases;
   return assigneeOptions(staff.data ?? [], counts, null, now);
 }

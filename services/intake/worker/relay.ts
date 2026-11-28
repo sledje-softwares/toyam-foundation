@@ -77,6 +77,10 @@ export async function pollOnce(
     const max = parseInt(env.MAX_PER_RUN ?? '10', 10) || 10;
     const relayed: number[] = [];
     let failedUid: number | null = null;
+    const startUid = state.lastUid;
+    // The position is saved once after the loop (also when a fetch throws), not after every message:
+    // a crash in between only re-posts mail the intake function already knows (idempotent on Message-ID).
+    try {
     for (const uid of candidates.slice(0, max)) {
       const msg = await client.fetchMessage(uid);
       if (msg) {
@@ -95,7 +99,9 @@ export async function pollOnce(
         relayed.push(uid);
       }
       state = { ...state, lastUid: uid };
-      await store.put(STATE_KEY, JSON.stringify(state));
+    }
+    } finally {
+      if (state.lastUid !== startUid) await store.put(STATE_KEY, JSON.stringify(state));
     }
     return { relayed, failedUid, state, note };
   } finally {

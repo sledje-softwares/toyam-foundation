@@ -28,8 +28,8 @@ export function createOcrStage(deps: {
     const ev = await deps.db.getEvidence(job.evidence_id);
     if (!ev) return { status: 'skipped', reason: 'evidence_not_found' };
     if (ev.withdrawn_at) return { status: 'skipped', reason: 'withdrawn' };
-    if (!(await deps.db.ocrWanted(ev.id))) return { status: 'skipped', reason: 'ocr_not_wanted' };
-    const current = await deps.db.getCurrentOcr(ev.id);
+    const [wanted, current] = await Promise.all([deps.db.ocrWanted(ev.id), deps.db.getCurrentOcr(ev.id)]);
+    if (!wanted) return { status: 'skipped', reason: 'ocr_not_wanted' };
     if (current.some((r) => r.engine === PDF_TEXT_ENGINE && r.text.trim() !== '')) return { status: 'skipped', reason: 'pdf_text_layer' };
     // OCR of field files runs on the phone (ML Kit on the 1600 px copy, engine mlkit_device): a current device
     // row counts as done unless its mean confidence is below the threshold (no confidence reported = done)

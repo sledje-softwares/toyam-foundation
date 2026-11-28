@@ -17,12 +17,14 @@
 // Secrets: INTAKE_SECRET (shared with the Worker). SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are provided by the platform.
 import PostalMime from 'npm:postal-mime@4.2.1';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { mapLimit } from '../_shared/concurrency.ts';
 import { processEmail } from '../_shared/intake/index.ts';
 import { bytesOf, fromPostalMime, sha256Hex } from '../_shared/intake/mime.ts';
 import type { IntakeConfig } from '../_shared/intake/types.ts';
 
 const BUCKET = 'email-raw';
 const MAX_BYTES = 45 * 1024 * 1024;
+const ATTACHMENT_UPLOADS = 4;
 const CONFIG_TTL_MS = 5 * 60 * 1000;
 
 const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
@@ -164,12 +166,13 @@ Deno.serve(async (req) => {
   try {
     await storeRaw();
     // attachments are content-addressed and shared across copies of the same mail
-    for (let i = 0; i < parts.length; i++) {
+    // (up to 4 uploads in flight: a 20-photo mail no longer pays 20 sequential round trips)
+    await mapLimit(parts, ATTACHMENT_UPLOADS, async (part, i) => {
       const a = email.attachments[i];
       const path = `emails/att/${a.sha256}${extension(a.filename, a.mimeType)}`;
-      await put(path, bytesOf(parts[i].content), a.mimeType);
+      await put(path, bytesOf(part.content), a.mimeType);
       a.storagePath = path;
-    }
+    });
     const cfg = await intakeConfig();
     let decision;
     try {

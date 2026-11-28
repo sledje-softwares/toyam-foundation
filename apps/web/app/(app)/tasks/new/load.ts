@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Enums } from "@/lib/database.types";
-import { availabilityNote, openTaskCounts, sortChecklistOptions, type ChecklistOption, type TaskKind, type TaskStatus } from "@/lib/tasks";
+import { workloadMaps } from "@/lib/workload";
+import { availabilityNote, sortChecklistOptions, type ChecklistOption, type TaskKind, type TaskStatus } from "@/lib/tasks";
 
 /** Shared by the assign page and its server action, so both offer and accept the same choices. */
 
@@ -70,11 +71,8 @@ export async function loadOperators(supabase: Supabase, now: Date): Promise<Oper
     .order("full_name")
     .limit(500);
   if (error) return null;
-  const ids = (data ?? []).map((p) => p.id);
-  const { data: open } = ids.length
-    ? await supabase.from("tasks").select("assignee_id").in("status", ["pending", "in_progress"]).in("assignee_id", ids).limit(5000)
-    : { data: [] };
-  const load = openTaskCounts(open ?? []);
+  const { data: open } = data?.length ? await supabase.rpc("staff_workload") : { data: [] };
+  const load = workloadMaps(open ?? []).openTasks;
   return (data ?? []).map((p) => ({
     id: p.id,
     full_name: p.full_name,

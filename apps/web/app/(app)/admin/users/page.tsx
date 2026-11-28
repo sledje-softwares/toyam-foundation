@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { workloadMaps } from "@/lib/workload";
 import { formatPhone, formatRelativeDay, ROLE_LABELS } from "@/lib/format";
 import { parseListParams, type ListConfig, type SearchParams } from "@/lib/list-params";
 import { contactLines, filterUsers, parseStatus, sortUsers, USER_ROLES, USER_SORT_KEYS, type UserRow } from "@/lib/users-list";
@@ -27,7 +28,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
   // admin_list_users(p_user_id?: uuid) returns profile + sign-in details but no task counts; those come from tasks.
   const [users, tasks] = await Promise.all([
     supabase.rpc("admin_list_users"),
-    supabase.from("tasks").select("assignee_id").in("status", ["pending", "in_progress"]).not("assignee_id", "is", null).limit(5000),
+    supabase.rpc("staff_workload"),
   ]);
 
   if (users.error) {
@@ -39,8 +40,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     );
   }
 
-  const open = new Map<string, number>();
-  for (const t of tasks.data ?? []) if (t.assignee_id) open.set(t.assignee_id, (open.get(t.assignee_id) ?? 0) + 1);
+  const open = workloadMaps(tasks.data ?? []).openTasks;
   const all: UserRow[] = (users.data ?? []).map((r) => ({
     id: r.id,
     full_name: r.full_name,

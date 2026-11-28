@@ -11,7 +11,6 @@ import {
   intakeFieldRows,
   isTerminal,
   newTaskHref,
-  OPEN_STATUSES,
   REASON_MAX,
   TASK_KIND_LABELS,
 } from "@/lib/cases";
@@ -19,6 +18,7 @@ import { Badge, ErrorState, StatusBadge } from "@/components/ui";
 import { ReassignForm, RetryAssignButton } from "@/components/cases/reassign-form";
 import { reassignCaseAction, retryAutoAssignAction } from "./actions";
 import { loadCase, refParam } from "./load";
+import { workloadMaps } from "@/lib/workload";
 
 /** `by` is the actor (assigned_by), not the previous owner: no arrow. */
 function assignmentText(by: string | null, assignee: string): string {
@@ -87,7 +87,7 @@ export default async function CaseOverviewPage({ params }: { params: Promise<{ r
           .order("full_name")
       : Promise.resolve({ data: [], error: null }),
     canReassign
-      ? supabase.from("cases").select("office_owner_id").in("status", OPEN_STATUSES).not("office_owner_id", "is", null).limit(10000)
+      ? supabase.rpc("staff_workload")
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -101,8 +101,7 @@ export default async function CaseOverviewPage({ params }: { params: Promise<{ r
   const progress = checklistProgress(checklist.data ?? []);
   const waiting = (outbox.data ?? []).filter((o) => o.pending_count > 0);
 
-  const counts = new Map<string, number>();
-  for (const r of openCases.data ?? []) if (r.office_owner_id) counts.set(r.office_owner_id, (counts.get(r.office_owner_id) ?? 0) + 1);
+  const counts = workloadMaps(openCases.data ?? []).openCases;
   const options = assigneeOptions(staff.data ?? [], counts, c.office_owner_id, now);
 
   const details: { label: string; value: React.ReactNode }[] = [

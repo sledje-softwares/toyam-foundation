@@ -108,9 +108,9 @@ export async function processSend(id: string, cfg: SendConfig, deps: Deps): Prom
   let raw: string;
   let rcpt: string[];
   try {
-    const maxMb = Number(await gw.setting('send_attach_max_mb') ?? '18');
+    const [maxSetting, files] = await Promise.all([gw.setting('send_attach_max_mb'), gw.reportFiles(claimed.report_id)]);
+    const maxMb = Number(maxSetting ?? '18');
     const maxBytes = (Number.isFinite(maxMb) && maxMb > 0 ? maxMb : 18) * MB;
-    const files = await gw.reportFiles(claimed.report_id);
     if (!files) return failClean(gw, id, 'The report files could not be listed. Try again');
     const attachments = [];
     let total = 0;
@@ -178,9 +178,11 @@ export async function sweep(cfg: SendConfig, deps: Deps): Promise<{ id: string; 
   const now = (deps.now ?? (() => new Date()))();
   const rows = await gw.pendingSends(50);
   if (!rows) return null;
-  const lease = Number(await gw.setting('send_lease_minutes') ?? '10');
-  const leaseMs = (Number.isFinite(lease) && lease > 0 ? lease : 10) * 60_000;
   const results: { id: string; outcome: Outcome }[] = [];
+  if (rows.length === 0) return results;            // idle tick: nothing else to read
+  // the lease setting matters only when something is mid-send
+  const lease = rows.some((r) => r.status === 'sending') ? Number(await gw.setting('send_lease_minutes') ?? '10') : 10;
+  const leaseMs = (Number.isFinite(lease) && lease > 0 ? lease : 10) * 60_000;
   for (const r of rows) {
     if (r.status === 'sending' && r.claimed_at && now.getTime() - Date.parse(r.claimed_at) > leaseMs) {
       // nothing is sent here: the claim sees the expired lease and records unknown

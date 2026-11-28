@@ -20,20 +20,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Counts for nav badges, only for items this role sees. { intake: n } shows next to "Intake".
   const badges: Partial<Record<NavBadge, number>> = {};
   const supabase = await createClient();
-  if (items.some((i) => i.badge === "intake")) {
-    const { count } = await supabase
-      .from("intake_extractions")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending_review");
-    if (count) badges.intake = count;
-  }
-  if (items.some((i) => i.badge === "failedMail")) {
-    const { count } = await supabase
-      .from("emails")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["failed", "retry_requested"]);
-    if (count) badges.failedMail = count;
-  }
+  const [intake, failedMail] = await Promise.all([
+    items.some((i) => i.badge === "intake")
+      ? supabase.from("intake_extractions").select("id", { count: "exact", head: true }).eq("status", "pending_review")
+      : null,
+    items.some((i) => i.badge === "failedMail")
+      ? supabase.from("emails").select("id", { count: "exact", head: true }).in("status", ["failed", "retry_requested"])
+      : null,
+  ]);
+  if (intake?.count) badges.intake = intake.count;
+  if (failedMail?.count) badges.failedMail = failedMail.count;
 
   return (
     <>

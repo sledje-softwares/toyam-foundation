@@ -16,13 +16,16 @@ export function createFieldSuggestStage(deps: { db: PipelineDb; templates: Templ
     if (!ev) return { status: 'skipped', reason: 'evidence_not_found' };
     if (ev.withdrawn_at) return { status: 'skipped', reason: 'withdrawn' };
     if (!ev.template_id) return { status: 'skipped', reason: 'case_has_no_template' };
-    if (!(await deps.db.ocrWanted(ev.id))) return { status: 'skipped', reason: 'ocr_not_wanted' };
+    // independent reads, one round trip (the template is cached, so it costs nothing when warm)
+    const [wanted, currentOcr, ctx, matches, labels] = await Promise.all([
+      deps.db.ocrWanted(ev.id), deps.db.getCurrentOcr(ev.id), deps.templates.get(ev.template_id),
+      deps.db.getFieldMatches(ev.id), deps.db.getActiveLabels(ev.id),
+    ]);
+    if (!wanted) return { status: 'skipped', reason: 'ocr_not_wanted' };
     // any current OCR: PDF text layer, device OCR (mlkit_device) or server OCR
-    const ocr = (await deps.db.getCurrentOcr(ev.id)).filter((r) => r.text.trim() !== '' || r.blocks.length > 0);
+    const ocr = currentOcr.filter((r) => r.text.trim() !== '' || r.blocks.length > 0);
     if (ocr.length === 0) return { status: 'skipped', reason: 'no_ocr_text' };
 
-    const ctx = await deps.templates.get(ev.template_id);
-    const [matches, labels] = await Promise.all([deps.db.getFieldMatches(ev.id), deps.db.getActiveLabels(ev.id)]);
     const keys = new Set<string>();
     for (const m of matches) if (m.score >= deps.minMatchScore) {
       const f = ctx.fieldById.get(m.field_id);

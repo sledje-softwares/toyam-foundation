@@ -80,7 +80,10 @@ export async function prepareInput(ev: Evidence, deps: Pick<LabelDeps, 'db' | 's
                                    signal?: AbortSignal): Promise<Input | { skip: string }> {
   if (!ev.storage_path) return { skip: 'no_file' };
   // whatever OCR exists now (device OCR may arrive after this job was claimed: then it is simply not used)
-  const ocr = await deps.db.getCurrentOcr(ev.id);
+  const [ocr, copy] = await Promise.all([
+    deps.db.getCurrentOcr(ev.id),
+    isPdf(ev.mime_type) ? Promise.resolve(null) : deps.db.getDerivative(ev.id, LABEL_EDGE),
+  ]);
   const excerptChars = deps.ocrExcerptChars ?? 600;
   if (isPdf(ev.mime_type)) {
     const text = ocr.filter((r) => r.engine === 'pdf_text_layer').map((r) => r.text).join('\n\n').trim();
@@ -102,7 +105,6 @@ export async function prepareInput(ev: Evidence, deps: Pick<LabelDeps, 'db' | 's
     if (!page) return { skip: 'pdf_without_text_layer_no_renderer' };
     return { image: { base64: b64(page.bytes), mimeType: 'image/jpeg', longEdge: Math.max(page.width, page.height) }, instruction: withOcr(USER_INSTRUCTION, ocr, excerptChars), source: 'pdf_render' };
   }
-  const copy = await deps.db.getDerivative(ev.id, LABEL_EDGE);
   if (copy) {
     // copies sit next to the field files (R2 today; D53 adds a backend column when evidence moves)
     const bytes = await getVerified(deps.store, 'r2', copy.storage_path, copy.sha256, { maxBytes: 2_000_000, signal });
@@ -166,8 +168,7 @@ export function createLabelStage(deps: LabelDeps) {
     if (ev.withdrawn_at) return { status: 'skipped', reason: 'withdrawn' };
     if (ev.evidence_type !== 'photo' && ev.evidence_type !== 'document') return { status: 'skipped', reason: `unsupported_type_${ev.evidence_type}` };
 
-    const ctx = await deps.templates.get(ev.template_id);
-    const input = await prepareInput(ev, deps, signal);
+    const [ctx, input] = await Promise.all([deps.templates.get(ev.template_id), prepareInput(ev, deps, signal)]);
     if ('skip' in input) return { status: 'skipped', reason: input.skip };
 
     const v = job.pipeline_version;

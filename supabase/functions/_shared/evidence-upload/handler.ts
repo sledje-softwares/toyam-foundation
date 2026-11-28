@@ -65,13 +65,14 @@ export async function handleEvidenceUpload(
 
   if (req.derivatives.length > 0) return handleDerivatives(req, call, isReply, r2, now());
 
-  // 1. Upload window per capture time (open task, or the D43 late / drain window).
+  // 1. Upload window per capture time (open task, or the D43 late / drain window); distinct times in parallel.
   const refused: string[] = [];
   const times = [...new Set(req.files.map((f) => f.device_captured_at))];
-  for (const t of times) {
-    const r = await call('can_upload_evidence_at', { p_task_id: req.task_id, p_device_captured_at: t });
+  const windows = await Promise.all(times.map((at) => call('can_upload_evidence_at', { p_task_id: req.task_id, p_device_captured_at: at })));
+  for (let i = 0; i < times.length; i++) {
+    const r = windows[i];
     if (isReply(r)) return r;
-    if (r.data !== true) refused.push(...req.files.filter((f) => f.device_captured_at === t).map((f) => f.sha256));
+    if (r.data !== true) refused.push(...req.files.filter((f) => f.device_captured_at === times[i]).map((f) => f.sha256));
   }
   if (refused.length > 0) {
     const f = fail(403, 'upload_window_closed', 'These files were taken after access ended and cannot be sent.');
@@ -91,16 +92,12 @@ export async function handleEvidenceUpload(
 
   // 3. One short-lived PUT per new file, bound to its hash and size.
   const at = now();
-  const files = [];
-  for (const f of req.files) {
+  const files = await Promise.all(req.files.map(async (f) => {
     const storage_path = evidenceKey(req.case_id, req.task_id, f.sha256, f.ext);
-    if (stored.has(f.sha256)) {
-      files.push({ sha256: f.sha256, status: 'already_stored', storage_path });
-      continue;
-    }
+    if (stored.has(f.sha256)) return { sha256: f.sha256, status: 'already_stored', storage_path };
     const put = await presignEvidencePut(r2, storage_path, f.sha256, at, f.size);
-    files.push({ sha256: f.sha256, status: 'upload', storage_path, method: 'PUT', ...put });
-  }
+    return { sha256: f.sha256, status: 'upload', storage_path, method: 'PUT', ...put };
+  }));
   return { status: 200, body: { ok: true, case_id: req.case_id, files } };
 }
 

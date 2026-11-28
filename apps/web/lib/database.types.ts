@@ -2000,6 +2000,11 @@ isOneToOne: false
 "set_evidence_labels":
 { Args: { "p_category_ids": (string)[],"p_evidence_id": string }; Returns: undefined
                            },
+"staff_workload":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "open_cases": number,"open_tasks": number,"profile_id": string
+            }[]
+                           },
 "update_field_task":
 { Args: { "p_due_at"?: string,"p_instructions"?: string,"p_location_text"?: string,"p_task_id": string,"p_title": string }; Returns: boolean
                            },

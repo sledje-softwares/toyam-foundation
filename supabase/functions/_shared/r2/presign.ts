@@ -28,6 +28,23 @@ async function hmac(key: ArrayBuffer | Uint8Array<ArrayBuffer>, msg: string): Pr
   const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return crypto.subtle.sign('HMAC', k, enc.encode(msg));
 }
+// The derived signing key only changes per (secret, day, region, service): keep the last one, as an
+// imported CryptoKey, so presigning many files in one request (or many requests on a warm isolate)
+// costs one HMAC instead of five derivations + imports.
+let signingKeyCache: { id: string; key: Promise<CryptoKey> } | null = null;
+function signingKey(secret: string, day: string, region: string, service: string): Promise<CryptoKey> {
+  const id = `${day}/${region}/${service}/${secret}`;
+  if (signingKeyCache?.id === id) return signingKeyCache.key;
+  const key = (async () => {
+    let k = await hmac(enc.encode('AWS4' + secret), day);
+    for (const part of [region, service, 'aws4_request']) k = await hmac(k, part);
+    return crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  })();
+  signingKeyCache = { id, key };
+  key.catch(() => { if (signingKeyCache?.key === key) signingKeyCache = null; });
+  return key;
+}
+
 /** RFC 3986 encoding as SigV4 requires (encodeURIComponent leaves !'()* alone). */
 export function uriEncode(s: string, keepSlash = false): string {
   const e = encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
@@ -80,9 +97,8 @@ export async function presignUrl(p: PresignInput): Promise<string> {
     p.payloadHash ?? 'UNSIGNED-PAYLOAD',
   ].join('\n');
   const toSign = ['AWS4-HMAC-SHA256', stamp, scope, await sha256Hex(canonical)].join('\n');
-  let key = await hmac(enc.encode('AWS4' + p.secretAccessKey), day);
-  for (const part of [p.region, p.service, 'aws4_request']) key = await hmac(key, part);
-  const signature = hex(await hmac(key, toSign));
+  const key = await signingKey(p.secretAccessKey, day, p.region, p.service);
+  const signature = hex(await crypto.subtle.sign('HMAC', key, enc.encode(toSign)));
   return `https://${p.host}${canonicalPath}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 }
 
