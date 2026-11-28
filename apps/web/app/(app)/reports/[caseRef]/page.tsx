@@ -110,7 +110,7 @@ export default async function ReportWorkspacePage({
         }
         actions={
           ws.template && lock.editable ? (
-            <GenerateReport caseId={c.id} previewHref={`${href}/preview`} />
+            <GenerateReport caseId={c.id} caseRef={c.case_ref} previewHref={`${href}/preview`} />
           ) : ws.template ? (
             // Read-only viewers may still open the preview; generating stays with editors.
             <Link href={`${href}/preview`} className={buttonClass("secondary")}>

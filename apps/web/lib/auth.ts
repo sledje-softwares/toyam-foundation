@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { loginPathFor, REQUEST_PATH_HEADER } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/server";
 import type { Enums } from "@/lib/database.types";
 
@@ -28,10 +30,16 @@ export const getCurrentProfile = cache(async (): Promise<CurrentProfile | null> 
   return { id: data.id, role: data.role, full_name: data.full_name };
 });
 
+/** Sends a signed-out visitor to /login, returning to the requested page (header set by the middleware) afterwards. */
+export async function redirectToLogin(): Promise<never> {
+  const requested = (await headers()).get(REQUEST_PATH_HEADER);
+  redirect(loginPathFor(requested));
+}
+
 /** Server-side guard: returns the profile if signed in and one of `roles`, else redirects. */
 export async function requireRole(roles: UserRole[]): Promise<CurrentProfile> {
   const profile = await getCurrentProfile();
-  if (!profile) redirect("/login");
+  if (!profile) return redirectToLogin();
   if (!roles.includes(profile.role)) redirect("/forbidden");
   return profile;
 }

@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { STAFF_ROLES } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 
 export type LoginState = { error: string | null };
 
@@ -29,7 +30,8 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
     await supabase.auth.signOut();
     return { error: "Field staff use the Android app. This web app is for office staff." };
   }
-  redirect("/dashboard");
+  // Back to the page the user asked for before signing in (form field from ?next=); unsafe values go to /dashboard.
+  redirect(safeNext(formData.get("next")));
 }
 
 export async function signOut() {

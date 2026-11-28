@@ -20,6 +20,13 @@ import { ReassignForm, RetryAssignButton } from "@/components/cases/reassign-for
 import { reassignCaseAction, retryAutoAssignAction } from "./actions";
 import { loadCase, refParam } from "./load";
 
+/** `by` is the actor (assigned_by), not the previous owner: no arrow. */
+function assignmentText(by: string | null, assignee: string): string {
+  if (!by) return `Assigned to ${assignee}`;
+  if (by === assignee) return `Assigned to ${assignee} (by self)`;
+  return `${by} assigned to ${assignee}`;
+}
+
 function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
@@ -247,7 +254,9 @@ export default async function CaseOverviewPage({ params }: { params: Promise<{ r
               {(assignments.data ?? []).map((a) => (
                 <li key={a.id}>
                   <span className="text-text-muted">{formatDateTime(a.assigned_at)} · </span>
-                  {a.method === "auto" ? "Automatic" : (one(a.by)?.full_name ?? "Manual")} → {one(a.assignee)?.full_name ?? "staff"}
+                  {a.method === "auto"
+                    ? `Automatically assigned to ${one(a.assignee)?.full_name ?? "staff"}`
+                    : assignmentText(one(a.by)?.full_name ?? null, one(a.assignee)?.full_name ?? "staff")}
                   {a.reason && a.reason !== "Automatic assignment" && <span className="block text-text-muted">{a.reason}</span>}
                 </li>
               ))}

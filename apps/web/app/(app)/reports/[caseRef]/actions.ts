@@ -41,6 +41,17 @@ function revalidateReports(caseRef: string) {
   revalidatePath("/reports");
 }
 
+/**
+ * Called by the Generate button after a version is recorded (or a run fails because values changed): the browser
+ * wrote through its own session, so the server-rendered workspace must be told to drop its cached render first.
+ */
+export async function revalidateWorkspace(caseRef: string): Promise<void> {
+  await requireRole(STAFF_ROLES);
+  const ref = CaseRef.safeParse(caseRef);
+  if (!ref.success) return;
+  revalidateReports(ref.data);
+}
+
 // ---------------------------------------------------------------------
 // 7.1 Save a section's values
 // ---------------------------------------------------------------------

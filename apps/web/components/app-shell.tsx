@@ -94,39 +94,48 @@ export function AppShell({
       <div
         id="app-sidebar"
         ref={drawer}
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface shadow-xl transition-[translate,visibility] duration-200 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:w-60 lg:max-w-none lg:translate-x-0 lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-border bg-surface shadow-xl transition-[translate,visibility] duration-200 lg:static lg:z-auto lg:w-60 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:shadow-none ${
           // Closed below lg: off screen and `invisible`, so it leaves the tab order and the accessibility tree.
           open ? "translate-x-0" : "-translate-x-full max-lg:invisible"
         }`}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 lg:h-auto lg:border-b-0 lg:pt-5">
-          <div className="min-w-0">{brand}</div>
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={() => {
-              setOpen(false);
-              menuButton.current?.focus();
-            }}
-            className="inline-flex h-10 w-10 items-center justify-center rounded text-text-muted hover:bg-slate-100 lg:hidden"
-          >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
+        {/* Inner box: viewport-tall and sticky at lg; the outer column stretches so its background and border span long pages. */}
+        <div className="flex h-full flex-col lg:sticky lg:top-0 lg:h-screen">
+          <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 lg:h-auto lg:border-b-0 lg:pt-5">
+            <div className="min-w-0">{brand}</div>
+            <button
+              type="button"
+              aria-label="Close menu"
+              onClick={() => {
+                setOpen(false);
+                menuButton.current?.focus();
+              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded text-text-muted hover:bg-slate-100 lg:hidden"
             >
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">
+            {sidebar}
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3">{sidebar}</div>
       </div>
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-screen-2xl flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:p-8">
+      <main
+        id="main"
+        tabIndex={-1}
+        className="mx-auto w-full min-w-0 max-w-screen-2xl flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:p-8"
+      >
         {children}
       </main>
     </div>

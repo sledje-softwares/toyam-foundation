@@ -13,17 +13,45 @@ type Action = (fd: FormData) => Promise<TaskActionResult>;
  * is shown inline. Inputs are controlled so a failed attempt keeps what was typed.
  */
 
-export function CompleteTaskButton({ taskId, title, action }: { taskId: string; title: string; action: Action }) {
+export function CompleteTaskButton({
+  taskId,
+  title,
+  action,
+  mandatoryDone = 0,
+  mandatoryTotal = 0,
+  missing = [],
+}: {
+  taskId: string;
+  title: string;
+  action: Action;
+  mandatoryDone?: number;
+  mandatoryTotal?: number;
+  missing?: string[];
+}) {
   const [note, setNote] = useState("");
   const [state, setState] = useState<TaskActionResult>(ACTION_IDLE);
+  const incomplete = mandatoryDone < mandatoryTotal;
   return (
     <div className="space-y-2">
       <ConfirmDialog
         trigger="Mark complete"
         title="Mark this field task complete?"
-        confirmLabel="Mark complete"
+        confirmLabel={incomplete ? "Complete anyway" : "Mark complete"}
         action={async (fd) => setState(await action(fd))}
       >
+        {incomplete && (
+          <div className="mb-3">
+            <InlineAlert tone="warning" title={`${mandatoryDone} of ${mandatoryTotal} required items collected`}>
+              {missing.length > 0 && (
+                <ul className="list-disc pl-5">
+                  {missing.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              )}
+            </InlineAlert>
+          </div>
+        )}
         <p className="mb-3">
           Use this when the operator has finished “{title}” but could not mark it done in the app. The thread shows that the
           office completed it and the operator is notified. Files captured before now can still arrive for the late-upload

@@ -143,6 +143,11 @@ export function checklistProgress(items: ChecklistRow[]) {
   };
 }
 
+/** Names of required checklist items that have no status change and no matched file yet. */
+export function missingMandatory(items: (ChecklistRow & { description: string })[]): string[] {
+  return items.filter((i) => i.is_mandatory && !itemDone(i)).map((i) => i.description);
+}
+
 /** "3 / 5" for the list (all items), or null when the task has no checklist. */
 export function progressLabel(items: ChecklistRow[] | undefined): string | null {
   if (!items || items.length === 0) return null;

@@ -4,6 +4,7 @@ import {
   canRaiseTask,
   noFieldWorkReason,
   checklistProgress,
+  missingMandatory,
   defaultKind,
   dueBounds,
   formatBytes,
@@ -81,6 +82,10 @@ describe("checklist progress", () => {
     { status: "pending", is_mandatory: false, evidence_count: null },
     { status: "waived", is_mandatory: false, evidence_count: 0 },
   ];
+  it("lists the required items still missing", () => {
+    const named = items.map((i, n) => ({ ...i, description: `Item ${n + 1}` }));
+    expect(missingMandatory(named)).toEqual(["Item 3"]);
+  });
   it("counts ticked, matched and waived items as done", () => {
     expect(checklistProgress(items)).toEqual({ done: 3, total: 5, mandatoryDone: 2, mandatoryTotal: 3 });
     expect(progressLabel(items)).toBe("3 / 5");

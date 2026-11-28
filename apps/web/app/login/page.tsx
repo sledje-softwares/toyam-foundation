@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile, STAFF_ROLES } from "@/lib/auth";
+import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/server";
 import { WipeFileCacheOnMount } from "@/components/file-cache/sign-out-form";
 import { LoginForm } from "./login-form";
@@ -9,11 +10,13 @@ export const metadata = { title: "Sign in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string | string[] }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next: rawNext } = await searchParams;
+  // Page to return to after sign-in (set by the middleware); anything unsafe becomes /dashboard.
+  const next = safeNext(rawNext);
   const profile = await getCurrentProfile();
-  if (profile && STAFF_ROLES.includes(profile.role)) redirect("/dashboard");
+  if (profile && STAFF_ROLES.includes(profile.role)) redirect(next);
 
   let initialError: string | null = null;
   if (error === "field" || profile) {
@@ -27,7 +30,7 @@ export default async function LoginPage({
     <main className="mx-auto max-w-sm px-4 py-16">
       <h1 className="text-2xl font-semibold">Sign in</h1>
       <p className="mt-1 text-sm text-slate-600">Claims investigation platform for office staff.</p>
-      <LoginForm initialError={initialError} />
+      <LoginForm initialError={initialError} next={next} />
       <WipeFileCacheOnMount />
     </main>
   );

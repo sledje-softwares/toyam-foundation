@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentProfile, STAFF_ROLES } from "@/lib/auth";
+import { getCurrentProfile, redirectToLogin, STAFF_ROLES } from "@/lib/auth";
 import { ROLE_LABELS } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { NAV_ITEMS, type NavBadge } from "@/lib/nav";
@@ -12,7 +12,7 @@ import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getCurrentProfile();
-  if (!profile) redirect("/login");
+  if (!profile) return redirectToLogin();
   // Field users never use the web app.
   if (!STAFF_ROLES.includes(profile.role)) redirect("/login?error=field");
 

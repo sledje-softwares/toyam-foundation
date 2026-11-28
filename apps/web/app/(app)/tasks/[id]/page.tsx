@@ -7,6 +7,7 @@ import {
   canRaiseTask,
   caseHref,
   checklistProgress,
+  missingMandatory,
   formatBytes,
   isGuid,
   itemDone,
@@ -154,7 +155,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           {manage && (
             <Section title="Manage task">
               <div className="flex flex-wrap items-start gap-3">
-                {canComplete && <CompleteTaskButton taskId={t.id} title={t.title} action={completeTaskAction} />}
+                {canComplete && <CompleteTaskButton
+                    taskId={t.id}
+                    title={t.title}
+                    action={completeTaskAction}
+                    mandatoryDone={progress.mandatoryDone}
+                    mandatoryTotal={progress.mandatoryTotal}
+                    missing={missingMandatory(items)}
+                  />}
                 {canReassign && (
                   <EditTaskForm
                     taskId={t.id}

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
+import { revalidateWorkspace } from "@/app/(app)/reports/[caseRef]/actions";
 import { useFileCache } from "@/components/file-cache/provider";
 import { buttonClass } from "@/components/ui";
 import type { Attempt } from "@/lib/report-build/core";
@@ -15,7 +16,7 @@ import { buttonState, doneText, IDLE, progressText, splitWarnings, userMessage, 
  * a new version with the same session. The code for all that loads on the first click only. One run at a time; a
  * transient failure keeps the built files for a retry. The versions list refreshes when the version is recorded.
  */
-export function GenerateReport({ caseId, previewHref }: { caseId: string; previewHref: string }) {
+export function GenerateReport({ caseId, caseRef, previewHref }: { caseId: string; caseRef: string; previewHref: string }) {
   const files = useFileCache();
   const router = useRouter();
   const [ui, setUi] = useState<GenerateUi>(IDLE);
@@ -31,6 +32,16 @@ export function GenerateReport({ caseId, previewHref }: { caseId: string; previe
     return () => window.removeEventListener("beforeunload", warn);
   }, [busy]);
 
+  // The version was written from the browser, so drop the server's cached render of the workspace, then refresh.
+  async function refreshWorkspace() {
+    try {
+      await revalidateWorkspace(caseRef);
+    } catch {
+      // the refresh below still runs
+    }
+    startTransition(() => router.refresh());
+  }
+
   async function generate() {
     if (running.current || !files) return;
     running.current = true;
@@ -43,11 +54,11 @@ export function GenerateReport({ caseId, previewHref }: { caseId: string; previe
       if (r.ok) {
         attempt.current = null;
         setUi({ status: "done", version: r.version, warnings: r.warnings });
-        router.refresh();
+        await refreshWorkspace();
       } else {
         attempt.current = r.attempt;
         setUi({ status: "error", message: userMessage(r.failure, !!r.attempt), warnings: r.warnings, resumable: !!r.attempt });
-        if (r.failure.error.code === "values_changed" || r.failure.error.code === "not_editable") router.refresh();
+        if (r.failure.error.code === "values_changed" || r.failure.error.code === "not_editable") await refreshWorkspace();
       }
     } catch {
       // the code chunk did not load (offline, new deployment): nothing was stored
